@@ -23,6 +23,7 @@ import { SetupStatusPanel } from './ui/setup-status';
 import { TelemetryPanel } from './ui/telemetry';
 import { TimingPanel } from './ui/timing';
 import { TuningPanel } from './ui/tuning';
+import { ViewportManager } from './ui/viewport';
 
 const boot = async (): Promise<void> => {
   const status = document.getElementById('status')!;
@@ -40,6 +41,10 @@ const boot = async (): Promise<void> => {
   // panels, which keep their own pointer events.
   const input = new InputManager(window, {}, canvas);
   const hud = new Hud(document.body);
+
+  // Fullscreen, landscape lock and the rotate prompt. On a desktop this
+  // installs a toggle and otherwise stays out of the way.
+  new ViewportManager();
 
   // Left column stacks telemetry over the timing tower; the setup panel
   // sits on the right.

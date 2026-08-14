@@ -41,6 +41,22 @@ ratio nor caps the car early. For scale, the outright F1 race record is
 Bottas's 372.5 km/h at Mexico in 2016 — and that was at 2,240 m, where
 the air is thin enough to make it a good deal easier.
 
+## Fullscreen and landscape
+
+On a phone the first tap goes fullscreen and asks the browser to lock
+landscape. Both need a user gesture, and the orientation lock needs the
+document to already be fullscreen, so it is one tap doing two things in
+order. Where a platform refuses — iOS Safari has no orientation lock,
+and no fullscreen at all on iPhone — the rotate prompt is the fallback:
+the game does not pretend portrait is fine, it asks to be turned.
+
+Desktop gets a fullscreen toggle at the top of the screen and no start
+card, because there is nothing to ask for and a click-through before you
+can drive is pure friction.
+
+The layout respects `env(safe-area-inset-*)`, so nothing hides behind a
+notch or a home indicator.
+
 ## On a phone
 
 Left thumb steers, right thumb is the pedals. Both are relative: put a

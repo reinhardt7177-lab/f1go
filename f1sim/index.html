@@ -2,13 +2,35 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#0b0e12" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="color-scheme" content="dark" />
     <title>f1sim — vehicle dynamics test bench</title>
   </head>
   <body>
     <canvas id="view"></canvas>
     <div id="overlay"></div>
     <div id="status">loading…</div>
+    <button type="button" id="btn-fullscreen" title="fullscreen">⛶</button>
+
+    <div id="start-card" class="hidden">
+      <h1>f1sim</h1>
+      <p>Spa-Francorchamps</p>
+      <span class="cta">화면을 탭하면 전체화면 · 가로모드로 시작합니다</span>
+      <small>왼쪽 엄지 조향 · 오른쪽 엄지 위 스로틀 / 아래 브레이크</small>
+    </div>
+
+    <div id="rotate-prompt" class="hidden">
+      <div class="phone"></div>
+      <b>기기를 가로로 돌려주세요</b>
+    </div>
+
     <div id="touch-buttons">
       <button type="button" id="btn-aero">AERO</button>
       <button type="button" id="btn-overtake">BOOST</button>

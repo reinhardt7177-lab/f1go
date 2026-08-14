@@ -120,3 +120,23 @@ car's position along the centreline spline.
 See [f1sim/README.md](f1sim/README.md) to run it, and
 [f1sim/ARCHITECTURE.md](f1sim/ARCHITECTURE.md) for the design and the
 road from here to circuits, AI and multiplayer.
+
+## Deploying
+
+`vercel.json` builds both projects into one static site:
+
+```
+/       the arcade racer
+/sim/   f1sim
+```
+
+To put it online, import this repository at
+[vercel.com/new](https://vercel.com/new) and accept the defaults — the
+build command, install command and output directory all come from
+`vercel.json`, so there is nothing to configure. Any static host works
+the same way:
+
+```
+npm --prefix f1sim install
+node tools/build-site.js     # -> dist-site/
+```
