@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { quatSlerp, v3lerp, vec3 } from '../core/math';
 import type { Quat, Vec3 } from '../core/math';
 import type { VehicleState } from '../sim/types';
+import type { TrackGeometry } from '../track/mesh';
 
 export type CameraMode = 'cockpit' | 'chase' | 'trackside';
 
@@ -27,7 +28,7 @@ export class SceneRenderer {
 
   private smoothedCamPos = new THREE.Vector3(0, 5, 12);
 
-  constructor(private readonly canvas: HTMLCanvasElement) {
+  constructor(private readonly canvas: HTMLCanvasElement, track: TrackGeometry) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
@@ -42,7 +43,7 @@ export class SceneRenderer {
     this.camera = new THREE.PerspectiveCamera(68, 1, 0.1, 4000);
 
     this.buildLighting();
-    this.buildTestPad();
+    this.buildTrack(track);
     this.buildCar();
 
     this.scene.add(this.carGroup);
@@ -68,46 +69,37 @@ export class SceneRenderer {
   }
 
   /**
-   * Stage one is a skid pad: a flat surface with distance references so
-   * you can actually read what the car is doing. Grid lines every 10 m,
-   * a 50 m radius circle for steady-state cornering, and gate markers
-   * down the straight for braking tests.
+   * The circuit, as one mesh.
+   *
+   * The geometry comes from `track/mesh.ts` — the same arrays that
+   * became the physics collider, so what you drive on and what you see
+   * cannot drift apart. Surfaces are distinguished by vertex colour, so
+   * road, kerbs, run-off and grass all render in a single draw call.
    */
-  private buildTestPad(): void {
-    const pad = new THREE.Mesh(
-      new THREE.PlaneGeometry(6000, 6000),
-      new THREE.MeshStandardMaterial({ color: 0x353b43, roughness: 0.95, metalness: 0 })
+  private buildTrack(track: TrackGeometry): void {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(track.positions, 3));
+    geometry.setAttribute('normal', new THREE.BufferAttribute(track.normals, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(track.colors, 3));
+    geometry.setIndex(new THREE.BufferAttribute(track.indices, 1));
+    geometry.computeVertexNormals();
+
+    const surface = new THREE.Mesh(
+      geometry,
+      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0 })
     );
-    pad.rotation.x = -Math.PI / 2;
-    pad.receiveShadow = true;
-    this.scene.add(pad);
+    surface.receiveShadow = true;
+    this.scene.add(surface);
 
-    // 10 m grid. Without a reference like this a flat plane gives no
-    // sense of speed at all, which makes the whole bench useless.
-    const grid = new THREE.GridHelper(6000, 600, 0x6f7f8d, 0x525d68);
-    grid.position.y = 0.01;
-    (grid.material as THREE.Material).transparent = true;
-    (grid.material as THREE.Material).opacity = 0.75;
-    this.scene.add(grid);
-
-    // Skid-pad circle: hold a steady radius here to read peak lateral g.
-    const circle = new THREE.Mesh(
-      new THREE.RingGeometry(49.85, 50.15, 256),
-      new THREE.MeshBasicMaterial({ color: 0xe2000f, side: THREE.DoubleSide })
+    // Ground plane far below, so the horizon is not empty space where the
+    // circuit's own mesh runs out.
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(12000, 12000),
+      new THREE.MeshStandardMaterial({ color: 0x24361f, roughness: 1 })
     );
-    circle.rotation.x = -Math.PI / 2;
-    circle.position.set(0, 0.02, -50);
-    this.scene.add(circle);
-
-    // Distance boards down the straight, for braking tests.
-    const boardGeo = new THREE.BoxGeometry(0.15, 1.6, 2.6);
-    const boardMat = new THREE.MeshStandardMaterial({ color: 0xf5c518, roughness: 0.6 });
-    for (let i = 1; i <= 24; i++) {
-      const board = new THREE.Mesh(boardGeo, boardMat);
-      board.position.set(9, 0.8, -i * 100);
-      board.castShadow = true;
-      this.scene.add(board);
-    }
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -1.2;
+    this.scene.add(ground);
   }
 
   /**
@@ -229,9 +221,15 @@ export class SceneRenderer {
       this.camera.lookAt(carPos.x, carPos.y + 0.6, carPos.z);
       this.camera.fov = 62;
     } else {
-      this.camera.position.set(28, 14, 18);
+      // A television camera: off to one side, high, holding the car in
+      // frame. Fixed world coordinates would be useless on a seven
+      // kilometre circuit.
+      const offset = new THREE.Vector3(26, 9, 14).applyQuaternion(q).add(carPos);
+      const k = 1 - Math.exp(-frameDt * 2.5);
+      this.smoothedCamPos.lerp(offset, k);
+      this.camera.position.copy(this.smoothedCamPos);
       this.camera.lookAt(carPos);
-      this.camera.fov = 40;
+      this.camera.fov = 38;
     }
     this.camera.updateProjectionMatrix();
   }

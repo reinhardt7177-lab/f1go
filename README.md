@@ -106,15 +106,16 @@ used descriptively, as place names. Keep it that way if you fork it.
 
 ## f1sim — the simulation track
 
-`f1sim/` is a separate, unrelated codebase in the same repository: the
-first stage of a proper vehicle-dynamics simulation, built with
-TypeScript, three.js and the Rapier physics engine.
+`f1sim/` is a separate, unrelated codebase in the same repository: a
+vehicle-dynamics simulation built with TypeScript, three.js and the
+Rapier physics engine, running on Spa-Francorchamps.
 
 It shares no code with the arcade racer above. Where this game fakes a
 road as a one-dimensional ribbon, that one models a rigid chassis on four
-raycast wheels, with a Pacejka tyre model, load sensitivity, a friction
-circle, aerodynamic downforce applied at each axle, and a full drivetrain
-— all of it exposed on live sliders with the telemetry to read it.
+raycast wheels — a Pacejka tyre model with temperature and wear,
+ground-effect aerodynamics that depend on ride height, per-surface grip,
+a full drivetrain, and lap and sector timing derived entirely from the
+car's position along the centreline spline.
 
 See [f1sim/README.md](f1sim/README.md) to run it, and
 [f1sim/ARCHITECTURE.md](f1sim/ARCHITECTURE.md) for the design and the

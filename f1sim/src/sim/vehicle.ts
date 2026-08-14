@@ -24,8 +24,15 @@ import {
 import type { DrivetrainParams, DrivetrainState } from './drivetrain';
 import { antiRollForce, defaultSuspensionParams, suspensionForce } from './suspension';
 import type { SuspensionParams } from './suspension';
-import { defaultTireParams, solveTire } from './tire';
-import type { TireParams } from './tire';
+import {
+  conditionGrip,
+  defaultThermalParams,
+  defaultTireParams,
+  freshTire,
+  solveTire,
+  stepTireCondition
+} from './tire';
+import type { TireCondition, TireParams, TireThermalParams } from './tire';
 import { FL, FR, RL, RR, emptyWheelTelemetry, neutralControls } from './types';
 import type { ControlState, VehicleState, WheelTelemetry } from './types';
 
@@ -80,6 +87,7 @@ export const defaultChassisParams = (): ChassisParams => ({
 export interface VehicleParams {
   chassis: ChassisParams;
   tire: TireParams;
+  thermal: TireThermalParams;
   aero: AeroParams;
   drivetrain: DrivetrainParams;
   suspension: SuspensionParams;
@@ -88,6 +96,7 @@ export interface VehicleParams {
 export const defaultVehicleParams = (): VehicleParams => ({
   chassis: defaultChassisParams(),
   tire: defaultTireParams(),
+  thermal: defaultThermalParams(),
   aero: defaultAeroParams(),
   drivetrain: defaultDrivetrainParams(),
   suspension: defaultSuspensionParams()
@@ -95,6 +104,24 @@ export const defaultVehicleParams = (): VehicleParams => ({
 
 /** Below this speed slip ratio and slip angle are ill-conditioned. */
 const SLIP_SPEED_FLOOR = 3.0;
+
+/**
+ * Tyre relaxation length (m).
+ *
+ * A carcass does not develop its cornering force the instant the wheel
+ * is steered — it takes roughly half a metre of rolling for the tread to
+ * deflect and the force to build. Modelling that lag is most of the
+ * difference between a car that feels connected and one that feels like
+ * it is on rails until it suddenly is not.
+ */
+const RELAXATION_LENGTH = 0.5;
+
+/**
+ * Reports the grip multiplier of whatever surface is under a point.
+ * `world.ts` wires this to the circuit; on a bare pad it stays null and
+ * everything is treated as tarmac.
+ */
+export type SurfaceSampler = (point: Vec3) => number;
 
 interface Wheel {
   /** Hardpoint in chassis-local space. */
@@ -110,6 +137,9 @@ interface Wheel {
   steerAngle: number;
   /** Contact point in world space, for the renderer's wheel placement. */
   contactY: number;
+  /** Relaxed slip angle — lags the geometric one by the carcass. */
+  relaxedSlipAngle: number;
+  condition: TireCondition;
 }
 
 export class Vehicle {
@@ -126,6 +156,11 @@ export class Vehicle {
   private lastVelocity: Vec3 = vec3();
   private downforce = 0;
   private drag = 0;
+  private rideHeightFront = 0.05;
+  private rideHeightRear = 0.05;
+
+  /** Set by the world when the car is on a circuit rather than a pad. */
+  surfaceSampler: SurfaceSampler | null = null;
 
   constructor(
     private readonly world: RAPIER.World,
@@ -181,7 +216,9 @@ export class Vehicle {
       lastCompression: 0,
       telemetry: emptyWheelTelemetry(),
       steerAngle: 0,
-      contactY: 0
+      contactY: 0,
+      relaxedSlipAngle: 0,
+      condition: freshTire(params.thermal)
     });
 
     this.wheels[FL] = make(-c.trackFront / 2, front, true, false, true);
@@ -202,6 +239,8 @@ export class Vehicle {
       w.omega = 0;
       w.compression = 0;
       w.lastCompression = 0;
+      w.relaxedSlipAngle = 0;
+      w.condition = freshTire(this.params.thermal);
       w.telemetry = emptyWheelTelemetry();
     }
     this.gLong = 0;
@@ -210,7 +249,7 @@ export class Vehicle {
   }
 
   step(dt: number): void {
-    const { chassis, aero, tire, drivetrain, suspension } = this.params;
+    const { chassis, aero, tire, thermal, drivetrain, suspension } = this.params;
 
     this.body.resetForces(false);
     this.body.resetTorques(false);
@@ -233,7 +272,16 @@ export class Vehicle {
     // than a single force at the centre of mass.
     // ---------------------------------------------------------------
     const drsOpen = this.controls.drs;
-    const air = solveAero(aero, Math.abs(speedAlongForward), drsOpen);
+    // Ride heights come from the previous tick's suspension state: the
+    // rays for this tick have not been cast yet, and one step of lag is
+    // immaterial next to the aero time constant.
+    const air = solveAero(
+      aero,
+      Math.abs(speedAlongForward),
+      drsOpen,
+      this.rideHeightFront,
+      this.rideHeightRear
+    );
     this.downforce = air.downforce;
     this.drag = air.drag;
 
@@ -290,6 +338,24 @@ export class Vehicle {
       }
     }
 
+    // Floor height above the road at each axle, for ground effect. The
+    // reference plane sits under the chassis; the wheel radius plus the
+    // extended suspension length gives the hardpoint height, and the
+    // collider's underside is a fixed offset below that.
+    const floorOffset =
+      chassis.colliderOffsetY - chassis.halfExtents.y - chassis.hardpointY;
+    const floorHeight = (w: Wheel): number =>
+      chassis.wheelRadius + (suspension.restLength - w.compression) + floorOffset;
+
+    this.rideHeightFront = Math.max(
+      0,
+      (floorHeight(this.wheels[FL]!) + floorHeight(this.wheels[FR]!)) / 2
+    );
+    this.rideHeightRear = Math.max(
+      0,
+      (floorHeight(this.wheels[RL]!) + floorHeight(this.wheels[RR]!)) / 2
+    );
+
     const arbFront = antiRollForce(
       suspension.antiRollFront,
       this.wheels[FL]!.compression,
@@ -342,6 +408,12 @@ export class Vehicle {
         t.gripUsage = 0;
         t.compression = w.compression;
         t.omega = w.omega;
+
+        // An airborne tyre still cools in the airstream.
+        stepTireCondition(thermal, w.condition, 0, Math.hypot(linvel.x, linvel.z), dt, false);
+        t.surfaceTemp = w.condition.surfaceTemp;
+        t.coreTemp = w.condition.coreTemp;
+        t.wear = w.condition.wear;
         continue;
       }
 
@@ -384,7 +456,19 @@ export class Vehicle {
       const vLat = local.x * cos + local.z * sin;
 
       const denom = Math.max(Math.abs(vLong), SLIP_SPEED_FLOOR);
-      const slipAngle = Math.atan2(vLat, denom);
+      const geometricSlipAngle = Math.atan2(vLat, denom);
+
+      // Relaxation: the carcass takes about half a metre of rolling to
+      // build its cornering force, so the effective slip angle chases
+      // the geometric one at a rate set by distance travelled, not time.
+      const relaxRate = clamp((Math.abs(vLong) * dt) / RELAXATION_LENGTH, 0, 1);
+      w.relaxedSlipAngle += (geometricSlipAngle - w.relaxedSlipAngle) * relaxRate;
+      const slipAngle = w.relaxedSlipAngle;
+
+      // Everything that scales the available friction without changing
+      // the shape of the curve.
+      const surfaceGrip = this.surfaceSampler ? this.surfaceSampler(contact.point) : 1;
+      const gripScale = surfaceGrip * conditionGrip(thermal, w.condition);
 
       // --- wheel spin, sub-stepped ---------------------------------
       // The wheel/tyre pair is a stiff system: a wheel carries very
@@ -408,7 +492,7 @@ export class Vehicle {
 
       for (let k = 0; k < SUB; k++) {
         slipRatio = clamp((w.omega * radius - vLong) / denom, -4, 4);
-        const f = solveTire(tire, slipRatio, slipAngle, load);
+        const f = solveTire(tire, slipRatio, slipAngle, load, gripScale);
         sumLong += f.long;
         sumLat += f.lat;
         sumGrip += f.gripUsage;
@@ -418,7 +502,7 @@ export class Vehicle {
         // integrator cannot survive.
         const slope = Math.max(
           0,
-          (solveTire(tire, slipRatio + EPS, slipAngle, load).long - f.long) / EPS
+          (solveTire(tire, slipRatio + EPS, slipAngle, load, gripScale).long - f.long) / EPS
         );
 
         const brakeDirection = -Math.sign(w.omega || vLong || 1);
@@ -466,6 +550,14 @@ export class Vehicle {
         this.body.addForceAtPoint({ x: rrWorld.x, y: rrWorld.y, z: rrWorld.z }, contact.point, true);
       }
 
+      // Heat and wear come from the same quantity: the power dissipated
+      // by the contact patch sliding, which is force times sliding speed.
+      const slideLong = w.omega * radius - vLong;
+      const slideLat = vLat;
+      const frictionPower =
+        Math.abs(forces.long * slideLong) + Math.abs(forces.lat * slideLat);
+      stepTireCondition(thermal, w.condition, frictionPower, Math.abs(vLong), dt, true);
+
       t.grounded = true;
       t.load = load;
       t.compression = w.compression;
@@ -475,6 +567,11 @@ export class Vehicle {
       t.forceLat = forces.lat;
       t.gripUsage = forces.gripUsage;
       t.omega = w.omega;
+      t.surfaceTemp = w.condition.surfaceTemp;
+      t.coreTemp = w.condition.coreTemp;
+      t.wear = w.condition.wear;
+      t.gripScale = gripScale;
+      t.surfaceGrip = surfaceGrip;
     }
 
     recoverEnergy(drivetrain, this.drivetrain, brakingPower, dt);

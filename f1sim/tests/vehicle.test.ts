@@ -17,6 +17,13 @@ import { SimWorld, initPhysics } from '../src/sim/world';
 
 const DT = 1 / 120;
 
+/**
+ * Every test here runs on the proving ground: flat, uniform tarmac, wide
+ * enough to slide on. A braking-distance or grip measurement taken on a
+ * real circuit would be measuring the circuit.
+ */
+const testWorld = (): SimWorld => new SimWorld(defaultVehicleParams(), { circuitId: 'proving' });
+
 beforeAll(async () => {
   await initPhysics();
 });
@@ -32,7 +39,7 @@ beforeAll(async () => {
 const drive = (
   seconds: number,
   controls: Partial<ControlState>,
-  world = new SimWorld(),
+  world = testWorld(),
   assist: AssistState = initialAssistState()
 ): SimWorld => {
   const base: ControlState = { ...neutralControls(), ...controls };
@@ -127,7 +134,7 @@ describe('longitudinal behaviour', () => {
   });
 
   it('transfers load to the front under braking', () => {
-    const world = new SimWorld();
+    const world = testWorld();
     drive(6, { throttle: 1 }, world);
 
     // Compare against coasting at the same sort of speed rather than
@@ -146,7 +153,7 @@ describe('longitudinal behaviour', () => {
   });
 
   it('stops the car when the brakes are held', () => {
-    const world = new SimWorld();
+    const world = testWorld();
     drive(5, { throttle: 1 }, world);
     const moving = world.car.getState().speed;
     drive(6, { brake: 1 }, world);
@@ -160,7 +167,7 @@ describe('longitudinal behaviour', () => {
 
 describe('aerodynamics', () => {
   it('generates downforce that grows with speed', () => {
-    const world = new SimWorld();
+    const world = testWorld();
     drive(2, { throttle: 1 }, world);
     const slow = world.car.getState().downforce;
     drive(6, { throttle: 1 }, world);
@@ -185,9 +192,9 @@ describe('aerodynamics', () => {
 
 describe('cornering', () => {
   it('turns and develops lateral acceleration', () => {
-    const world = new SimWorld();
+    const world = testWorld();
     drive(5, { throttle: 1 }, world);
-    drive(2.5, { throttle: 0.45, steer: 1 }, world);
+    drive(2.5, { throttle: 0.45, steer: 0.5 }, world);
 
     const state = world.car.getState();
     expect(Math.abs(state.gLat)).toBeGreaterThan(0.4);
@@ -198,12 +205,63 @@ describe('cornering', () => {
   });
 
   it('builds slip angle at the front when steered', () => {
-    const world = new SimWorld();
+    const world = testWorld();
     drive(5, { throttle: 1 }, world);
-    drive(1.2, { throttle: 0.4, steer: 1 }, world);
+    drive(1.2, { throttle: 0.4, steer: 0.5 }, world);
 
     const [fl, fr] = world.car.getState().wheels;
     expect(Math.abs(fl.slipAngle) + Math.abs(fr.slipAngle)).toBeGreaterThan(0.005);
+    world.dispose();
+  });
+});
+
+describe('energy', () => {
+  it('does not gain energy when dropped onto the road', () => {
+    // The suspension is the one place the integrator can create energy:
+    // a bump stop stiff enough to be unstable at the simulation rate
+    // adds a little on every contact, and a car that lands hard is then
+    // fired into the sky. This is the cheapest possible detector.
+    const world = testWorld();
+    const start = world.car.body.translation();
+    const startY = start.y;
+    const dropHeight = 3;
+
+    world.car.body.setTranslation({ x: start.x, y: startY + dropHeight, z: start.z }, true);
+    world.car.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+
+    let highestAfterLanding = -Infinity;
+    let landed = false;
+
+    for (let i = 0; i < 120 * 6; i++) {
+      world.step(DT);
+      const y = world.car.body.translation().y;
+      if (!landed && world.car.getState().wheels.some((w) => w.grounded)) landed = true;
+      if (landed) highestAfterLanding = Math.max(highestAfterLanding, y);
+    }
+
+    // A real landing dissipates energy: the rebound must be well under
+    // the drop, and the car must end up back on the road.
+    expect(highestAfterLanding).toBeLessThan(startY + dropHeight);
+    expect(Math.abs(world.car.body.translation().y - startY)).toBeLessThan(1);
+    expect(Math.abs(world.car.body.linvel().y)).toBeLessThan(5);
+    world.dispose();
+  });
+
+  it('keeps speed bounded through a hard landing', () => {
+    const world = testWorld();
+    const start = world.car.body.translation();
+    world.car.body.setTranslation({ x: start.x, y: start.y + 6, z: start.z }, true);
+
+    let fastest = 0;
+    for (let i = 0; i < 120 * 8; i++) {
+      world.step(DT);
+      const v = world.car.body.linvel();
+      fastest = Math.max(fastest, Math.hypot(v.x, v.y, v.z));
+    }
+
+    // Free fall from six metres arrives at about 11 m/s. Anything much
+    // beyond that came from the solver, not from gravity.
+    expect(fastest).toBeLessThan(20);
     world.dispose();
   });
 });
@@ -218,7 +276,7 @@ describe('determinism', () => {
     ];
 
     const run = (): number[] => {
-      const world = new SimWorld();
+      const world = testWorld();
       const hashes: number[] = [];
       for (const controls of script) {
         world.car.controls = { ...neutralControls(), ...controls };

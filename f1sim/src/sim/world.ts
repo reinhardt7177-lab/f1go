@@ -1,5 +1,5 @@
 /**
- * The simulation world: physics plus the cars in it.
+ * The simulation world: physics, the circuit, and the cars in it.
  *
  * Deliberately free of any rendering dependency, so it can be stepped
  * headlessly in a test, on a server for multiplayer authority, or inside
@@ -10,6 +10,12 @@ import RAPIER from '@dimforge/rapier3d-compat';
 
 import { GRAVITY, vec3 } from '../core/math';
 import type { Vec3 } from '../core/math';
+import { LapTimer } from '../race/timing';
+import type { CompletedLap } from '../race/timing';
+import { getCircuit } from '../track/circuits';
+import { buildTrackGeometry } from '../track/mesh';
+import type { Circuit } from '../track/circuit';
+import type { TrackGeometry } from '../track/mesh';
 import { Vehicle, defaultVehicleParams } from './vehicle';
 import type { VehicleParams } from './vehicle';
 
@@ -21,40 +27,99 @@ export const initPhysics = (): Promise<void> => {
   return rapierReady;
 };
 
-export interface SurfaceDescriptor {
-  /** Half-extents of the drivable pad (m). */
-  halfExtents: Vec3;
+export interface WorldOptions {
+  circuitId?: string;
+  /** Distance along the centreline to start from (m). */
+  startDistance?: number;
 }
 
 export class SimWorld {
   readonly physics: RAPIER.World;
   readonly car: Vehicle;
+  readonly circuit: Circuit;
+  readonly geometry: TrackGeometry;
+  readonly timer: LapTimer;
 
   /** Seconds of simulated time elapsed. */
   time = 0;
   /** Steps taken, the authoritative tick counter for replays. */
   tick = 0;
 
-  constructor(params: VehicleParams = defaultVehicleParams(), surface?: SurfaceDescriptor) {
+  /** Where the car is on the circuit right now. */
+  distance = 0;
+  lateral = 0;
+  onTrack = true;
+  /** Set for one tick when a lap is completed. */
+  lapJustCompleted: CompletedLap | null = null;
+
+  private projectionHint: number | undefined = undefined;
+
+  constructor(params: VehicleParams = defaultVehicleParams(), options: WorldOptions = {}) {
     this.physics = new RAPIER.World({ x: 0, y: -GRAVITY, z: 0 });
 
-    // Stage one is a flat test pad. When `track/` grows a mesh generator
-    // this is the only line that changes: swap the cuboid for a trimesh
-    // collider built from the track spline.
-    // Large enough that a full-throttle run to top speed stays on it —
-    // this car covers 600 m in the eleven seconds it takes to reach
-    // 300 km/h — and thick enough that a car pressed down by two tonnes
-    // of aero load cannot tunnel through. The top face stays at y = 0.
-    const pad = surface?.halfExtents ?? vec3(3000, 5, 3000);
-    const ground = this.physics.createRigidBody(
-      RAPIER.RigidBodyDesc.fixed().setTranslation(0, -pad.y, 0)
-    );
+    this.circuit = getCircuit(options.circuitId ?? 'spa');
+    this.geometry = buildTrackGeometry(this.circuit);
+    this.timer = new LapTimer(this.circuit);
+
+    // One static trimesh for the whole circuit — road, kerbs, run-off and
+    // the grass beyond. Which surface a wheel is on is answered by the
+    // spline rather than by the collider, so the mesh carries geometry
+    // only and there is no need to split it per material.
+    const ground = this.physics.createRigidBody(RAPIER.RigidBodyDesc.fixed());
     this.physics.createCollider(
-      RAPIER.ColliderDesc.cuboid(pad.x, pad.y, pad.z).setFriction(1).setRestitution(0),
+      RAPIER.ColliderDesc.trimesh(this.geometry.positions, this.geometry.indices)
+        .setFriction(1)
+        .setRestitution(0),
       ground
     );
 
-    this.car = new Vehicle(this.physics, params);
+    // A catch floor well below the circuit. Without it a car that slides
+    // past the edge of the track mesh falls for ever, and the projection
+    // and timing keep running on a car that is kilometres underground.
+    let lowest = Infinity;
+    for (let i = 1; i < this.geometry.positions.length; i += 3) {
+      lowest = Math.min(lowest, this.geometry.positions[i]!);
+    }
+    const floor = this.physics.createRigidBody(
+      RAPIER.RigidBodyDesc.fixed().setTranslation(0, lowest - 8, 0)
+    );
+    this.physics.createCollider(
+      RAPIER.ColliderDesc.cuboid(6000, 2, 6000).setFriction(0.6),
+      floor
+    );
+
+    const start = this.gridSlot(options.startDistance ?? 0);
+    this.car = new Vehicle(this.physics, params, start.position);
+    this.car.reset(start.position, start.heading);
+
+    // Grip under each wheel comes from the circuit's lateral profile.
+    this.car.surfaceSampler = (point: Vec3): number => {
+      const p = this.circuit.spline.project(point, this.projectionHint);
+      return this.circuit.gripAt(p.s, p.t);
+    };
+  }
+
+  /** Position and heading on the centreline at a given distance. */
+  gridSlot(distance: number): { position: Vec3; heading: number } {
+    const sample = this.circuit.spline.sampleAt(distance);
+
+    // `Vehicle.reset` takes a yaw about +Y, and rotating the forward axis
+    // (0, 0, -1) by yaw θ gives (-sin θ, 0, -cos θ). Solving that for the
+    // spline's tangent is where the two minus signs come from — get them
+    // wrong and the car is mirrored across the road, which looks fine at
+    // the start line, where the tangent happens to be -Z, and sends the
+    // car straight off the circuit everywhere else.
+    return {
+      position: vec3(sample.position.x, sample.position.y + 0.5, sample.position.z),
+      heading: Math.atan2(-sample.tangent.x, -sample.tangent.z)
+    };
+  }
+
+  /** Put the car back on the racing line at its current position. */
+  respawn(): void {
+    const slot = this.gridSlot(this.distance);
+    this.car.reset(slot.position, slot.heading);
+    this.timer.resetLap();
   }
 
   /**
@@ -67,8 +132,26 @@ export class SimWorld {
     this.physics.timestep = dt;
     this.car.step(dt);
     this.physics.step();
+
+    const pos = this.car.body.translation();
+    const projection = this.circuit.spline.project(
+      vec3(pos.x, pos.y, pos.z),
+      this.projectionHint
+    );
+    this.projectionHint = projection.s;
+    this.distance = projection.s;
+    this.lateral = projection.t;
+    this.onTrack = this.circuit.isOnTrack(projection.s, projection.t);
+
+    this.lapJustCompleted = this.timer.update(projection.s, this.onTrack, dt);
+
     this.time += dt;
     this.tick++;
+  }
+
+  /** The section of circuit the car is currently on. */
+  currentSection(): string {
+    return this.circuit.sectionAt(this.distance);
   }
 
   /**

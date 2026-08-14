@@ -1,19 +1,21 @@
 # f1sim
 
-A vehicle-dynamics test bench: one open-wheel car on a flat pad, with
-every parameter that matters exposed on a slider and the telemetry you
-need to tell whether a change helped.
+An open-wheel car on Spa-Francorchamps, with every parameter that shapes
+the handling on a live slider and the telemetry to read what it did.
 
-This is stage one of a proper racing simulation — the physics, none of
-the game. The arcade racer in the parent directory shares nothing with
-it but a repository.
+Stages one and two of a racing simulation — the physics and the circuit,
+none of the game. The arcade racer in the parent directory shares
+nothing with it but a repository.
 
 ```
 npm install
 npm run dev        # http://localhost:5173
-npm test           # 32 headless simulation tests
+npm test           # 74 headless simulation tests
 npm run build      # typecheck + production bundle
 ```
+
+There is no AI driver yet, so there is nobody to race. See
+[ARCHITECTURE.md](ARCHITECTURE.md) for what stage three needs.
 
 ## Controls
 
@@ -31,11 +33,31 @@ npm run build      # typecheck + production bundle
 A gamepad is picked up automatically when one is connected: triggers for
 throttle and brake, left stick to steer, shoulder buttons for gears.
 
-## What is on the pad
+## The circuit
 
-A 50 m skid-pad circle for steady-state cornering — hold a constant
-radius and read peak lateral g off the traction circle — and distance
-boards every 100 m down the straight for braking tests. The grid is 10 m.
+Spa-Francorchamps: 7.011 km against the real 7.004, nineteen named
+corners, and 67 m of elevation. Corner sequence and gradients are read
+off track maps rather than survey data — the intent is that Eau Rouge is
+genuinely committed and Pouhon genuinely long, not that the geometry
+would survive a tape measure.
+
+A circuit is a list of straights and constant-radius corners with
+lengths, gradients and banking. Everything else — the road mesh, the
+physics collider, which surface is under each wheel, lap and sector
+timing — is derived from integrating that list into a centreline spline.
+
+There is a second circuit, `proving`, selectable in code: two long flat
+straights joined by 150 m bends. Every vehicle-dynamics test runs there,
+because a braking-distance measurement taken on Spa would be measuring
+Eau Rouge.
+
+## Timing
+
+The tower on the left runs off `(s, t)` — how far round the lap the car
+is, and how far it is from the centreline. Sector splits go purple when
+they are your best. A lap with a wheel beyond the white line is struck
+through and does not count. **Optimal** is your best sectors added
+together.
 
 ## Reading the telemetry
 
@@ -53,6 +75,11 @@ what the car is doing:
 - **Traction circle** — combined longitudinal and lateral g with a
   fading trail. A quick lap fills the ring; a scrappy one stays inside
   it and hops between the axes.
+- **Tread temperature** — blue is too cold to key into the road, green
+  is in the window, red is greasing. Tyres start out of the blankets
+  below the window, so the first lap is a real out-lap.
+- **Wear** — grip falls as rubber goes, and a worn tyre wants to run
+  cooler, so the window moves with it.
 
 ## Tuning
 
@@ -83,7 +110,8 @@ no lateral grip left.
 | --- | --- |
 | `core/` | fixed-timestep loop, maths |
 | `sim/` | tyres, aero, drivetrain, suspension, vehicle, world, driver aids |
-| `track/` | centreline spline and world-position projection |
+| `track/` | circuit definitions, centreline spline, mesh generation |
+| `race/` | lap and sector timing |
 | `render/` | three.js scene, cameras, interpolation |
 | `input/` | keyboard and gamepad → `ControlState` |
 | `ui/` | telemetry and tuning panels |
@@ -92,8 +120,8 @@ no lateral grip left.
 `sim/` imports no rendering code, which is what makes the tests possible
 and what will later allow a server, an AI training loop and replays to
 run the identical model. See [ARCHITECTURE.md](ARCHITECTURE.md) for why
-the vehicle model is shaped the way it is, and what stages two through
-five look like.
+the vehicle model is shaped the way it is, and what stages three
+through five look like.
 
 ## Where the numbers come from
 
@@ -101,7 +129,15 @@ Mass, wheelbase, track and tyre radius are close to a current-regulation
 car. `ClA` of 4.2 and `CdA` of 1.3 put peak downforce and drag-limited
 top speed in the right places (about 3.5× car weight at 300 km/h, and
 360 km/h flat out). The magic-formula coefficients are solved so grip
-peaks near 7° of slip angle and 0.12 slip ratio.
+peaks near 7° of slip angle and 0.12 slip ratio. The thermal
+coefficients are sized from the equilibrium a tyre has to hold: about
+8 kW dissipated should settle near 100 °C in a 60 m/s airstream.
+
+Downforce also depends on ride height. A modern floor is a venturi that
+pulls harder the closer it runs to the road, until the flow separates
+and it stalls — which re-extends the springs, lifts the floor,
+reattaches the flow, and slams the car back down. Porpoising is not
+scripted anywhere; it falls out of three numbers in `aero.ts`.
 
 None of it is manufacturer data, and none of it is claimed to match any
 particular car. It is a plausible starting point that behaves correctly,

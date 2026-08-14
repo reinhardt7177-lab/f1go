@@ -10,12 +10,21 @@ import type { VehicleState } from '../sim/types';
 
 const WHEEL_LABELS = ['FL', 'FR', 'RL', 'RR'];
 
+/** Working window is 100 +/- 25 C; see `defaultThermalParams`. */
+const tempClass = (t: number): string => {
+  if (t < 75) return 'cold';
+  if (t > 125) return 'hot';
+  return 'ok';
+};
+
 export class TelemetryPanel {
   private readonly root: HTMLElement;
   private readonly readouts = new Map<string, HTMLElement>();
   private readonly gripBars: HTMLElement[] = [];
   private readonly loadBars: HTMLElement[] = [];
   private readonly slipCells: HTMLElement[] = [];
+  private readonly tempCells: HTMLElement[] = [];
+  private readonly wearCells: HTMLElement[] = [];
   private readonly circle: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
   private readonly trail: Array<{ x: number; y: number }> = [];
@@ -68,17 +77,20 @@ export class TelemetryPanel {
         <div class="bar load"><i></i></div>
         <div class="bar grip"><i></i></div>
         <p class="slip">0.0&deg; / 0.00</p>
+        <p class="cond"><span class="temp">--</span><span class="wear">--</span></p>
       `;
       wheels.appendChild(cell);
       this.loadBars.push(cell.querySelector('.load i') as HTMLElement);
       this.gripBars.push(cell.querySelector('.grip i') as HTMLElement);
       this.slipCells.push(cell.querySelector('.slip') as HTMLElement);
+      this.tempCells.push(cell.querySelector('.temp') as HTMLElement);
+      this.wearCells.push(cell.querySelector('.wear') as HTMLElement);
     }
     this.root.appendChild(wheels);
 
     const legend = document.createElement('p');
     legend.className = 'legend';
-    legend.textContent = 'bars: vertical load / grip used';
+    legend.textContent = 'load / grip used · tread temp · wear';
     this.root.appendChild(legend);
 
     // Traction circle: combined g, with a fading trail.
@@ -132,6 +144,20 @@ export class TelemetryPanel {
       if (slip) {
         slip.textContent = `${(w.slipAngle * DEG).toFixed(1)}° / ${w.slipRatio.toFixed(2)}`;
         slip.classList.toggle('airborne', !w.grounded);
+      }
+
+      // Tread temperature is colour-coded against the working window,
+      // because the number alone does not tell you whether the tyre is
+      // in it: blue is too cold to key into the road, red is greasy.
+      const temp = this.tempCells[i];
+      if (temp) {
+        temp.textContent = `${Math.round(w.surfaceTemp)}°`;
+        temp.className = 'temp ' + tempClass(w.surfaceTemp);
+      }
+      const wearCell = this.wearCells[i];
+      if (wearCell) {
+        wearCell.textContent = `${Math.round(w.wear * 100)}%`;
+        wearCell.classList.toggle('worn', w.wear > 0.6);
       }
     }
 

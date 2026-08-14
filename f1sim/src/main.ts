@@ -13,8 +13,8 @@ import { RL, RR } from './sim/types';
 import { defaultVehicleParams } from './sim/vehicle';
 import { SimWorld, initPhysics } from './sim/world';
 import { TelemetryPanel } from './ui/telemetry';
+import { TimingPanel } from './ui/timing';
 import { TuningPanel } from './ui/tuning';
-import { vec3 } from './core/math';
 
 const boot = async (): Promise<void> => {
   const status = document.getElementById('status')!;
@@ -26,10 +26,18 @@ const boot = async (): Promise<void> => {
   const overlay = document.getElementById('overlay')!;
 
   const params = defaultVehicleParams();
-  const world = new SimWorld(params);
-  const renderer = new SceneRenderer(canvas);
+  const world = new SimWorld(params, { circuitId: 'spa' });
+  const renderer = new SceneRenderer(canvas, world.geometry);
   const input = new InputManager(window);
-  const telemetry = new TelemetryPanel(overlay);
+
+  // Left column stacks telemetry over the timing tower; the setup panel
+  // sits on the right.
+  const left = document.createElement('div');
+  left.className = 'stack';
+  overlay.appendChild(left);
+
+  const telemetry = new TelemetryPanel(left);
+  const timing = new TimingPanel(left, world.circuit);
 
   // Driver aids shape the controls before they reach the car; the
   // vehicle model never knows they exist.
@@ -52,8 +60,6 @@ const boot = async (): Promise<void> => {
 
   status.remove();
 
-  // Camera cycling is a view concern, so it lives here rather than in
-  // the input manager, which only produces driving controls.
   const modes: CameraMode[] = ['chase', 'cockpit', 'trackside'];
   let modeIndex = 0;
   window.addEventListener('keydown', (e) => {
@@ -82,8 +88,18 @@ const boot = async (): Promise<void> => {
           : controls.throttle
       };
 
-      if (input.consumeReset()) world.car.reset(vec3(0, 0.4, 0), 0);
+      // Reset puts the car back on the racing line where it stands,
+      // rather than at the start line — on a seven kilometre circuit the
+      // latter would mean driving all the way back round.
+      if (input.consumeReset()) world.respawn();
+
       world.step(dt);
+
+      if (world.lapJustCompleted) {
+        timing.setBest(world.timer.bestLap?.time ?? null);
+        timing.record(world.lapJustCompleted);
+      }
+
       renderer.pushState(world.car.getState(), world.car.wheelCentres());
     },
     render: (alpha, frameDt) => {
@@ -93,6 +109,7 @@ const boot = async (): Promise<void> => {
         params.drivetrain.redlineRpm,
         world.car.drivetrain.ersStore / params.drivetrain.ersCapacity
       );
+      timing.update(world.timer, world.currentSection(), world.onTrack);
     }
   });
 

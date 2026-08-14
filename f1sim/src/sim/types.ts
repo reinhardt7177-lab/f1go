@@ -48,6 +48,17 @@ export interface WheelTelemetry {
   /** Wheel spin rate (rad/s). */
   omega: number;
   grounded: boolean;
+
+  /** Tread temperature (deg C) — sets grip right now. */
+  surfaceTemp: number;
+  /** Carcass temperature (deg C) — what the tread relaxes towards. */
+  coreTemp: number;
+  /** 0 = new, 1 = fully worn. */
+  wear: number;
+  /** Friction multiplier from surface, temperature and wear combined. */
+  gripScale: number;
+  /** Grip multiplier of the surface under this wheel alone. */
+  surfaceGrip: number;
 }
 
 /** A complete snapshot of the car. The renderer only ever sees one of these. */
@@ -85,5 +96,10 @@ export const emptyWheelTelemetry = (): WheelTelemetry => ({
   forceLat: 0,
   gripUsage: 0,
   omega: 0,
-  grounded: false
+  grounded: false,
+  surfaceTemp: 80,
+  coreTemp: 80,
+  wear: 0,
+  gripScale: 1,
+  surfaceGrip: 1
 });

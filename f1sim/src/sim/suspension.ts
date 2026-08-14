@@ -59,18 +59,35 @@ export const suspensionForce = (
 ): number => {
   const c = clamp(compression, -maxTravel, maxTravel);
 
-  // Bump stop. Past full travel this has to behave as a near-rigid
-  // stop: at speed the aerodynamic load dwarfs the spring, and a soft
-  // stop lets the chassis sink until its collider punches through the
-  // road surface.
+  // Bump stop. Past full travel this has to be much stiffer than the
+  // spring, or the chassis sinks until its collider punches through the
+  // road — but it cannot be arbitrarily stiff. An explicit integrator is
+  // only stable while sqrt(k/m) * dt stays below about 2, which at
+  // 120 Hz and a 200 kg corner mass caps the rate near 11 MN/m. A first
+  // pass here used two hundred times the spring rate, or 32 MN/m: every
+  // time a wheel touched the stop the solver added energy instead of
+  // absorbing it, and the car was fired off the circuit at 300 m/s.
   const overTravel = compression - c;
-  const bumpStop = overTravel * stiffness * 200;
+  const bumpStop = overTravel * stiffness * BUMP_STOP_RATIO;
 
   const force = stiffness * c + bumpStop + damping * compressionVelocity;
 
-  // A spring can push the wheel down but never pull the car down.
-  return Math.max(0, force);
+  // A spring can push the wheel down but never pull the car down, and no
+  // single corner can deliver more than a hard landing's worth of load.
+  return Math.min(MAX_CORNER_FORCE, Math.max(0, force));
 };
+
+/** Bump-stop rate as a multiple of the spring rate. */
+const BUMP_STOP_RATIO = 18;
+
+/**
+ * Ceiling on the vertical force one corner may produce (N).
+ *
+ * A backstop rather than a model: roughly ten times the static corner
+ * load, which no legitimate landing exceeds, and which caps the damage
+ * any future stiffness mistake can do.
+ */
+const MAX_CORNER_FORCE = 80_000;
 
 /**
  * Anti-roll contribution for one axle.
