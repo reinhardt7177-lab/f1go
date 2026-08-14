@@ -80,6 +80,12 @@ export interface VehicleState {
 
   downforce: number;
   drag: number;
+  /** Floor height above the road at each axle (m). */
+  rideHeightFront: number;
+  rideHeightRear: number;
+  /** Downforce multiplier the floor is currently producing, per axle. */
+  groundEffectFront: number;
+  groundEffectRear: number;
   /** Longitudinal / lateral acceleration in g, as a driver would feel it. */
   gLong: number;
   gLat: number;

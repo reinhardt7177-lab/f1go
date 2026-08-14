@@ -12,7 +12,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 
 import { GRAVITY, RAD, clamp, quatRotate, quatRotateInverse, vec3 } from '../core/math';
 import type { Vec3 } from '../core/math';
-import { defaultAeroParams, solveAero } from './aero';
+import { defaultAeroParams, groundEffect, solveAero } from './aero';
 import type { AeroParams } from './aero';
 import {
   brakeTorques,
@@ -225,6 +225,26 @@ export class Vehicle {
     this.wheels[FR] = make(c.trackFront / 2, front, true, false, true);
     this.wheels[RL] = make(-c.trackRear / 2, rear, false, true, false);
     this.wheels[RR] = make(c.trackRear / 2, rear, false, true, false);
+  }
+
+  /** Bolt on a new set of tyres — cold, unworn. */
+  fitFreshTires(): void {
+    for (const w of this.wheels) {
+      w.condition = freshTire(this.params.thermal);
+      w.relaxedSlipAngle = 0;
+    }
+  }
+
+  /** Hold the car still, as a pit stop does. */
+  holdStationary(): void {
+    this.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    for (const w of this.wheels) w.omega = 0;
+  }
+
+  /** Average tyre wear across the four corners, 0..1. */
+  averageWear(): number {
+    return this.wheels.reduce((sum, w) => sum + w.condition.wear, 0) / this.wheels.length;
   }
 
   /** Put the car back on the road, upright and stationary. */
@@ -626,6 +646,10 @@ export class Vehicle {
       ],
       downforce: this.downforce,
       drag: this.drag,
+      rideHeightFront: this.rideHeightFront,
+      rideHeightRear: this.rideHeightRear,
+      groundEffectFront: groundEffect(this.params.aero, this.rideHeightFront),
+      groundEffectRear: groundEffect(this.params.aero, this.rideHeightRear),
       gLong: this.gLong,
       gLat: this.gLat,
       drsOpen: this.controls.drs,

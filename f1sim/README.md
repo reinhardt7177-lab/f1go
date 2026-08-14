@@ -3,19 +3,41 @@
 An open-wheel car on Spa-Francorchamps, with every parameter that shapes
 the handling on a live slider and the telemetry to read what it did.
 
-Stages one and two of a racing simulation — the physics and the circuit,
-none of the game. The arcade racer in the parent directory shares
-nothing with it but a repository.
+Stages one, two and four of a racing simulation — the physics, the
+circuit and the session rules. The arcade racer in the parent directory
+shares nothing with it but a repository.
 
 ```
 npm install
 npm run dev        # http://localhost:5173
-npm test           # 74 headless simulation tests
+npm test           # 89 headless simulation tests
 npm run build      # typecheck + production bundle
 ```
 
-There is no AI driver yet, so there is nobody to race. See
-[ARCHITECTURE.md](ARCHITECTURE.md) for what stage three needs.
+There is no AI driver yet, so a race is a timed run against yourself.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for what stage three needs.
+
+## Sessions
+
+Pick one with a query string — `?session=practice` (default),
+`?session=qualifying`, `?session=race`.
+
+| | ends when | judged on |
+| --- | --- | --- |
+| Practice | never | best lap |
+| Qualifying | 12 minutes, then the lap in progress finishes | best lap |
+| Race | 5 laps | elapsed time plus penalties |
+
+Two excursions beyond the white lines are tolerated; every one after
+that is five seconds on the result. The lap itself is deleted regardless
+— that part is the timer's job, not the session's.
+
+`P` calls a pit stop. It is refused unless the car is nearly stationary,
+which stands in for a pit lane until there is one. The stop holds the
+car for twenty-two seconds while the session clock keeps running, and
+you get a fresh set of tyres out of it — cold ones, so there is an
+out-lap to serve as well. Whether that trade is worth it is the whole
+question a strategy is answering.
 
 ## Controls
 
@@ -111,7 +133,7 @@ no lateral grip left.
 | `core/` | fixed-timestep loop, maths |
 | `sim/` | tyres, aero, drivetrain, suspension, vehicle, world, driver aids |
 | `track/` | circuit definitions, centreline spline, mesh generation |
-| `race/` | lap and sector timing |
+| `race/` | lap and sector timing, session rules |
 | `render/` | three.js scene, cameras, interpolation |
 | `input/` | keyboard and gamepad → `ControlState` |
 | `ui/` | telemetry and tuning panels |

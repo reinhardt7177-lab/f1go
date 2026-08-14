@@ -194,7 +194,13 @@ real out-lap.
    profile over it — the limit speed from curvature and grip, then a
    forward pass for acceleration limits and a backward pass for braking.
    Steering is then pure pursuit and throttle a PID on the profile.
-4. **Sessions** — practice, qualifying, race; penalties, pit lane.
+4. **Sessions** — done. Practice, qualifying and race in
+   `race/session.ts`: how a session ends, what it is judged on, track
+   limits and penalties, and what a pit stop costs. It reads the lap
+   timer and the car's position and owns nothing else, so it tests
+   headlessly like the rest of the sim. Done before stage three because
+   it needs no opponents — a race without a field is still a timed run
+   over a fixed distance, and the rules layer is the same either way.
 5. **Replays, ghosts, multiplayer** — all of which the determinism
    guarantee has already paid for.
 

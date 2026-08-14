@@ -12,6 +12,10 @@ import { initialAssistState, tractionControl } from './sim/assists';
 import { RL, RR } from './sim/types';
 import { defaultVehicleParams } from './sim/vehicle';
 import { SimWorld, initPhysics } from './sim/world';
+import { SESSION_PRESETS, Session } from './race/session';
+import type { SessionKind } from './race/session';
+import { SessionPanel } from './ui/session';
+import { SetupStatusPanel } from './ui/setup-status';
 import { TelemetryPanel } from './ui/telemetry';
 import { TimingPanel } from './ui/timing';
 import { TuningPanel } from './ui/tuning';
@@ -36,6 +40,16 @@ const boot = async (): Promise<void> => {
   left.className = 'stack';
   overlay.appendChild(left);
 
+  // Session kind is chosen from the URL so a run can be linked to:
+  // ?session=qualifying, ?session=race. Practice by default.
+  const requested = new URLSearchParams(location.search).get('session') as SessionKind | null;
+  const kind: SessionKind =
+    requested && requested in SESSION_PRESETS ? requested : 'practice';
+  const session = new Session(SESSION_PRESETS[kind]);
+
+  // Session first: which session is running and how much of it is left is
+  // the context everything below is read against.
+  const sessionPanel = new SessionPanel(left);
   const telemetry = new TelemetryPanel(left);
   const timing = new TimingPanel(left, world.circuit);
 
@@ -44,12 +58,19 @@ const boot = async (): Promise<void> => {
   const assist = initialAssistState();
   const aids = { tractionControl: true };
 
-  const tuning = new TuningPanel(overlay, params, [
+  // Right-hand column: live setup state above the controls that shape it.
+  const right = document.createElement('div');
+  right.className = 'stack right';
+  overlay.appendChild(right);
+
+  const setupStatus = new SetupStatusPanel(right, params);
+
+  const tuning = new TuningPanel(right, params, [
     {
-      label: 'Traction control',
+      label: '트랙션 컨트롤',
       note:
-        'First gear delivers far more thrust than the rear tyres can carry, ' +
-        'so full throttle from rest is a burnout. Turn this off to feel it.',
+        '1단은 뒷타이어가 버틸 수 있는 것보다 훨씬 큰 추진력을 냅니다. ' +
+        '정지 상태에서 풀스로틀은 곧 휠스핀이라, 꺼 보면 이유를 알 수 있습니다.',
       get: () => aids.tractionControl,
       set: (v) => {
         aids.tractionControl = v;
@@ -67,6 +88,9 @@ const boot = async (): Promise<void> => {
       modeIndex = (modeIndex + 1) % modes.length;
       renderer.cameraMode = modes[modeIndex]!;
     }
+    // A stop is only granted when the car is close to stationary, which
+    // stands in for a pit lane until there is one.
+    if (e.code === 'KeyP') session.requestPit(world.car.getState().speed);
   });
 
   const loop = new FixedLoop(120);
@@ -110,11 +134,16 @@ const boot = async (): Promise<void> => {
         world.car.drivetrain.ersStore / params.drivetrain.ersCapacity
       );
       timing.update(world.timer, world.currentSection(), world.onTrack);
+      sessionPanel.update(session, world.timer);
+      setupStatus.update(
+        world.car.getState(),
+        world.car.drivetrain.ersStore / params.drivetrain.ersCapacity
+      );
     }
   });
 
   // Exposed for console poking and for the browser-driven smoke test.
-  Object.assign(window, { world, params, renderer, loop, tuning });
+  Object.assign(window, { world, params, renderer, loop, tuning, session });
 };
 
 void boot();
