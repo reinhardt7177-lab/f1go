@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>f1go</title>
 <style>
   :root {
@@ -36,6 +36,36 @@
   #touch { position: fixed; inset: 0; touch-action: none; }
 
   .hidden { display: none !important; }
+
+  /* ------------- Fullscreen / orientation ------------- */
+  /* Both the tap card and the rotate prompt sit above everything: the
+     first is the user gesture fullscreen needs, the second is the
+     fallback for platforms with no orientation lock (all of iOS). */
+  #start-card, #rotate-prompt {
+    position: fixed; inset: 0; z-index: 40;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; text-align: center; background: rgba(6, 8, 11, 0.94);
+  }
+  #start-card { cursor: pointer; }
+  #start-card .big, #rotate-prompt .big { font-size: 19px; font-weight: 700; letter-spacing: 0.1em; }
+  #start-card .small, #rotate-prompt .small { font-size: 12px; color: var(--muted); letter-spacing: 0.06em; }
+  #rotate-prompt .glyph { font-size: 46px; animation: tilt 1.8s ease-in-out infinite; }
+  @keyframes tilt {
+    0%, 45%, 100% { transform: rotate(0deg); }
+    70%, 92%      { transform: rotate(-90deg); }
+  }
+
+  /* The toggle lives in the menu rather than on the HUD. Anywhere along
+     the top edge it would collide with the centre column or a side box,
+     and during a race there is nothing to toggle anyway — starting a
+     race is itself the gesture that goes fullscreen. */
+  #btn-fullscreen {
+    margin-top: 16px; padding: 9px 18px; border-radius: 8px; cursor: pointer;
+    background: transparent; border: 1px solid var(--line); color: var(--muted);
+    font-size: 11px; letter-spacing: 0.16em; font-family: inherit; display: none;
+  }
+  #btn-fullscreen.shown { display: block; }
+  #btn-fullscreen.on { color: var(--text); border-color: rgba(255, 255, 255, 0.3); }
 
   /* ---------------- HUD ---------------- */
   #hud { position: fixed; inset: 0; pointer-events: none; }
@@ -77,21 +107,19 @@
   }
   #rev-fill { height: 100%; width: 0%; background: var(--green); transition: background 0.1s; }
 
-  #corner-value {
+  #hud-center {
     position: absolute; top: 22px; left: 50%; transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+  }
+
+  #corner-value {
     font-size: 13px; letter-spacing: 0.22em; color: rgba(255, 255, 255, 0.72);
     text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8); white-space: nowrap;
   }
 
-  #track-name {
-    position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
-    font-size: 10px; letter-spacing: 0.3em; color: var(--muted);
-  }
+  #track-name { font-size: 10px; letter-spacing: 0.3em; color: var(--muted); }
 
-  #tags {
-    position: absolute; top: 68px; left: 50%; transform: translateX(-50%);
-    display: flex; gap: 8px;
-  }
+  #tags { display: flex; gap: 8px; margin-top: 2px; }
   .tag {
     font-size: 11px; font-weight: 700; letter-spacing: 0.16em;
     padding: 5px 12px; border-radius: 6px;
@@ -178,6 +206,15 @@
     #speed-value, #gear-value { font-size: 32px; }
     .controls { display: none; }
   }
+
+  /* On a narrow portrait screen the two top boxes leave no room in the
+     middle, so the centre column drops below them instead of being
+     drawn underneath. Keyed on orientation as well as width: a small
+     phone held landscape is under 720px too, and there the column
+     belongs back at the top. */
+  @media (max-width: 720px) and (orientation: portrait) {
+    #hud-center { top: 156px; }
+  }
 </style>
 </head>
 <body>
@@ -185,12 +222,32 @@
 <canvas id="canvas"></canvas>
 <div id="touch"></div>
 
+<!-- --------------------- Fullscreen / rotate ----------------------- -->
+<div id="start-card" class="hidden">
+  <div class="big">화면을 탭하세요</div>
+  <div class="small">전체화면으로 전환하고 가로로 고정합니다</div>
+</div>
+
+<div id="rotate-prompt" class="hidden">
+  <div class="glyph">📱</div>
+  <div class="big">가로로 돌려주세요</div>
+  <div class="small">콕핏 시점은 가로 화면 기준입니다</div>
+</div>
+
 <!-- ------------------------------ HUD ------------------------------ -->
 <div id="hud" class="hidden">
   <div id="rev-bar"><div id="rev-fill"></div></div>
 
-  <div id="corner-value"></div>
-  <div id="track-name"></div>
+  <!-- Corner, circuit and flags share one centred column so they move
+       together when they have to get out of the side boxes' way. -->
+  <div id="hud-center">
+    <div id="corner-value"></div>
+    <div id="track-name"></div>
+    <div id="tags">
+      <div class="tag" id="drs-tag">DRS</div>
+      <div class="tag" id="offtrack-tag">OFF TRACK</div>
+    </div>
+  </div>
 
   <div id="hud-left" class="hud-box">
     <div class="row"><div class="label">Lap</div><div class="value" id="lap-value">1 / 3</div></div>
@@ -213,10 +270,6 @@
     <div class="value" id="gear-value">1</div>
   </div>
 
-  <div id="tags">
-    <div class="tag" id="drs-tag">DRS</div>
-    <div class="tag" id="offtrack-tag">OFF TRACK</div>
-  </div>
 </div>
 
 <!-- ------------------------------ Menu ----------------------------- -->
@@ -251,6 +304,7 @@
   </div>
 
   <button class="btn" id="start-btn">LIGHTS OUT</button>
+  <button type="button" id="btn-fullscreen">전체화면</button>
 
   <div class="controls">
     <kbd>↑</kbd> / <kbd>W</kbd> throttle &nbsp;·&nbsp; <kbd>↓</kbd> / <kbd>S</kbd> / <kbd>Space</kbd> brake<br>
@@ -278,6 +332,7 @@
   <button class="btn" id="again-btn">BACK TO GARAGE</button>
 </div>
 
+<script src="js/viewport.js"></script>
 <script src="js/util.js"></script>
 <script src="js/tracks.js"></script>
 <script src="js/render.js"></script>

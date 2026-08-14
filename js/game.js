@@ -116,24 +116,39 @@ var Game = {
 
     /* touch: left half steers, right half is throttle / brake */
     var touchZones = document.getElementById('touch');
+
+    /* Always rebuild from the fingers still on the glass. e.touches is
+       the live set, so one function serves press, drag and release. */
+    var read = function (e) {
+      if (e.touches.length === 0) return null;
+      var out = { left: false, right: false, gas: false, brake: false };
+      for (var i = 0; i < e.touches.length; i++) {
+        var t = e.touches[i];
+        var x = t.clientX / window.innerWidth;
+        var y = t.clientY / window.innerHeight;
+        if (x < 0.5) {
+          if (x < 0.25) out.left = true; else out.right = true;
+        } else {
+          if (y > 0.5) out.gas = true; else out.brake = true;
+        }
+      }
+      return out;
+    };
+
     ['touchstart', 'touchmove'].forEach(function (evt) {
       touchZones.addEventListener(evt, function (e) {
         e.preventDefault();
         Audio.unlock();
-        self.touch = { left: false, right: false, gas: false, brake: false };
-        for (var i = 0; i < e.touches.length; i++) {
-          var t = e.touches[i];
-          var x = t.clientX / window.innerWidth;
-          var y = t.clientY / window.innerHeight;
-          if (x < 0.5) {
-            if (x < 0.25) self.touch.left = true; else self.touch.right = true;
-          } else {
-            if (y > 0.5) self.touch.gas = true; else self.touch.brake = true;
-          }
-        }
+        self.touch = read(e);
       }, { passive: false });
     });
-    touchZones.addEventListener('touchend', function () { self.touch = null; });
+
+    /* Re-read rather than clearing. Dropping the whole state on any
+       touchend meant lifting the steering thumb also cut the throttle,
+       which on a two-thumb layout is most of the time. */
+    ['touchend', 'touchcancel'].forEach(function (evt) {
+      touchZones.addEventListener(evt, function (e) { self.touch = read(e); });
+    });
   },
 
   held: function (codes, touchKey) {

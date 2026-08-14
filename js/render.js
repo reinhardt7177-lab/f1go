@@ -444,8 +444,33 @@ var Render = {
     ctx.restore();
 
     /* --- mirrors ------------------------------------------------- */
-    Render.mirror(ctx, width * 0.115, height * 0.665 + bump * 0.5, width * 0.105, height * 0.05, state, -1);
-    Render.mirror(ctx, width * 0.885, height * 0.665 + bump * 0.5, width * 0.105, height * 0.05, state, 1);
+    /* Height of the bodywork rim under a given x. The rim is the
+       quadratic drawn below, and its x component happens to be linear —
+       x(t) = (-0.05 + 1.1t)·width — so where the rim sits under a
+       mirror is a closed form rather than a search. Anchoring to it is
+       what keeps the mirrors attached at every aspect ratio instead of
+       only at the one this was eyeballed on. */
+    var rimCtrlY = noseApex - height * 0.085;
+    var rimY = function (x) {
+      var t = (x / width + 0.05) / 1.1;
+      var u = 1 - t;
+      return u * u * height * 0.97 + 2 * t * u * rimCtrlY + t * t * height * 0.97;
+    };
+
+    var mirrorW = width * 0.10;
+    /* Cap against the width too: on a tall portrait screen a flat
+       fraction of height makes the housing taller than it is wide. */
+    var mirrorH = Math.min(height * 0.05, mirrorW * 0.45);
+
+    /* Inboard of the bottom corners, which belong to the speed and gear
+       boxes — out at the edges the housings disappear behind them. */
+    for (var m = 0; m < 2; m++) {
+      var mSide = m === 0 ? -1 : 1;
+      var mx = width * (m === 0 ? 0.20 : 0.80);
+      var foot = rimY(mx) + bump;
+      var my = height * 0.665 + bump * 0.5;
+      Render.mirror(ctx, mx, my, mirrorW, mirrorH, state, mSide, foot);
+    }
 
     /* --- nose / bodywork ----------------------------------------- */
     ctx.save();
@@ -513,8 +538,22 @@ var Render = {
     ctx.restore();
   },
 
-  mirror: function (ctx, cx, cy, w, h, state, side) {
+  mirror: function (ctx, cx, cy, w, h, state, side, mountY) {
     ctx.save();
+
+    /* The stalk back to the bodywork. Without it the housing is a box
+       floating in mid-air — which is what it was, and which reads as a
+       glitch rather than a mirror at any aspect ratio. It angles inward
+       towards the cockpit, so it is drawn before the housing and ends
+       up tucked behind it. */
+    ctx.strokeStyle = '#15181d';
+    ctx.lineWidth = Math.max(2, h * 0.20);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx - side * w * 0.10, cy + h * 0.40);
+    ctx.lineTo(cx - side * w * 0.55, mountY);
+    ctx.stroke();
+
     ctx.fillStyle = '#101318';
     Render.roundRect(ctx, cx - w / 2, cy - h / 2, w, h, h * 0.25);
     ctx.fill();
