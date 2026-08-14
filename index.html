@@ -151,6 +151,19 @@
     border-radius: 4px; padding: 2px 7px; font-family: inherit; font-size: 11px; color: var(--text);
   }
 
+  /* The way across to f1sim. Without this the simulator is unreachable
+     unless you already know the URL. */
+  .sim-link {
+    margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--line);
+    color: var(--muted); font-size: 12px; line-height: 1.8; text-align: center;
+    max-width: 430px;
+  }
+  .sim-link a {
+    color: var(--text); font-weight: 700; letter-spacing: 0.12em;
+    text-decoration: none; border-bottom: 1px solid var(--red); padding-bottom: 2px;
+  }
+  .sim-link a:hover { color: var(--red); }
+
   #result-headline { font-size: 15px; letter-spacing: 0.3em; color: var(--muted); }
   #result-pos { font-size: 84px; font-weight: 800; line-height: 1.1; }
   #result-track { font-size: 13px; letter-spacing: 0.24em; color: var(--muted); margin-bottom: 30px; }
@@ -243,6 +256,13 @@
     <kbd>↑</kbd> / <kbd>W</kbd> throttle &nbsp;·&nbsp; <kbd>↓</kbd> / <kbd>S</kbd> / <kbd>Space</kbd> brake<br>
     <kbd>←</kbd> <kbd>→</kbd> / <kbd>A</kbd> <kbd>D</kbd> steer &nbsp;·&nbsp; <kbd>R</kbd> restart<br>
     On a phone: left side steers, right side is throttle (bottom) and brake (top).
+  </div>
+
+  <div class="sim-link">
+    Want the physics rather than the arcade?<br>
+    <a href="sim/">OPEN F1SIM →</a><br>
+    Spa-Francorchamps, 2026 regulations, tyre temperatures, an AI field and full sessions.
+    Heavier to load, and it expects to be taken seriously.
   </div>
 </div>
 

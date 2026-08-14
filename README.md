@@ -131,10 +131,24 @@ road from here to circuits, AI and multiplayer.
 ```
 
 To put it online, import this repository at
-[vercel.com/new](https://vercel.com/new) and accept the defaults — the
-build command, install command and output directory all come from
-`vercel.json`, so there is nothing to configure. Any static host works
-the same way:
+[vercel.com/new](https://vercel.com/new). The build command, install
+command and output directory all come from `vercel.json`, so there is
+nothing to fill in on the import screen.
+
+There is one thing the import screen will not ask you, though, and it is
+the one that matters: **which branch**. It has no branch selector and
+silently takes the repository's default branch. If the work lives on
+another branch, the import builds a commit that has no `vercel.json`, no
+`index.html` and nothing to serve — which succeeds, reports **Ready**,
+and then answers every request with a 404. A green deployment is not
+evidence that it deployed anything.
+
+So after importing, go to **Settings → Git → Production Branch** and set
+it to the branch you actually want. That only redirects future builds;
+to publish what is already there, find that branch's deployment under
+**Deployments** and **Promote to Production**, or push a commit to it.
+
+Any static host works the same way:
 
 ```
 npm --prefix f1sim install
