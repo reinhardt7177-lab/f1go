@@ -11,7 +11,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="color-scheme" content="dark" />
-    <title>f1sim — vehicle dynamics test bench</title>
+    <title>mumuF1 — F1 시뮬레이터</title>
   </head>
   <body>
     <canvas id="view"></canvas>
@@ -20,8 +20,9 @@
     <button type="button" id="btn-fullscreen" title="fullscreen">⛶</button>
 
     <div id="start-card" class="hidden">
-      <h1>f1sim</h1>
-      <p>Spa-Francorchamps</p>
+      <h1>mumuF1</h1>
+      <span class="by">made by 불곰코끼리그리거</span>
+      <div id="circuit-picker"></div>
       <span class="cta">화면을 탭하면 전체화면 · 가로모드로 시작합니다</span>
       <small>왼쪽 엄지 조향 · 오른쪽 엄지 위 스로틀 / 아래 브레이크</small>
     </div>
@@ -32,6 +33,7 @@
     </div>
 
     <div id="touch-buttons">
+      <button type="button" id="btn-camera">1인칭</button>
       <button type="button" id="btn-aero">AERO</button>
       <button type="button" id="btn-overtake">BOOST</button>
       <button type="button" id="btn-pit">PIT</button>

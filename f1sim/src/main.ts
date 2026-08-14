@@ -6,12 +6,13 @@ import './style.css';
 
 import { FixedLoop } from './core/loop';
 import { InputManager } from './input/controls';
-import { SceneRenderer } from './render/scene';
+import { CAMERA_LABELS, SceneRenderer } from './render/scene';
 import type { CameraMode } from './render/scene';
 import { initialAssistState, tractionControl } from './sim/assists';
 import { RL, RR } from './sim/types';
 import { defaultVehicleParams } from './sim/vehicle';
 import { SimWorld, initPhysics } from './sim/world';
+import { CIRCUIT_SPECS } from './track/circuits';
 import { Driver, driveWorld } from './ai/driver';
 import { RacingLine } from './ai/racingline';
 import { SpeedProfile } from './ai/speedprofile';
@@ -35,7 +36,14 @@ const boot = async (): Promise<void> => {
   const overlay = document.getElementById('overlay')!;
 
   const params = defaultVehicleParams();
-  const world = new SimWorld(params, { circuitId: 'spa' });
+
+  // Circuit comes from the URL for the same reason the session does: a
+  // particular run is then a link, which is the only sharing mechanism
+  // a static site has.
+  const query = new URLSearchParams(location.search);
+  const askedCircuit = query.get('circuit');
+  const circuitId = askedCircuit && askedCircuit in CIRCUIT_SPECS ? askedCircuit : 'spa';
+  const world = new SimWorld(params, { circuitId });
   const renderer = new SceneRenderer(canvas, world.geometry);
   // The touch layer listens on the canvas so drags never fight the
   // panels, which keep their own pointer events.
@@ -54,7 +62,7 @@ const boot = async (): Promise<void> => {
 
   // Session kind is chosen from the URL so a run can be linked to:
   // ?session=qualifying, ?session=race. Practice by default.
-  const requested = new URLSearchParams(location.search).get('session') as SessionKind | null;
+  const requested = query.get('session') as SessionKind | null;
   const kind: SessionKind =
     requested && requested in SESSION_PRESETS ? requested : 'practice';
   const session = new Session(SESSION_PRESETS[kind]);
@@ -111,13 +119,52 @@ const boot = async (): Promise<void> => {
 
   status.remove();
 
-  const modes: CameraMode[] = ['chase', 'cockpit', 'trackside'];
-  let modeIndex = 0;
-  window.addEventListener('keydown', (e) => {
-    if (e.code === 'KeyC') {
-      modeIndex = (modeIndex + 1) % modes.length;
-      renderer.cameraMode = modes[modeIndex]!;
+  // Circuit picker. Choosing one reloads rather than rebuilding in
+  // place: the collider, the track mesh, the racing line and the speed
+  // profile are all built from the circuit at boot, and swapping them
+  // live would mean tearing down and re-creating most of the app for a
+  // choice made once at the start.
+  const picker = document.getElementById('circuit-picker');
+  if (picker) {
+    for (const [id, spec] of Object.entries(CIRCUIT_SPECS)) {
+      if (id === 'proving') continue; // a test instrument, not a circuit
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = spec.name;
+      btn.className = id === circuitId ? 'on' : '';
+      // Both events, because the start card behind this listens for
+      // `click` — stopping only the pointerdown still lets the card
+      // swallow the tap and dismiss itself under the finger.
+      btn.addEventListener('click', (e) => e.stopPropagation());
+      btn.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (id === circuitId) return;
+        query.set('circuit', id);
+        location.search = query.toString();
+      });
+      picker.appendChild(btn);
     }
+  }
+
+  // The camera has to be reachable without a keyboard, so the button and
+  // the key both go through the renderer's own cycle — keeping the mode
+  // in one place means the cockpit's visibility can never disagree with
+  // where the camera actually is.
+  const cameraBtn = document.getElementById('btn-camera')!;
+  const showCamera = (mode: CameraMode): void => {
+    cameraBtn.textContent = CAMERA_LABELS[mode];
+  };
+  showCamera(renderer.cameraMode);
+
+  cameraBtn.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    showCamera(renderer.cycleCamera());
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'KeyC') showCamera(renderer.cycleCamera());
     // A stop is only granted when the car is close to stationary, which
     // stands in for a pit lane until there is one.
     if (e.code === 'KeyP') session.requestPit(world.car.getState().speed);
@@ -183,6 +230,10 @@ const boot = async (): Promise<void> => {
         throttle: session.inPitStop || finished ? 0 : controls.throttle,
         brake: session.inPitStop ? 1 : controls.brake
       };
+
+      // Whatever is driving — human, AI or autopilot — the wheel in the
+      // cockpit shows the request that actually reached the car.
+      renderer.setControlSteer(world.car.controls.steer);
 
       // Reset puts the car back on the racing line where it stands,
       // rather than at the start line — on a seven kilometre circuit the

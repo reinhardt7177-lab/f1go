@@ -81,9 +81,11 @@ export class ViewportManager {
     this.rotate = document.getElementById('rotate-prompt')!;
     this.toggle = document.getElementById('btn-fullscreen')!;
 
-    if (isCoarsePointer()) {
-      this.start.classList.remove('hidden');
-    }
+    // Shown everywhere, not just on touch. It began as the gesture
+    // fullscreen needs — which only a phone lacks another route to — but
+    // it now also carries the title and the circuit choice, and a
+    // desktop player needs both of those just as much.
+    this.start.classList.remove('hidden');
 
     this.start.addEventListener('click', () => {
       void enterImmersive();

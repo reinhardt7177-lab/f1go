@@ -8,17 +8,33 @@ import { quatSlerp, v3lerp, vec3 } from '../core/math';
 import type { Quat, Vec3 } from '../core/math';
 import type { VehicleState } from '../sim/types';
 import type { TrackGeometry } from '../track/mesh';
+import { Cockpit, EYE } from './cockpit';
 
 export type CameraMode = 'cockpit' | 'chase' | 'trackside';
+
+export const CAMERA_MODES: CameraMode[] = ['cockpit', 'chase', 'trackside'];
+
+/** Korean labels for the on-screen camera button. */
+export const CAMERA_LABELS: Record<CameraMode, string> = {
+  cockpit: '1인칭',
+  chase: '3인칭',
+  trackside: '중계'
+};
 
 export class SceneRenderer {
   readonly scene = new THREE.Scene();
   readonly camera: THREE.PerspectiveCamera;
   private readonly renderer: THREE.WebGLRenderer;
   private readonly carGroup = new THREE.Group();
+  /** The blocked-out exterior. Hidden from the driver's seat. */
+  private readonly bodyGroup = new THREE.Group();
+  private readonly cockpit = new Cockpit();
   private readonly wheelMeshes: THREE.Object3D[] = [];
 
-  cameraMode: CameraMode = 'chase';
+  /** Raw −1..1 steering request, for turning the cockpit wheel. */
+  private controlSteer = 0;
+
+  cameraMode: CameraMode = 'cockpit';
 
   /** Previous and current sim snapshots, blended by `alpha` when drawing. */
   private prev: VehicleState | null = null;
@@ -46,7 +62,12 @@ export class SceneRenderer {
     this.buildTrack(track);
     this.buildCar();
 
+    // Both hang off the car, so neither needs its own transform maths —
+    // they inherit position and attitude from the chassis for free.
+    this.carGroup.add(this.bodyGroup);
+    this.carGroup.add(this.cockpit.group);
     this.scene.add(this.carGroup);
+    this.applyCameraMode();
     this.resize();
     window.addEventListener('resize', () => this.resize());
   }
@@ -115,31 +136,31 @@ export class SceneRenderer {
     const tub = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.36, 3.0), bodyMat);
     tub.position.set(0, 0.02, 0.1);
     tub.castShadow = true;
-    this.carGroup.add(tub);
+    this.bodyGroup.add(tub);
 
     const nose = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.18, 1.4), bodyMat);
     nose.position.set(0, -0.05, -2.1);
     nose.castShadow = true;
-    this.carGroup.add(nose);
+    this.bodyGroup.add(nose);
 
     const frontWing = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.08, 0.5), accentMat);
     frontWing.position.set(0, -0.16, -2.75);
     frontWing.castShadow = true;
-    this.carGroup.add(frontWing);
+    this.bodyGroup.add(frontWing);
 
     const rearWing = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.1, 0.42), accentMat);
     rearWing.position.set(0, 0.52, 2.2);
     rearWing.castShadow = true;
-    this.carGroup.add(rearWing);
+    this.bodyGroup.add(rearWing);
 
     const airbox = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.7), darkMat);
     airbox.position.set(0, 0.36, 0.9);
-    this.carGroup.add(airbox);
+    this.bodyGroup.add(airbox);
 
     const halo = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.045, 8, 24, Math.PI), darkMat);
     halo.rotation.set(-Math.PI / 2, 0, 0);
     halo.position.set(0, 0.26, -0.35);
-    this.carGroup.add(halo);
+    this.bodyGroup.add(halo);
 
     const wheelGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.38, 20);
     wheelGeo.rotateZ(Math.PI / 2);
@@ -161,6 +182,35 @@ export class SceneRenderer {
       this.wheelMeshes.push(hub);
       this.scene.add(hub);
     }
+  }
+
+  /**
+   * Show the cockpit only from the seat, and the exterior only from
+   * outside. From inside, the blocked-out body would sit between the eye
+   * and the road; from outside, the cockpit's own nose would z-fight the
+   * body's.
+   */
+  private applyCameraMode(): void {
+    const inside = this.cameraMode === 'cockpit';
+    this.cockpit.setVisible(inside);
+    this.bodyGroup.visible = !inside;
+  }
+
+  setCameraMode(mode: CameraMode): void {
+    this.cameraMode = mode;
+    this.applyCameraMode();
+  }
+
+  /** Advance to the next camera and return what it landed on. */
+  cycleCamera(): CameraMode {
+    const i = CAMERA_MODES.indexOf(this.cameraMode);
+    this.setCameraMode(CAMERA_MODES[(i + 1) % CAMERA_MODES.length]!);
+    return this.cameraMode;
+  }
+
+  /** The steering request, for the wheel in the driver's hands. */
+  setControlSteer(steer: number): void {
+    this.controlSteer = steer;
   }
 
   /** Hand the renderer a new simulation snapshot. */
@@ -197,6 +247,21 @@ export class SceneRenderer {
       hub.rotateX(spin);
     }
 
+    if (this.cameraMode === 'cockpit') {
+      const rpm = this.curr.engineRpm;
+      // Rev lights only start to mean anything in the top third of the
+      // range; below that they would be on constantly and tell you
+      // nothing about when to pull the paddle.
+      const revFraction = Math.max(0, Math.min(1, (rpm - 9000) / (15000 - 9000)));
+      this.cockpit.update(
+        this.controlSteer,
+        this.curr.gear,
+        Math.abs(this.curr.speed) * 3.6,
+        revFraction,
+        this.curr.overtakeCharge > 0.99
+      );
+    }
+
     this.updateCamera(pos, rot, frameDt);
     this.renderer.render(this.scene, this.camera);
   }
@@ -206,10 +271,16 @@ export class SceneRenderer {
     const carPos = new THREE.Vector3(pos.x, pos.y, pos.z);
 
     if (this.cameraMode === 'cockpit') {
-      const eye = new THREE.Vector3(0, 0.52, -0.15).applyQuaternion(q).add(carPos);
+      // The one shared eye position: the cockpit is laid out around this
+      // point, so the camera has to use the same constant or the halo
+      // and wheel end up in the wrong place relative to the view.
+      const eye = EYE.clone().applyQuaternion(q).add(carPos);
       this.camera.position.copy(eye);
       this.camera.quaternion.copy(q);
-      this.camera.fov = 78;
+      // Turned down from 78: a wide lens flattens the sense of speed and
+      // pushes the apex out towards the edge of the frame, where the
+      // distortion is worst and judging turn-in is hardest.
+      this.camera.fov = 72;
     } else if (this.cameraMode === 'chase') {
       const want = new THREE.Vector3(0, 2.3, 7.5).applyQuaternion(q).add(carPos);
       // Exponential follow. The rate has to be high: a first-order filter

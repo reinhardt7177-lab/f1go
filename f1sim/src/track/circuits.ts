@@ -97,8 +97,56 @@ const PROVING_GROUND: CircuitSpec = {
   ]
 };
 
+/**
+ * Monza. The Temple of Speed, and the opposite question to Spa.
+ *
+ * Spa asks what the aerodynamic platform does over elevation. Monza asks
+ * what happens when you take the wings off: three-quarters of the lap is
+ * full throttle, the corners that remain are two chicanes, two
+ * right-handers and the Parabolica, and the whole compromise moves to
+ * the straight-line end. Run the Monza trim preset here and the lap
+ * comes alive; run the Monaco trim and you lose thirty km/h down every
+ * straight for grip you barely use.
+ *
+ * Flat, deliberately — Monza's real elevation change is a couple of
+ * metres and pretending otherwise would put a gradient where the
+ * braking zones are.
+ */
+const MONZA: CircuitSpec = {
+  id: 'monza',
+  name: 'Monza',
+  country: 'Italy',
+  defaultHalfWidth: 6,
+  defaultRunoff: 14,
+  kerbWidth: 1.8,
+  startLine: 0,
+  sectorSplits: [2360, 4180, 5793],
+  sections: [
+    { name: 'Rettifilo Tribune', length: 539, halfWidth: 7 },
+    { name: 'T1 Variante del Rettifilo', length: 46, radius: 30, halfWidth: 5.5 },
+    { name: 'T2 Variante del Rettifilo', length: 46, radius: -32 },
+    { name: 'Run to Curva Grande', length: 148, halfWidth: 6.5 },
+    { name: 'T3 Curva Grande', length: 500, radius: 338, halfWidth: 7 },
+    { name: 'Run to Roggia', length: 306 },
+    { name: 'T4 Variante della Roggia', length: 44, radius: -28, halfWidth: 5.5 },
+    { name: 'T5 Variante della Roggia', length: 44, radius: 26 },
+    { name: 'Run to Lesmo', length: 461, halfWidth: 6.5 },
+    { name: 'T6 Lesmo 1', length: 100, radius: 62, halfWidth: 6 },
+    { name: 'Between the Lesmos', length: 244 },
+    { name: 'T7 Lesmo 2', length: 90, radius: 58 },
+    { name: 'Curva del Serraglio', length: 1112, halfWidth: 7 },
+    { name: 'T8 Variante Ascari', length: 58, radius: -70, halfWidth: 5.5 },
+    { name: 'T9 Variante Ascari', length: 62, radius: 56 },
+    { name: 'T10 Variante Ascari', length: 58, radius: -78 },
+    { name: 'Rettifilo Centrale', length: 787, halfWidth: 7 },
+    { name: 'T11 Parabolica', length: 500, radius: 138, halfWidth: 6.5 },
+    { name: 'Run to the line', length: 647, halfWidth: 7 }
+  ]
+};
+
 export const CIRCUIT_SPECS: Record<string, CircuitSpec> = {
   spa: SPA,
+  monza: MONZA,
   proving: PROVING_GROUND
 };
 

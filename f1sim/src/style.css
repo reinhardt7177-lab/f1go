@@ -745,11 +745,19 @@ body {
   position: fixed;
   right: 14px;
   bottom: 96px;
-  display: none;
+  display: flex;
   flex-direction: column;
   gap: 10px;
   z-index: 5;
 }
+
+/* Aero, boost and pit stand in for keys a desktop already has, so they
+   only appear where there is no keyboard. The camera is not one of
+   those: switching between the cockpit and the chase view is worth a
+   visible control everywhere, not a key you have to be told about. */
+#btn-aero,
+#btn-overtake,
+#btn-pit { display: none; }
 
 #touch-buttons button {
   width: 74px;
@@ -778,7 +786,9 @@ body {
    the setup readout and the traction circle are bench instruments; on a
    390 px screen they do not shrink, they just cover the road. */
 @media (pointer: coarse), (max-width: 900px) {
-  #touch-buttons { display: flex; }
+  #btn-aero,
+  #btn-overtake,
+  #btn-pit { display: block; }
   #help { display: none; }
   .tuning,
   .setup-status,
@@ -881,6 +891,38 @@ body {
   letter-spacing: 0.24em;
   color: var(--muted);
   text-transform: uppercase;
+}
+
+#start-card .by {
+  margin-top: 10px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+#circuit-picker {
+  display: flex;
+  gap: 8px;
+  margin: 18px 0 4px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+#circuit-picker button {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(14, 18, 23, 0.9);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+
+#circuit-picker button.on {
+  color: var(--text);
+  border-color: var(--red);
 }
 
 #start-card .cta {
