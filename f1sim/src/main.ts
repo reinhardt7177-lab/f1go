@@ -12,6 +12,9 @@ import { initialAssistState, tractionControl } from './sim/assists';
 import { RL, RR } from './sim/types';
 import { defaultVehicleParams } from './sim/vehicle';
 import { SimWorld, initPhysics } from './sim/world';
+import { Driver, driveWorld } from './ai/driver';
+import { RacingLine } from './ai/racingline';
+import { SpeedProfile } from './ai/speedprofile';
 import { SESSION_PRESETS, Session } from './race/session';
 import type { SessionKind } from './race/session';
 import { SessionPanel } from './ui/session';
@@ -56,7 +59,14 @@ const boot = async (): Promise<void> => {
   // Driver aids shape the controls before they reach the car; the
   // vehicle model never knows they exist.
   const assist = initialAssistState();
-  const aids = { tractionControl: true };
+  const aids = { tractionControl: true, autopilot: false };
+
+  // The AI produces the same ControlState the keyboard does, so nothing
+  // downstream can tell which is driving.
+  status.textContent = 'building racing line…';
+  const racingLine = new RacingLine(world.circuit);
+  const speedProfile = new SpeedProfile(racingLine, params);
+  const driver = new Driver(racingLine, speedProfile, params);
 
   // Right-hand column: live setup state above the controls that shape it.
   const right = document.createElement('div');
@@ -75,6 +85,17 @@ const boot = async (): Promise<void> => {
       set: (v) => {
         aids.tractionControl = v;
         assist.throttleLimit = 1;
+      }
+    },
+    {
+      label: 'AI 주행',
+      note:
+        '레이싱 라인과 속도 프로파일을 따라 AI가 대신 운전합니다. ' +
+        '스핀하면 스스로 코스에 복귀합니다.',
+      get: () => aids.autopilot,
+      set: (v) => {
+        aids.autopilot = v;
+        driver.reset();
       }
     }
   ]);
@@ -97,7 +118,7 @@ const boot = async (): Promise<void> => {
 
   loop.start({
     step: (dt) => {
-      const controls = input.update(dt);
+      const human = input.update(dt);
       const state = world.car.getState();
 
       const drivenSlip = Math.max(
@@ -105,19 +126,47 @@ const boot = async (): Promise<void> => {
         Math.abs(state.wheels[RR]!.slipRatio)
       );
 
+      // The AI emits the same ControlState the keyboard does, so nothing
+      // downstream can tell which of them is driving.
+      const controls = aids.autopilot
+        ? driveWorld(driver, world, dt)
+        : {
+            ...human,
+            throttle: aids.tractionControl
+              ? tractionControl(human.throttle, drivenSlip, assist, dt)
+              : human.throttle
+          };
+
+      const finished = session.phase === 'finished';
+
       world.car.controls = {
         ...controls,
-        throttle: aids.tractionControl
-          ? tractionControl(controls.throttle, drivenSlip, assist, dt)
-          : controls.throttle
+        throttle: session.inPitStop || finished ? 0 : controls.throttle,
+        brake: session.inPitStop ? 1 : controls.brake
       };
 
       // Reset puts the car back on the racing line where it stands,
       // rather than at the start line — on a seven kilometre circuit the
       // latter would mean driving all the way back round.
-      if (input.consumeReset()) world.respawn();
+      if (input.consumeReset()) {
+        world.respawn();
+        driver.reset();
+      }
+
+      // Servicing holds the car; the session clock keeps running, which
+      // is exactly what makes a stop cost something.
+      if (session.inPitStop) world.car.holdStationary();
 
       world.step(dt);
+      session.update(dt, world.onTrack, world.lapJustCompleted, world.timer);
+      if (session.pitStopJustFinished) world.car.fitFreshTires();
+
+      // The driver asks to be recovered; the caller decides. It has no
+      // business moving the car itself.
+      if (aids.autopilot && driver.needsRecovery) {
+        world.respawn();
+        driver.reset();
+      }
 
       if (world.lapJustCompleted) {
         timing.setBest(world.timer.bestLap?.time ?? null);
@@ -143,7 +192,7 @@ const boot = async (): Promise<void> => {
   });
 
   // Exposed for console poking and for the browser-driven smoke test.
-  Object.assign(window, { world, params, renderer, loop, tuning, session });
+  Object.assign(window, { world, params, renderer, loop, tuning, session, driver, racingLine, speedProfile });
 };
 
 void boot();

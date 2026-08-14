@@ -3,19 +3,36 @@
 An open-wheel car on Spa-Francorchamps, with every parameter that shapes
 the handling on a live slider and the telemetry to read what it did.
 
-Stages one, two and four of a racing simulation — the physics, the
-circuit and the session rules. The arcade racer in the parent directory
+Stages one to four of a racing simulation — the physics, the circuit,
+an AI driver and the session rules. The arcade racer in the parent directory
 shares nothing with it but a repository.
 
 ```
 npm install
 npm run dev        # http://localhost:5173
-npm test           # 89 headless simulation tests
+npm test           # 105 headless simulation tests
 npm run build      # typecheck + production bundle
 ```
 
-There is no AI driver yet, so a race is a timed run against yourself.
-See [ARCHITECTURE.md](ARCHITECTURE.md) for what stage three needs.
+There is one car, so a race is still a timed run against yourself.
+
+## The AI
+
+Tick **AI 주행** under 주행 보조 and it drives. It builds a racing line
+from the circuit, works out a speed for every point on it from curvature
+and the grip available at that speed, and follows both. It picks itself
+up when it spins.
+
+It is honest about what it is: it laps Spa continuously and holds the
+line within a few metres for most of it, but it still runs wide often
+enough that its laps are usually deleted for track limits. The racing
+line is a shortest path rather than a minimum-curvature one, and the
+controller models the car's steady state rather than its transient
+response. Both of those are what stands between this and a quick lap.
+
+The pieces are worth reading even so — `speedprofile.ts` derives which
+corners are flat from the physics rather than from a table, which is why
+Blanchimont comes out flat and La Source comes out at 80 km/h.
 
 ## Sessions
 
@@ -134,6 +151,7 @@ no lateral grip left.
 | `sim/` | tyres, aero, drivetrain, suspension, vehicle, world, driver aids |
 | `track/` | circuit definitions, centreline spline, mesh generation |
 | `race/` | lap and sector timing, session rules |
+| `ai/` | racing line, speed profile, driver |
 | `render/` | three.js scene, cameras, interpolation |
 | `input/` | keyboard and gamepad → `ControlState` |
 | `ui/` | telemetry and tuning panels |

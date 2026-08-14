@@ -237,5 +237,35 @@ export const buildCircuit = (spec: CircuitSpec, step = 4): Circuit => {
     }
   }
 
+  // Round off the vertical profile — after closing the loop, not before.
+  //
+  // Gradient is stated per section, so it steps at every boundary: at
+  // Spa the descent to Eau Rouge runs at -7.5 per cent straight into
+  // Raidillon at +17, a 25-point break over a single sample. That is a
+  // crease, not a compression, and a car with 50 mm of floor clearance
+  // and a 3.6 m wheelbase grounds out on it and stops dead. Real
+  // circuits have vertical curves; a few smoothing passes give these
+  // ones the same, spreading each transition over roughly twenty metres.
+  //
+  // Order matters. Smoothing first would blend the unclosed start and
+  // end heights across the seam, dragging the whole first corner up with
+  // it — the closure ramp is only correct on an unsmoothed profile.
+  smoothHeights(samples, 20);
+
   return new Circuit(spec, samples);
 };
+
+/** 1-2-1 smoothing of the height channel, in place and periodic. */
+const smoothHeights = (samples: IntegratedSample[], passes: number): void => {
+  const n = samples.length;
+  const scratch = new Float64Array(n);
+  for (let pass = 0; pass < passes; pass++) {
+    for (let i = 0; i < n; i++) {
+      const prev = samples[(i - 1 + n) % n]!.position.y;
+      const next = samples[(i + 1) % n]!.position.y;
+      scratch[i] = 0.25 * prev + 0.5 * samples[i]!.position.y + 0.25 * next;
+    }
+    for (let i = 0; i < n; i++) samples[i]!.position.y = scratch[i]!;
+  }
+};
+

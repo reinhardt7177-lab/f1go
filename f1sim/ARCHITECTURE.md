@@ -178,6 +178,52 @@ cooling swamped the heat input, so the tyres never came in at all.
 Tyres start out of the blankets, below the window. The first lap is a
 real out-lap.
 
+## The AI
+
+Three pieces in `ai/`, and the interesting one is the middle.
+
+**`racingline.ts`** finds a line by Laplacian smoothing under a width
+constraint: pull each point towards the midpoint of its neighbours, then
+clamp it back inside the road. That converges on the shortest path,
+which runs wide on entry, cuts the apex and drifts out on exit — because
+that is what the shortest path through a corridor does. It is not a
+minimum-curvature line, which a real optimiser would produce and which
+is meaningfully quicker.
+
+**`speedprofile.ts`** turns curvature into a target speed. The corner
+limit is where the lateral acceleration the tyres can make equals the
+one the corner demands, and for a car with downforce the grip is itself
+a function of speed:
+
+```
+v²κ = μ(g + ½ρ·ClA·v²/m)   ⟹   v² = μg / (κ − μρClA/2m)
+```
+
+The denominator going negative is not a failure — it means downforce
+grows faster than the corner demands, so the corner is flat at any
+speed. Blanchimont comes out flat and La Source comes out at 80 km/h
+without either being a tuned constant. A backward pass then caps each
+station at the speed you could still slow from, which is what produces
+braking points, and a forward pass caps it at the speed you could have
+reached, which stops the profile promising an exit the engine cannot
+serve. Both spend only the grip cornering has left over.
+
+**`driver.ts`** is pure pursuit with curvature feedforward. The
+feedforward matters: pure pursuit is a feedback term that only acts once
+the car is off the arc, so alone it discovers every corner late and runs
+wide. Supplying `atan(L·κ)` up front leaves the pursuit term to correct
+the difference instead. The lookahead in the pure-pursuit denominator is
+what keeps it stable at 300 km/h; a flat gain on the angle has no such
+term and oscillates down the straights.
+
+It drives Spa continuously, holding the line within a few metres for
+most of a lap, and it recovers itself when it spins — but it is not yet
+clean enough to set a lap that survives track limits. It runs at 75 per
+cent of a profile already computed at 82 per cent of the tyre, and still
+runs wide in a handful of places. Making it quick *and* clean is a
+minimum-curvature line and a controller that models the car's transient
+response rather than its steady state.
+
 ## Stages
 
 1. **Vehicle model on a flat pad** — done. Skid pad for steady-state
@@ -185,15 +231,7 @@ real out-lap.
 2. **Circuits** — done. Spa integrated from corner radii, mesh
    generation, per-surface friction, `(s, t)` lap and sector timing,
    ground-effect aero, tyre temperature and wear.
-3. **AI** — next, and the missing piece that stage two exposed. A car
-   cannot get round Spa unaided yet: the stand-in driver in
-   `circuit.test.ts` is a pursuit controller with a `v = √(a/k)` speed
-   target, which is enough for the proving ground's 150 m bends and
-   nowhere near enough for La Source or Eau Rouge. What is needed is a
-   racing line spline separate from the centreline, and a proper speed
-   profile over it — the limit speed from curvature and grip, then a
-   forward pass for acceleration limits and a backward pass for braking.
-   Steering is then pure pursuit and throttle a PID on the profile.
+3. **AI** — done, and imperfect. See below.
 4. **Sessions** — done. Practice, qualifying and race in
    `race/session.ts`: how a session ends, what it is judged on, track
    limits and penalties, and what a pit stop costs. It reads the lap

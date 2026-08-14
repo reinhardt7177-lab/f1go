@@ -266,7 +266,14 @@ describe('driving the circuit', () => {
       const world = new SimWorld(undefined, { circuitId: 'spa', startDistance: start });
       const forward = quatRotate(world.car.body.rotation(), vec3(0, 0, -1));
       const tangent = spa.spline.sampleAt(start).tangent;
-      const dot = forward.x * tangent.x + forward.y * tangent.y + forward.z * tangent.z;
+
+      // Compare headings in plan only. The car is placed level, so on a
+      // gradient it can never align with a tangent that also climbs, and
+      // a three-dimensional dot product would be measuring the slope
+      // rather than the thing `gridSlot` actually sets.
+      const fl = Math.hypot(forward.x, forward.z);
+      const tl = Math.hypot(tangent.x, tangent.z);
+      const dot = (forward.x * tangent.x + forward.z * tangent.z) / (fl * tl);
       expect(dot).toBeGreaterThan(0.99);
       world.dispose();
     }
