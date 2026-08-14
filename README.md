@@ -103,3 +103,19 @@ through it.
 uses no team names, driver names, liveries or car models — the rivals are
 invented and the cars are generic open-wheelers. Circuit and corner names are
 used descriptively, as place names. Keep it that way if you fork it.
+
+## f1sim — the simulation track
+
+`f1sim/` is a separate, unrelated codebase in the same repository: the
+first stage of a proper vehicle-dynamics simulation, built with
+TypeScript, three.js and the Rapier physics engine.
+
+It shares no code with the arcade racer above. Where this game fakes a
+road as a one-dimensional ribbon, that one models a rigid chassis on four
+raycast wheels, with a Pacejka tyre model, load sensitivity, a friction
+circle, aerodynamic downforce applied at each axle, and a full drivetrain
+— all of it exposed on live sliders with the telemetry to read it.
+
+See [f1sim/README.md](f1sim/README.md) to run it, and
+[f1sim/ARCHITECTURE.md](f1sim/ARCHITECTURE.md) for the design and the
+road from here to circuits, AI and multiplayer.
