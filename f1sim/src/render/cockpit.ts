@@ -175,18 +175,22 @@ export class Cockpit {
 
     const HALO_R = 0.50;
     const HALO_Z = -0.55;
-    const HALO_Y = 0.60;
+    // Above the eye, not level with it. At eye height the hoop lies
+    // exactly along the horizon and reads as a bar drawn across the
+    // middle of the world — which is the one place it must not be, since
+    // the horizon is where the corner appears.
+    const HALO_Y = 0.76;
     const front = HALO_Z - HALO_R;
 
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(HALO_R, 0.034, 10, 40, Math.PI), halo);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(HALO_R, 0.028, 10, 40, Math.PI), halo);
     ring.rotation.set(-Math.PI / 2, 0, 0);
     ring.position.set(0, HALO_Y, HALO_Z);
     this.group.add(ring);
 
     // Rear legs, from the hoop's ends back down into the tub sides.
     for (const side of [-1, 1]) {
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.030, 0.038, 0.34, 8), halo);
-      leg.position.set(side * HALO_R, HALO_Y - 0.15, HALO_Z + 0.02);
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.036, 0.52, 8), halo);
+      leg.position.set(side * HALO_R, HALO_Y - 0.25, HALO_Z + 0.02);
       leg.rotation.z = side * 0.20;
       this.group.add(leg);
     }
@@ -196,8 +200,8 @@ export class Cockpit {
     // apex appears, and a real one subtends about two degrees. Being
     // nearly a metre ahead of the eye rather than half a metre is most
     // of what keeps it from becoming a bar across the view.
-    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.024, 0.38, 8), halo);
-    pillar.position.set(0, HALO_Y - 0.19, front + 0.01);
+    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.022, 0.54, 8), halo);
+    pillar.position.set(0, HALO_Y - 0.27, front + 0.01);
     this.group.add(pillar);
   }
 

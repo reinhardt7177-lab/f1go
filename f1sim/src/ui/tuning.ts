@@ -228,12 +228,107 @@ export const PRESETS: Preset[] = [
   }
 ];
 
+/**
+ * A slider over something that is not part of the car.
+ *
+ * Steering feel is the case this exists for. It belongs to the
+ * controller rather than the vehicle, so it is not in `VehicleParams`
+ * and cannot be a `Binding` — but it is the one setting nobody can get
+ * right by reading the code, because the only test for it is whether
+ * the car feels right to the person holding the phone.
+ */
+export interface FreeSlider {
+  group: string;
+  label: string;
+  note?: string;
+  min: number;
+  max: number;
+  step: number;
+  scale?: number;
+  unit?: string;
+  get: () => number;
+  set: (value: number) => void;
+}
+
 /** A boolean switch, used for driver aids that live outside the sim. */
 export interface ToggleBinding {
   label: string;
   note: string;
   get: () => boolean;
   set: (value: boolean) => void;
+}
+
+/**
+ * A small panel of free sliders on its own.
+ *
+ * Steering feel needs to be reachable on a phone, and the setup panel
+ * is one of the bench instruments that a 400 px screen hides — putting
+ * the sliders there would have made them invisible on the only device
+ * whose steering anyone has complained about.
+ */
+export class SlidersPanel {
+  private readonly refreshers: Array<() => void> = [];
+
+  constructor(mount: HTMLElement, title: string, sliders: FreeSlider[], className = '') {
+    const root = document.createElement('div');
+    root.className = `panel sliders ${className}`.trim();
+    mount.appendChild(root);
+
+    const header = document.createElement('div');
+    header.className = 'panel-head';
+    header.innerHTML = `<h3>${title}</h3><button type="button" class="collapse">접기</button>`;
+    root.appendChild(header);
+
+    const body = document.createElement('div');
+    body.className = 'panel-body';
+    root.appendChild(body);
+
+    header.querySelector('.collapse')!.addEventListener('click', (e) => {
+      const collapsed = body.classList.toggle('collapsed');
+      (e.currentTarget as HTMLElement).textContent = collapsed ? '펼치기' : '접기';
+    });
+
+    for (const s of sliders) body.appendChild(this.build(s, body));
+  }
+
+  private build(f: FreeSlider, _body: HTMLElement): HTMLElement {
+    const row = document.createElement('label');
+    row.className = 'slider';
+    if (f.note) row.title = f.note;
+
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = f.label;
+
+    const value = document.createElement('span');
+    value.className = 'value';
+
+    const input = document.createElement('input');
+    input.type = 'range';
+    input.min = String(f.min);
+    input.max = String(f.max);
+    input.step = String(f.step);
+
+    const show = (): void => {
+      const raw = f.get();
+      const shown = raw * (f.scale ?? 1);
+      value.textContent = shown.toFixed(shown >= 100 ? 0 : shown >= 10 ? 1 : 2) + (f.unit ?? '');
+      input.value = String(raw);
+    };
+
+    input.addEventListener('input', () => {
+      f.set(Number(input.value));
+      show();
+    });
+
+    this.refreshers.push(show);
+    row.append(name, value, input);
+    return row;
+  }
+
+  refresh(): void {
+    for (const r of this.refreshers) r();
+  }
 }
 
 export class TuningPanel {
@@ -244,7 +339,8 @@ export class TuningPanel {
   constructor(
     mount: HTMLElement,
     private readonly params: VehicleParams,
-    toggles: ToggleBinding[] = []
+    toggles: ToggleBinding[] = [],
+    free: FreeSlider[] = []
   ) {
     this.root = document.createElement('div');
     this.root.className = 'panel tuning';
@@ -265,6 +361,18 @@ export class TuningPanel {
     });
 
     let currentGroup = '';
+    // Free sliders first: steering feel is what a player reaches for,
+    // and burying it under the aero coefficients would be perverse.
+    for (const f of free) {
+      if (f.group !== currentGroup) {
+        currentGroup = f.group;
+        const h = document.createElement('h4');
+        h.textContent = f.group;
+        body.appendChild(h);
+      }
+      body.appendChild(this.buildFreeSlider(f));
+    }
+
     for (const b of BINDINGS) {
       if (b.group !== currentGroup) {
         currentGroup = b.group;
@@ -323,6 +431,42 @@ export class TuningPanel {
     body.appendChild(this.derived);
 
     this.refresh();
+  }
+
+  /** Same control as `buildSlider`, over a closure instead of the car. */
+  private buildFreeSlider(f: FreeSlider): HTMLElement {
+    const row = document.createElement('label');
+    row.className = 'slider';
+    if (f.note) row.title = f.note;
+
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = f.label;
+
+    const value = document.createElement('span');
+    value.className = 'value';
+
+    const input = document.createElement('input');
+    input.type = 'range';
+    input.min = String(f.min);
+    input.max = String(f.max);
+    input.step = String(f.step);
+
+    const show = (): void => {
+      const raw = f.get();
+      const shown = raw * (f.scale ?? 1);
+      value.textContent = shown.toFixed(shown >= 100 ? 0 : shown >= 10 ? 1 : 2) + (f.unit ?? '');
+      input.value = String(raw);
+    };
+
+    input.addEventListener('input', () => {
+      f.set(Number(input.value));
+      show();
+    });
+
+    this.refreshers.push(show);
+    row.append(name, value, input);
+    return row;
   }
 
   private buildSlider(b: Binding): HTMLElement {

@@ -10,6 +10,18 @@ import type { VehicleState } from '../sim/types';
 import type { TrackGeometry } from '../track/mesh';
 import { Cockpit, EYE } from './cockpit';
 
+/**
+ * Sky colours, zenith to horizon.
+ *
+ * The previous background was a single near-black value with a dark
+ * green plane under it, which read as a void with a hard line across
+ * the middle rather than as outdoors. A gradient plus a fog tinted to
+ * the horizon value is most of what makes it a place.
+ */
+const ZENITH = 0x1d4b7c;
+const SKY_MID = 0x63a0d2;
+const HORIZON = 0xc6d7e2;
+
 export type CameraMode = 'cockpit' | 'chase' | 'trackside';
 
 export const CAMERA_MODES: CameraMode[] = ['cockpit', 'chase', 'trackside'];
@@ -43,6 +55,7 @@ export class SceneRenderer {
   private currWheels: Vec3[] = [];
 
   private smoothedCamPos = new THREE.Vector3(0, 5, 12);
+  private sky: THREE.Mesh | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement, track: TrackGeometry) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -53,11 +66,16 @@ export class SceneRenderer {
     // Fog has to reach far enough that the road ahead reads as ground
     // rather than as a void — at 300 km/h the car covers 85 m a second,
     // so a 500 m draw distance is under six seconds of visibility.
-    this.scene.background = new THREE.Color(0x121820);
-    this.scene.fog = new THREE.Fog(0x121820, 350, 2200);
+    //
+    // Its colour is the horizon's, not the sky's. That single choice is
+    // what removes the seam: distant ground fades into exactly the value
+    // the sky meets it with, so the two stop being separate surfaces
+    // with a hard line between them and start being a landscape.
+    this.scene.fog = new THREE.Fog(HORIZON, 400, 2400);
 
     this.camera = new THREE.PerspectiveCamera(68, 1, 0.1, 4000);
 
+    this.buildSky();
     this.buildLighting();
     this.buildTrack(track);
     this.buildCar();
@@ -72,8 +90,56 @@ export class SceneRenderer {
     window.addEventListener('resize', () => this.resize());
   }
 
+  /**
+   * A graded sky dome.
+   *
+   * A sphere seen from inside rather than a background texture, because
+   * a background is painted flat behind everything and cannot put the
+   * horizon at eye level — the gradient would slide with the camera and
+   * the join with the ground would move. Geometry keeps the horizon
+   * where the ground actually ends.
+   *
+   * Fog is off for the dome: it is nominally at infinity, and fogging it
+   * towards the horizon colour would flatten the gradient to nothing.
+   */
+  private buildSky(): void {
+    const canvas = document.createElement('canvas');
+    canvas.width = 4;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d')!;
+
+    // A sphere's equator is at v = 0.5, and a canvas texture is flipped,
+    // so the top of this image is the zenith and the *middle* of it is
+    // the horizon — not the bottom. Putting the pale band at the bottom
+    // of the gradient hides it under the ground and leaves the sky one
+    // flat blue meeting the grass at a hard line, which is what the
+    // first attempt did.
+    const grad = ctx.createLinearGradient(0, 0, 0, 256);
+    const hex = (c: number): string => `#${c.toString(16).padStart(6, '0')}`;
+    grad.addColorStop(0, hex(ZENITH));
+    grad.addColorStop(0.34, hex(SKY_MID));
+    grad.addColorStop(0.5, hex(HORIZON));
+    grad.addColorStop(1, hex(HORIZON));
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 4, 256);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+
+    const dome = new THREE.Mesh(
+      new THREE.SphereGeometry(3600, 32, 24),
+      new THREE.MeshBasicMaterial({ map: texture, side: THREE.BackSide, fog: false })
+    );
+    // Rides with the camera so its edge is never reachable.
+    dome.frustumCulled = false;
+    this.sky = dome;
+    this.scene.add(dome);
+  }
+
   private buildLighting(): void {
-    this.scene.add(new THREE.HemisphereLight(0x9fb6c8, 0x20262c, 1.1));
+    // Sky and ground bounce, taken from the two ends of the dome so the
+    // lighting agrees with what is actually overhead.
+    this.scene.add(new THREE.HemisphereLight(SKY_MID, 0x44502f, 1.5));
 
     const sun = new THREE.DirectionalLight(0xfff3dd, 2.2);
     sun.position.set(60, 90, 40);
@@ -112,14 +178,18 @@ export class SceneRenderer {
     surface.receiveShadow = true;
     this.scene.add(surface);
 
-    // Ground plane far below, so the horizon is not empty space where the
-    // circuit's own mesh runs out.
+    // Ground plane far below, so the horizon is not empty space where
+    // the circuit's own mesh runs out. Big enough to reach past the fog
+    // in every direction. Its colour is a lit grass rather than the
+    // near-black it was: under a real sky, ground that dark reads as a
+    // hole rather than as a field.
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(12000, 12000),
-      new THREE.MeshStandardMaterial({ color: 0x24361f, roughness: 1 })
+      new THREE.MeshStandardMaterial({ color: 0x53703c, roughness: 1 })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -1.2;
+    ground.receiveShadow = true;
     this.scene.add(ground);
   }
 
@@ -263,6 +333,8 @@ export class SceneRenderer {
     }
 
     this.updateCamera(pos, rot, frameDt);
+    // Centre the dome on the eye so its far edge is unreachable.
+    this.sky?.position.copy(this.camera.position);
     this.renderer.render(this.scene, this.camera);
   }
 

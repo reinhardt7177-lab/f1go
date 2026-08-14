@@ -796,6 +796,11 @@ body {
   .timing .log,
   .timing .sectors { display: none; }
 
+  /* Steering feel is the exception. It is not a bench instrument — it
+     is the setting a phone player most needs, because a thumb on glass
+     is the input it exists to compensate for. */
+  .sliders.steering { display: block; max-width: 210px; }
+
   #overlay { padding: 8px; gap: 8px; justify-content: flex-start; }
   #overlay .stack { gap: 8px; }
   #overlay .stack.right { display: none; }

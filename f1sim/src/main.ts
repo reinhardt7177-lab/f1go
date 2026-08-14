@@ -23,7 +23,7 @@ import { SessionPanel } from './ui/session';
 import { SetupStatusPanel } from './ui/setup-status';
 import { TelemetryPanel } from './ui/telemetry';
 import { TimingPanel } from './ui/timing';
-import { TuningPanel } from './ui/tuning';
+import { SlidersPanel, TuningPanel } from './ui/tuning';
 import { ViewportManager } from './ui/viewport';
 
 const boot = async (): Promise<void> => {
@@ -116,6 +116,43 @@ const boot = async (): Promise<void> => {
       }
     }
   ]);
+
+  // Steering feel gets its own panel so it survives the phone layout,
+  // which hides the setup sliders as bench instruments.
+  const steeringPanel = new SlidersPanel(
+    right,
+    '조향 설정',
+    [
+      {
+        group: '조향',
+        label: '조향 감도',
+        note:
+          '조향 최대 각도에 곱해지는 값입니다. 차가 너무 예민하면 낮추고, ' +
+          '코너에서 안 돌면 올리세요.',
+        min: 0.35,
+        max: 1,
+        step: 0.01,
+        scale: 100,
+        unit: '%',
+        get: () => input.options.steerSensitivity,
+        set: (v) => (input.options.steerSensitivity = v)
+      },
+      {
+        group: '조향',
+        label: '응답 곡선',
+        note:
+          '1이면 직선 비례입니다. 값을 올릴수록 중앙 부근이 무뎌지고 ' +
+          '끝으로 갈수록 급해집니다 — 작은 수정이 쉬워지는 대신 반응이 느려집니다.',
+        min: 1,
+        max: 2.6,
+        step: 0.05,
+        get: () => input.options.steerExpo,
+        set: (v) => (input.options.steerExpo = v)
+      }
+    ],
+    'steering'
+  );
+  void steeringPanel;
 
   status.remove();
 

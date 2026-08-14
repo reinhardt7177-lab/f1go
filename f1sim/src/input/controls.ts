@@ -21,49 +21,43 @@ export interface InputOptions {
    * and full lock is still reachable at the stop.
    */
   steerExpo: number;
-  /** Fraction of input still passed through at `steerFalloffSpeed`. */
-  steerHighSpeed: number;
-  /** Speed (km/h) at which `steerHighSpeed` is reached. */
-  steerFalloffSpeed: number;
+  /** Overall scale on steering lock. Below 1 for a calmer car. */
+  steerSensitivity: number;
 }
 
 const defaultOptions = (): InputOptions => ({
-  steerRampTime: 0.42,
+  steerRampTime: 0.34,
   steerReturnTime: 0.18,
-  steerExpo: 2.2,
-  steerHighSpeed: 0.34,
-  steerFalloffSpeed: 220
+  steerExpo: 1.6,
+  steerSensitivity: 0.88
 });
 
 /**
  * Shape a raw −1..1 steering request into something driveable.
  *
- * Two separate problems, and they need separate treatment.
+ * Resolution is the problem being solved. A linear input spends as much
+ * travel between 90% and 100% lock — which nobody uses — as between 0%
+ * and 10%, which is where all of the driving happens. The expo curve
+ * moves travel to where it is needed. It is a reshaping, not a cut: 0
+ * stays 0 and full travel still reaches full lock.
  *
- * The first is resolution. A linear stick spends as much travel between
- * 90% and 100% lock — which nobody uses — as between 0% and 10%, which
- * is where all of the driving happens. The expo curve moves travel to
- * where it is needed. It is a pure reshaping: 0 stays 0 and 1 stays 1,
- * so nothing is taken away, it is just spread differently.
- *
- * The second is speed. The vehicle already reduces mechanical lock as
- * speed rises, but that is a property of the car and the AI's pure
- * pursuit is calibrated against it. This second reduction is a property
- * of the *controller* — the difference between a thumb on glass and a
- * wheel with 900 degrees of rotation — so it belongs here, where only
- * human input passes through, and not in the vehicle where it would
- * quietly bend the AI's steering out from under it.
+ * There is deliberately **no speed term here**, and that is the fix for
+ * the second complaint rather than an omission. `ChassisParams` already
+ * reduces mechanical lock as speed rises — down to 45% by 300 km/h —
+ * and an earlier pass added a controller-level falloff on top of it.
+ * The two multiply. At 220 km/h a half-travel input came out at 0.074
+ * of lock from this function and was then cut again by the chassis to
+ * under a degree at the road wheel, which is why the steering went from
+ * darting about to feeling like it was not connected to anything. One
+ * falloff, owned by the car, is the whole of it.
  */
 export const shapeSteer = (
   raw: number,
-  speedKmh: number,
-  o: Pick<InputOptions, 'steerExpo' | 'steerHighSpeed' | 'steerFalloffSpeed'>
+  o: Pick<InputOptions, 'steerExpo' | 'steerSensitivity'>
 ): number => {
   const magnitude = Math.min(Math.abs(raw), 1);
   const curved = Math.pow(magnitude, o.steerExpo);
-  const t = clamp(speedKmh / o.steerFalloffSpeed, 0, 1);
-  const scale = 1 - (1 - o.steerHighSpeed) * t;
-  return Math.sign(raw) * curved * scale;
+  return Math.sign(raw) * curved * clamp(o.steerSensitivity, 0, 1);
 };
 
 export class InputManager {
@@ -73,7 +67,12 @@ export class InputManager {
   readonly touch: TouchControls | null;
 
   private readonly keys = new Set<string>();
-  private readonly options: InputOptions;
+  /**
+   * Live, not frozen at construction: steering feel is the one setting
+   * that cannot be judged from the code, so it is bound to sliders and
+   * read fresh every tick.
+   */
+  readonly options: InputOptions;
   private shiftUpEdge = false;
   private shiftDownEdge = false;
   private resetEdge = false;
@@ -128,7 +127,7 @@ export class InputManager {
     if (this.touch?.active && (this.touch.throttle > 0 || this.touch.brake > 0 || this.touch.steer !== 0)) {
       c.throttle = this.touch.throttle;
       c.brake = this.touch.brake;
-      c.steer = shapeSteer(this.touch.steer, this.lastSpeedKmh, this.options);
+      c.steer = shapeSteer(this.touch.steer, this.options);
       c.straightMode = this.touch.straightMode;
       c.overtake = this.touch.overtake;
 
@@ -158,7 +157,7 @@ export class InputManager {
       c.steer =
         Math.abs(axis) < 0.06
           ? 0
-          : shapeSteer(clamp(axis, -1, 1), this.lastSpeedKmh, this.options);
+          : shapeSteer(clamp(axis, -1, 1), this.options);
       this.shiftUpEdge ||= gp.buttons[5]?.pressed === true;
       this.shiftDownEdge ||= gp.buttons[4]?.pressed === true;
       c.straightMode = gp.buttons[3]?.pressed === true;
@@ -174,7 +173,7 @@ export class InputManager {
       // compound it, so the response would depend on how long a key has
       // been held rather than only on how far the input has travelled.
       this.steerRaw = approach(this.steerRaw, target, rate);
-      c.steer = shapeSteer(this.steerRaw, this.lastSpeedKmh, this.options);
+      c.steer = shapeSteer(this.steerRaw, this.options);
 
       c.straightMode = this.down('KeyF');
       c.overtake = this.down('ShiftLeft', 'ShiftRight');

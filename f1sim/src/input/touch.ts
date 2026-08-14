@@ -25,10 +25,10 @@ export interface TouchOptions {
 }
 
 const defaultOptions = (): TouchOptions => ({
-  // A quarter of the short edge for full lock. At the old 0.16 a thumb
-  // could reach the stop almost without moving, which is most of why the
-  // car darted about — the travel was too short to aim inside.
-  steerTravel: 0.26,
+  // A fifth of the short edge for full lock. 0.16 was too short to aim
+  // inside; 0.26 was so long that, stacked on the expo curve and the
+  // chassis' own speed falloff, the car stopped responding at all.
+  steerTravel: 0.20,
   steerDeadzone: 0.014,
   returnTime: 0.14
 });
