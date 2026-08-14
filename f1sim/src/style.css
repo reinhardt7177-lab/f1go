@@ -653,3 +653,163 @@ body {
 #overlay .stack.right {
   align-items: flex-end;
 }
+
+/* ---------------- driver HUD ---------------- */
+
+.hud {
+  position: fixed;
+  left: 50%;
+  bottom: 54px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.hud .revs {
+  display: flex;
+  gap: 3px;
+}
+
+.hud .revs i {
+  width: 15px;
+  height: 5px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.10);
+}
+
+.hud .revs i.on { background: var(--green); }
+.hud .revs i.on.red { background: var(--red); }
+.hud .revs i.on.blue { background: #3b7dff; }
+
+.hud .dials {
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 6px 20px;
+  backdrop-filter: blur(8px);
+}
+
+.hud .gear b { font-size: 38px; font-weight: 800; line-height: 1; }
+.hud .speed b { font-size: 30px; font-weight: 700; }
+.hud .speed span { font-size: 10px; color: var(--muted); margin-left: 4px; letter-spacing: 0.12em; }
+
+.hud .modes { display: flex; gap: 8px; }
+
+.hud .mode {
+  position: relative;
+  min-width: 104px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 4px 10px 6px;
+  text-align: center;
+  overflow: hidden;
+}
+
+.hud .mode i {
+  display: block;
+  font-style: normal;
+  font-size: 8px;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+}
+
+.hud .mode b { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; }
+
+.hud .mode.on { border-color: var(--green); }
+.hud .mode.on b { color: var(--green); }
+.hud .mode.aero.on { border-color: #3b7dff; }
+.hud .mode.aero.on b { color: #3b7dff; }
+
+.hud .mode u {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 0;
+  background: var(--green);
+}
+
+.stats dd.active { color: #3b7dff; }
+
+/* ---------------- touch ---------------- */
+
+#touch-buttons {
+  position: fixed;
+  right: 14px;
+  bottom: 96px;
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 5;
+}
+
+#touch-buttons button {
+  width: 74px;
+  height: 52px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(14, 18, 23, 0.9);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#touch-buttons button.held {
+  background: var(--red);
+  border-color: var(--red);
+}
+
+/* A phone gets the road, the HUD and the buttons. The tuning sliders and
+   the traction circle are bench instruments and have no business on a
+   screen this size. */
+/* A phone gets the road, the HUD and the buttons. The tuning sliders,
+   the setup readout and the traction circle are bench instruments; on a
+   390 px screen they do not shrink, they just cover the road. */
+@media (pointer: coarse), (max-width: 900px) {
+  #touch-buttons { display: flex; }
+  #help { display: none; }
+  .tuning,
+  .setup-status,
+  .telemetry,
+  .timing .log,
+  .timing .sectors { display: none; }
+
+  #overlay { padding: 8px; gap: 8px; justify-content: flex-start; }
+  #overlay .stack { gap: 8px; }
+  #overlay .stack.right { display: none; }
+
+  .timing, .session { width: 168px; }
+  .panel { padding: 7px 9px; }
+
+  .timing .circuit h3 { font-size: 11px; }
+  .timing .circuit span { display: none; }
+  .timing .clock b { font-size: 20px; }
+  .timing .times { font-size: 10px; }
+  .session-head h3 { font-size: 9px; }
+  .session-head .clock { font-size: 15px; }
+  .session .rows { font-size: 10px; }
+
+  .hud { bottom: 14px; }
+  .hud .gear b { font-size: 30px; }
+  .hud .speed b { font-size: 24px; }
+  .hud .mode { min-width: 82px; }
+  .hud .revs i { width: 10px; }
+}
+
+/* Landscape on a phone is short, not narrow: keep the road visible. */
+@media (pointer: coarse) and (orientation: landscape) {
+  .timing .times, .session .rows { display: none; }
+  .hud .revs { display: none; }
+}

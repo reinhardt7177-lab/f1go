@@ -17,6 +17,7 @@ import { RacingLine } from './ai/racingline';
 import { SpeedProfile } from './ai/speedprofile';
 import { SESSION_PRESETS, Session } from './race/session';
 import type { SessionKind } from './race/session';
+import { Hud } from './ui/hud';
 import { SessionPanel } from './ui/session';
 import { SetupStatusPanel } from './ui/setup-status';
 import { TelemetryPanel } from './ui/telemetry';
@@ -35,7 +36,10 @@ const boot = async (): Promise<void> => {
   const params = defaultVehicleParams();
   const world = new SimWorld(params, { circuitId: 'spa' });
   const renderer = new SceneRenderer(canvas, world.geometry);
-  const input = new InputManager(window);
+  // The touch layer listens on the canvas so drags never fight the
+  // panels, which keep their own pointer events.
+  const input = new InputManager(window, {}, canvas);
+  const hud = new Hud(document.body);
 
   // Left column stacks telemetry over the timing tower; the setup panel
   // sits on the right.
@@ -114,12 +118,42 @@ const boot = async (): Promise<void> => {
     if (e.code === 'KeyP') session.requestPit(world.car.getState().speed);
   });
 
+  // On-screen buttons for the two things a thumb cannot reach: the wings
+  // and the boost. Both sit where the right hand already is.
+  const bind = (id: string, set: (down: boolean) => void): void => {
+    const el = document.getElementById(id)!;
+    const press = (down: boolean) => (e: PointerEvent): void => {
+      e.preventDefault();
+      e.stopPropagation();
+      set(down);
+      el.classList.toggle('held', down);
+    };
+    el.addEventListener('pointerdown', press(true));
+    el.addEventListener('pointerup', press(false));
+    el.addEventListener('pointercancel', press(false));
+    el.addEventListener('pointerleave', press(false));
+  };
+  if (input.touch) {
+    bind('btn-aero', (d) => (input.touch!.straightMode = d));
+    bind('btn-overtake', (d) => (input.touch!.overtake = d));
+  }
+  document.getElementById('btn-pit')!.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    session.requestPit(world.car.getState().speed);
+  });
+
   const loop = new FixedLoop(120);
 
   loop.start({
     step: (dt) => {
+      // Touch play shifts for itself, which needs to know how fast the
+      // car is going before the controls are read.
+      const previous = world.car.getState();
+      input.observe(Math.abs(previous.speed) * 3.6, previous.gear);
+
       const human = input.update(dt);
-      const state = world.car.getState();
+      const state = previous;
 
       const drivenSlip = Math.max(
         Math.abs(state.wheels[RL]!.slipRatio),
@@ -182,6 +216,9 @@ const boot = async (): Promise<void> => {
         params.drivetrain.redlineRpm,
         world.car.drivetrain.ersStore / params.drivetrain.ersCapacity
       );
+      const snapshot = world.car.getState();
+      const battery = world.car.drivetrain.ersStore / params.drivetrain.ersCapacity;
+      hud.update(snapshot, params.drivetrain.redlineRpm, battery);
       timing.update(world.timer, world.currentSection(), world.onTrack);
       sessionPanel.update(session, world.timer);
       setupStatus.update(
@@ -192,7 +229,7 @@ const boot = async (): Promise<void> => {
   });
 
   // Exposed for console poking and for the browser-driven smoke test.
-  Object.assign(window, { world, params, renderer, loop, tuning, session, driver, racingLine, speedProfile });
+  Object.assign(window, { world, params, renderer, loop, tuning, session, driver, racingLine, speedProfile, input });
 };
 
 void boot();

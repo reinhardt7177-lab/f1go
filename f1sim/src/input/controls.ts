@@ -8,6 +8,7 @@
 import { approach, clamp } from '../core/math';
 import { neutralControls } from '../sim/types';
 import type { ControlState } from '../sim/types';
+import { TouchControls } from './touch';
 
 export interface InputOptions {
   /** Seconds for the keyboard to reach full steering lock. */
@@ -24,14 +25,22 @@ const defaultOptions = (): InputOptions => ({
 export class InputManager {
   readonly controls: ControlState = neutralControls();
 
+  /** Present when a touch surface was supplied; null on desktop. */
+  readonly touch: TouchControls | null;
+
   private readonly keys = new Set<string>();
   private readonly options: InputOptions;
   private shiftUpEdge = false;
   private shiftDownEdge = false;
   private resetEdge = false;
 
-  constructor(target: EventTarget = window, options: Partial<InputOptions> = {}) {
+  constructor(
+    target: EventTarget = window,
+    options: Partial<InputOptions> = {},
+    touchSurface: HTMLElement | null = null
+  ) {
     this.options = { ...defaultOptions(), ...options };
+    this.touch = touchSurface ? new TouchControls(touchSurface) : null;
 
     target.addEventListener('keydown', (raw) => {
       const e = raw as KeyboardEvent;
@@ -68,6 +77,35 @@ export class InputManager {
   update(dt: number): ControlState {
     const c = this.controls;
     const gp = this.gamepad();
+    this.touch?.update(dt);
+
+    // Touch wins while a finger is down; otherwise the keyboard is free
+    // to drive, so a tablet with a keyboard attached works either way.
+    if (this.touch?.active && (this.touch.throttle > 0 || this.touch.brake > 0 || this.touch.steer !== 0)) {
+      c.throttle = this.touch.throttle;
+      c.brake = this.touch.brake;
+      c.steer = this.touch.steer;
+      c.straightMode = this.touch.straightMode;
+      c.overtake = this.touch.overtake;
+
+      // Nobody can work a sequential gearbox and steer on a touchscreen
+      // at once, so it shifts itself. Road speed, not rpm — during
+      // wheelspin the engine sits on the limiter while the car crawls.
+      const kmh = this.lastSpeedKmh;
+      const wantShift = kmh > this.autoGear * 42;
+      if (wantShift && this.shiftArmed) {
+        this.shiftUpEdge = true;
+        this.shiftArmed = false;
+      } else if (!wantShift) {
+        this.shiftArmed = true;
+      }
+
+      c.shiftUp = this.shiftUpEdge;
+      c.shiftDown = this.shiftDownEdge;
+      this.shiftUpEdge = false;
+      this.shiftDownEdge = false;
+      return c;
+    }
 
     if (gp) {
       c.throttle = clamp(gp.buttons[7]?.value ?? 0, 0, 1);
@@ -76,8 +114,8 @@ export class InputManager {
       c.steer = Math.abs(axis) < 0.06 ? 0 : clamp(axis, -1, 1);
       this.shiftUpEdge ||= gp.buttons[5]?.pressed === true;
       this.shiftDownEdge ||= gp.buttons[4]?.pressed === true;
-      c.drs = gp.buttons[3]?.pressed === true;
-      c.ers = gp.buttons[0]?.pressed === true;
+      c.straightMode = gp.buttons[3]?.pressed === true;
+      c.overtake = gp.buttons[0]?.pressed === true;
     } else {
       c.throttle = this.down('ArrowUp', 'KeyW') ? 1 : 0;
       c.brake = this.down('ArrowDown', 'KeyS', 'Space') ? 1 : 0;
@@ -86,8 +124,8 @@ export class InputManager {
       const rate = target === 0 ? dt / this.options.steerReturnTime : dt / this.options.steerRampTime;
       c.steer = approach(c.steer, target, rate);
 
-      c.drs = this.down('KeyF');
-      c.ers = this.down('ShiftLeft', 'ShiftRight');
+      c.straightMode = this.down('KeyF');
+      c.overtake = this.down('ShiftLeft', 'ShiftRight');
     }
 
     // Shift requests are edges: the drivetrain consumes one per tick.
@@ -97,6 +135,19 @@ export class InputManager {
     this.shiftDownEdge = false;
 
     return c;
+  }
+
+  private lastSpeedKmh = 0;
+  private autoGear = 1;
+  private shiftArmed = true;
+
+  /**
+   * Tell the input layer how fast the car is going and what gear it is
+   * in, so touch play can shift for itself.
+   */
+  observe(speedKmh: number, gear: number): void {
+    this.lastSpeedKmh = speedKmh;
+    this.autoGear = gear;
   }
 
   private gamepad(): Gamepad | null {

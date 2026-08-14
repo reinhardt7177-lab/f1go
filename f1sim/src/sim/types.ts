@@ -1,4 +1,5 @@
 import type { Quat, Vec3 } from '../core/math';
+import type { AeroMode } from './aero';
 
 /** Normalised driver inputs. Everything upstream of the sim produces this. */
 export interface ControlState {
@@ -11,8 +12,19 @@ export interface ControlState {
   /** Requested gear change this tick, consumed by the drivetrain. */
   shiftUp: boolean;
   shiftDown: boolean;
-  drs: boolean;
-  ers: boolean;
+  /**
+   * Reclines the wings for a straight. Under the 2026 rules this is not
+   * an overtaking aid and carries no proximity condition — every car may
+   * use it whenever the driver judges it safe, and paying for it in
+   * downforce is the whole decision.
+   */
+  straightMode: boolean;
+  /**
+   * Overtake Mode: extra electrical energy, permitted within a second of
+   * the car ahead. This is what replaced DRS as the overtaking aid — a
+   * power boost rather than a drag reduction.
+   */
+  overtake: boolean;
 }
 
 export const neutralControls = (): ControlState => ({
@@ -21,8 +33,8 @@ export const neutralControls = (): ControlState => ({
   steer: 0,
   shiftUp: false,
   shiftDown: false,
-  drs: false,
-  ers: false
+  straightMode: false,
+  overtake: false
 });
 
 export const FL = 0;
@@ -89,8 +101,10 @@ export interface VehicleState {
   /** Longitudinal / lateral acceleration in g, as a driver would feel it. */
   gLong: number;
   gLat: number;
-  drsOpen: boolean;
-  ersDeploying: boolean;
+  aeroMode: AeroMode;
+  overtakeDeploying: boolean;
+  /** Overtake energy left in the current allocation, 0..1. */
+  overtakeCharge: number;
 }
 
 export const emptyWheelTelemetry = (): WheelTelemetry => ({

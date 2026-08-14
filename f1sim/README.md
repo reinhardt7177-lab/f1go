@@ -10,11 +10,50 @@ shares nothing with it but a repository.
 ```
 npm install
 npm run dev        # http://localhost:5173
-npm test           # 105 headless simulation tests
+npm test           # 117 headless simulation tests
 npm run build      # typecheck + production bundle
 ```
 
 There is one car, so a race is still a timed run against yourself.
+
+## 2026 rules
+
+DRS is gone. In its place:
+
+**Active aerodynamics.** Both wings are movable and switch between a
+corner setting and a straight-line setting. Unlike DRS this is not an
+overtaking aid handed to whoever is close enough behind — every car may
+use either setting at any time, and the decision is the whole point:
+straight mode cuts a quarter of the drag and gives up more than half the
+downforce for it. Hold it into a corner and you will find out.
+
+**Overtake Mode.** The aid that actually replaced DRS. One press releases
+half a megajoule of extra electrical energy, worth about 67 bhp while it
+lasts. It is a power boost rather than a drag reduction, so it works in
+the corners too — and it runs out, rather than lasting the whole
+straight. Holding the button does not extend it.
+
+## Top speed
+
+336 km/h drag-limited with the wings in corner setting, 370 in straight
+mode, and eighth gear runs out at 373 so the gearbox neither wastes a
+ratio nor caps the car early. For scale, the outright F1 race record is
+Bottas's 372.5 km/h at Mexico in 2016 — and that was at 2,240 m, where
+the air is thin enough to make it a good deal easier.
+
+## On a phone
+
+Left thumb steers, right thumb is the pedals. Both are relative: put a
+thumb down wherever is comfortable and that becomes centre, because a
+phone is held differently every time. Dragging the right thumb up is
+throttle and down is brake, analogue by how far — on-off pedals make a
+1000 bhp car undriveable on glass. Resting a thumb on the pad without
+moving means part throttle.
+
+Gears shift themselves on touch, and three buttons cover what a thumb
+cannot reach: **AERO**, **BOOST** and **PIT**. The tuning sliders and the
+setup readout are hidden — they are bench instruments, and on a 390 px
+screen they do not shrink, they just cover the road.
 
 ## The AI
 
@@ -64,8 +103,8 @@ question a strategy is answering.
 | `S` / `↓` / `Space` | brake |
 | `A` `D` / `←` `→` | steer |
 | `Q` `E` | downshift / upshift |
-| `F` | DRS |
-| `Shift` | ERS deployment |
+| `F` | straight mode (active aero) |
+| `Shift` | Overtake Mode |
 | `C` | cycle camera — chase, cockpit, trackside |
 | `R` | reset to the start |
 

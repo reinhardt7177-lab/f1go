@@ -51,7 +51,7 @@ export interface ProfileOptions {
 
 export const defaultProfileOptions = (): ProfileOptions => ({
   gripUsage: 0.82,
-  maxSpeed: 95,
+  maxSpeed: 103,
   maxBraking: 45
 });
 

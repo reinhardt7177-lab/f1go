@@ -244,8 +244,19 @@ export class Driver {
     c.steer = this.steer;
     c.shiftUp = shiftUp;
     c.shiftDown = false;
-    c.drs = false;
-    c.ers = false;
+
+    // Active aero is a judgement about the road ahead, not a reward for
+    // being close behind: recline the wings when there is no corner
+    // inside the distance it would take to react to one.
+    let straightAhead = true;
+    for (let d = 0; d < 30 + speed * 2.5; d += 10) {
+      if (Math.abs(this.line.curvatureAt(distance + d)) > 1 / 400) {
+        straightAhead = false;
+        break;
+      }
+    }
+    c.straightMode = straightAhead && speed > 30;
+    c.overtake = false;
 
     this.debug = {
       distance,

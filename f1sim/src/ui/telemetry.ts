@@ -55,7 +55,8 @@ export class TelemetryPanel {
       ['drag', 'Drag'],
       ['glong', 'g long'],
       ['glat', 'g lat'],
-      ['ers', 'ERS']
+      ['aero', 'aero'],
+      ['ers', 'battery']
     ] as const) {
       const dt = document.createElement('dt');
       dt.textContent = label;
@@ -119,6 +120,10 @@ export class TelemetryPanel {
     this.set('drag', `${Math.round(s.drag)} N`);
     this.set('glong', s.gLong.toFixed(2));
     this.set('glat', s.gLat.toFixed(2));
+    this.set('aero', s.aeroMode === 'straight' ? 'STRAIGHT' : 'corner');
+    const aeroCell = this.readouts.get('aero');
+    if (aeroCell) aeroCell.classList.toggle('active', s.aeroMode === 'straight');
+
     this.set('ers', `${Math.round(ersFraction * 100)}%`);
 
     const rev = this.readouts.get('rev');

@@ -28,8 +28,19 @@ export interface DrivetrainParams {
   /** Limited-slip differential locking factor, 0 = open, 1 = spool. */
   diffLock: number;
 
-  /** ERS deployment power (W) and store (J). */
-  ersPower: number;
+  /* --- Overtake Mode (2026) ------------------------------------------
+   * The aid that replaced DRS. Within a second of the car ahead the
+   * driver may release a fixed slug of extra electrical energy — roughly
+   * half a megajoule, worth about 67 bhp while it lasts. It is a power
+   * boost, not a drag reduction, so unlike DRS it works in the corners
+   * too, and it runs out rather than lasting the whole straight.
+   */
+
+  /** Extra power while Overtake Mode is deploying (W). */
+  overtakePower: number;
+  /** Energy released per activation (J). */
+  overtakeEnergyPerUse: number;
+  /** Store the boost draws from (J). */
   ersCapacity: number;
   /** Fraction of braking energy recovered. */
   ersRecoveryEfficiency: number;
@@ -49,15 +60,24 @@ export const defaultDrivetrainParams = (): DrivetrainParams => ({
   peakTorqueRpm: 10500,
   redlineTorqueFraction: 0.82,
 
-  gearRatios: [3.4, 2.6, 2.1, 1.78, 1.54, 1.36, 1.22, 1.1],
-  finalDrive: 4.9,
+  // Eighth is geared to run out just above the drag-limited top speed in
+  // straight mode: at the 15,000 rpm limiter this is 373 km/h. Taller
+  // than that and the car never reaches the limiter, so the gear is
+  // wasted; shorter and it sits on the limiter with speed still
+  // available. A first pass here was geared for 438 and the car simply
+  // could not pull it.
+  gearRatios: [3.4, 2.6, 2.1, 1.78, 1.54, 1.36, 1.2, 1.02],
+  finalDrive: 5.35,
   efficiency: 0.95,
 
   engineBrakingTorque: 90,
 
   diffLock: 0.6,
 
-  ersPower: 120_000,
+  // 0.5 MJ at 50 kW is ten seconds of about 67 bhp, which is the
+  // regulation figure.
+  overtakePower: 50_000,
+  overtakeEnergyPerUse: 500_000,
   ersCapacity: 4_000_000,
   ersRecoveryEfficiency: 0.4,
 
@@ -98,7 +118,11 @@ export interface DrivetrainState {
   rpm: number;
   shiftTimer: number;
   ersStore: number;
-  ersDeploying: boolean;
+  overtakeDeploying: boolean;
+  /** Energy left in the activation currently running (J). */
+  overtakeRemaining: number;
+  /** True until the button is released, so one press is one slug. */
+  overtakeLatched: boolean;
 }
 
 export const initialDrivetrainState = (p: DrivetrainParams): DrivetrainState => ({
@@ -106,7 +130,9 @@ export const initialDrivetrainState = (p: DrivetrainParams): DrivetrainState => 
   rpm: p.idleRpm,
   shiftTimer: 0,
   ersStore: p.ersCapacity,
-  ersDeploying: false
+  overtakeDeploying: false,
+  overtakeRemaining: 0,
+  overtakeLatched: false
 });
 
 export const gearRatio = (p: DrivetrainParams, gear: number): number =>
@@ -126,7 +152,7 @@ export const stepDrivetrain = (
   throttle: number,
   shiftUp: boolean,
   shiftDown: boolean,
-  ersRequested: boolean,
+  overtakeRequested: boolean,
   drivenOmega: [number, number]
 ): [number, number] => {
   // --- gear selection -------------------------------------------------
@@ -153,14 +179,23 @@ export const stepDrivetrain = (
   // --- engine and ERS -------------------------------------------------
   let crankTorque = engineTorque(p, s.rpm) * effectiveThrottle;
 
-  s.ersDeploying = false;
-  if (ersRequested && effectiveThrottle > 0.2 && s.ersStore > 0) {
+  // One press releases one slug of energy; holding the button down does
+  // not extend it, and it has to be released before another can be armed.
+  if (overtakeRequested && !s.overtakeLatched && s.overtakeRemaining <= 0 && s.ersStore > 0) {
+    s.overtakeRemaining = Math.min(p.overtakeEnergyPerUse, s.ersStore);
+    s.overtakeLatched = true;
+  }
+  if (!overtakeRequested) s.overtakeLatched = false;
+
+  s.overtakeDeploying = false;
+  if (s.overtakeRemaining > 0 && effectiveThrottle > 0.2) {
     const omega = (s.rpm * 2 * Math.PI) / 60;
     if (omega > 1) {
-      const boost = p.ersPower / omega;
-      crankTorque += boost;
-      s.ersStore = Math.max(0, s.ersStore - p.ersPower * dt);
-      s.ersDeploying = true;
+      crankTorque += p.overtakePower / omega;
+      const used = p.overtakePower * dt;
+      s.overtakeRemaining = Math.max(0, s.overtakeRemaining - used);
+      s.ersStore = Math.max(0, s.ersStore - used);
+      s.overtakeDeploying = true;
     }
   }
 

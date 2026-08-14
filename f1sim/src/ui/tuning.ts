@@ -174,7 +174,7 @@ export const PRESETS: Preset[] = [
     note: '현행 F1에 가까운 에어로·타이어 기준값.',
     apply: (p) => {
       p.aero.clA = 4.2;
-      p.aero.cdA = 1.3;
+      p.aero.cdA = 1.6;
       p.aero.frontBalance = 0.44;
       p.tire.muNominal = 1.75;
       p.tire.loadSensitivity = 0.08;
@@ -187,7 +187,7 @@ export const PRESETS: Preset[] = [
     note: '윙을 눕힌다 — 최고속은 오르고 코너 그립은 크게 줄어든다.',
     apply: (p) => {
       p.aero.clA = 2.6;
-      p.aero.cdA = 0.95;
+      p.aero.cdA = 1.15;
       p.aero.frontBalance = 0.42;
     }
   },
@@ -196,7 +196,7 @@ export const PRESETS: Preset[] = [
     note: '윙 최대 — 직선은 느리지만 나머지 구간에서 눌러 붙는다.',
     apply: (p) => {
       p.aero.clA = 6.0;
-      p.aero.cdA = 1.9;
+      p.aero.cdA = 2.35;
       p.aero.frontBalance = 0.46;
     }
   },
@@ -205,7 +205,7 @@ export const PRESETS: Preset[] = [
     note: '다운포스를 완전히 끈다 — 그립의 얼마가 에어로였는지 드러난다.',
     apply: (p) => {
       p.aero.clA = 0;
-      p.aero.cdA = 0.9;
+      p.aero.cdA = 1.1;
     }
   },
   {

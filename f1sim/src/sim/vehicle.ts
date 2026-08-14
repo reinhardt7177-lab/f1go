@@ -13,6 +13,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { GRAVITY, RAD, clamp, quatRotate, quatRotateInverse, vec3 } from '../core/math';
 import type { Vec3 } from '../core/math';
 import { defaultAeroParams, groundEffect, solveAero } from './aero';
+import type { AeroMode } from './aero';
 import type { AeroParams } from './aero';
 import {
   brakeTorques,
@@ -291,14 +292,14 @@ export class Vehicle {
     // axles, so the aero balance produces a real pitching moment rather
     // than a single force at the centre of mass.
     // ---------------------------------------------------------------
-    const drsOpen = this.controls.drs;
+    const aeroMode: AeroMode = this.controls.straightMode ? 'straight' : 'corner';
     // Ride heights come from the previous tick's suspension state: the
     // rays for this tick have not been cast yet, and one step of lag is
     // immaterial next to the aero time constant.
     const air = solveAero(
       aero,
       Math.abs(speedAlongForward),
-      drsOpen,
+      aeroMode,
       this.rideHeightFront,
       this.rideHeightRear
     );
@@ -397,7 +398,7 @@ export class Vehicle {
       this.controls.throttle,
       this.controls.shiftUp,
       this.controls.shiftDown,
-      this.controls.ers,
+      this.controls.overtake,
       [this.wheels[RL]!.omega, this.wheels[RR]!.omega]
     );
     const brakes = brakeTorques(drivetrain, this.controls.brake);
@@ -652,8 +653,10 @@ export class Vehicle {
       groundEffectRear: groundEffect(this.params.aero, this.rideHeightRear),
       gLong: this.gLong,
       gLat: this.gLat,
-      drsOpen: this.controls.drs,
-      ersDeploying: this.drivetrain.ersDeploying
+      aeroMode: this.controls.straightMode ? 'straight' : 'corner',
+      overtakeDeploying: this.drivetrain.overtakeDeploying,
+      overtakeCharge:
+        this.drivetrain.overtakeRemaining / this.params.drivetrain.overtakeEnergyPerUse
     };
   }
 

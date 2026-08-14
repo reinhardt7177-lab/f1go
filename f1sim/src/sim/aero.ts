@@ -16,10 +16,21 @@ export interface AeroParams {
   frontBalance: number;
   /** Air density (kg/m^3) at sea level, 15 C. */
   airDensity: number;
-  /** Fraction of cdA removed when DRS is open. */
-  drsDragReduction: number;
-  /** Fraction of clA lost when DRS is open — the trade you make. */
-  drsDownforceLoss: number;
+  /* --- active aerodynamics (2026) ------------------------------------
+   * DRS is gone. In its place both the front and rear wings are movable,
+   * and every car can switch between a corner setting and a straight-line
+   * setting at will — it is part of the car, not an overtaking aid handed
+   * to whoever is close enough behind.
+   *
+   * Straight mode is far more aggressive than DRS ever was, because it
+   * reclines the front wing as well as the rear: the drag reduction is
+   * large, and so is the downforce you give up for it.
+   */
+
+  /** Fraction of cdA removed in straight mode. */
+  straightDragReduction: number;
+  /** Fraction of clA given up for it. */
+  straightDownforceLoss: number;
 
   /* --- ground effect ------------------------------------------------
    * A modern F1 floor is a venturi: the closer it runs to the road, the
@@ -44,11 +55,16 @@ export interface AeroParams {
 
 export const defaultAeroParams = (): AeroParams => ({
   clA: 4.2,
-  cdA: 1.3,
+  // Sized from the top speeds the car should reach rather than picked:
+  // at 797 kW, cdA of 1.6 gives a drag-limited 336 km/h in corner mode,
+  // and cutting a quarter of it in straight mode gives 370. Those are
+  // the right numbers for a 2026 car — the outright race record is
+  // Bottas's 372.5 km/h at Mexico in 2016, and that was at altitude.
+  cdA: 1.6,
   frontBalance: 0.44,
   airDensity: 1.225,
-  drsDragReduction: 0.22,
-  drsDownforceLoss: 0.18,
+  straightDragReduction: 0.25,
+  straightDownforceLoss: 0.55,
 
   optimalRideHeight: 0.03,
   stallRideHeight: 0.016,
@@ -93,8 +109,12 @@ export interface AeroForces {
   drag: number;
 }
 
+/** Which way the wings are set. */
+export type AeroMode = 'corner' | 'straight';
+
 /**
  * @param speed  forward speed in m/s; reverse produces the same drag
+ * @param mode   wing setting; every car may use either, at any time
  * @param rideHeightFront floor height at the front axle (m)
  * @param rideHeightRear  floor height at the rear axle (m)
  *
@@ -106,14 +126,15 @@ export interface AeroForces {
 export const solveAero = (
   p: AeroParams,
   speed: number,
-  drsOpen: boolean,
+  mode: AeroMode,
   rideHeightFront = p.optimalRideHeight,
   rideHeightRear = p.optimalRideHeight
 ): AeroForces => {
   const q = 0.5 * p.airDensity * speed * speed; // dynamic pressure
 
-  const clA = drsOpen ? p.clA * (1 - p.drsDownforceLoss) : p.clA;
-  const cdA = drsOpen ? p.cdA * (1 - p.drsDragReduction) : p.cdA;
+  const straight = mode === 'straight';
+  const clA = straight ? p.clA * (1 - p.straightDownforceLoss) : p.clA;
+  const cdA = straight ? p.cdA * (1 - p.straightDragReduction) : p.cdA;
 
   const base = q * clA;
   const front = base * p.frontBalance * groundEffect(p, rideHeightFront);
@@ -131,5 +152,11 @@ export const solveAero = (
  * Terminal speed for a given power, useful as a sanity check while
  * tuning: at top speed all engine power goes into overcoming drag.
  */
-export const terminalSpeed = (p: AeroParams, powerWatts: number): number =>
-  Math.cbrt(powerWatts / (0.5 * p.airDensity * p.cdA));
+export const terminalSpeed = (
+  p: AeroParams,
+  powerWatts: number,
+  mode: AeroMode = 'straight'
+): number => {
+  const cdA = mode === 'straight' ? p.cdA * (1 - p.straightDragReduction) : p.cdA;
+  return Math.cbrt(powerWatts / (0.5 * p.airDensity * cdA));
+};
