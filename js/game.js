@@ -63,6 +63,56 @@ var Game = {
     requestAnimationFrame(this.frame.bind(this));
   },
 
+  /* --- the championship: F1 points, kept across sessions ---------- */
+  POINTS: [25, 18, 15, 12, 10, 8, 6, 4, 2, 1],
+  SEASON_KEY: 'f1go-season',
+
+  loadSeason: function () {
+    try {
+      return JSON.parse(localStorage.getItem(this.SEASON_KEY)) || {};
+    } catch (e) { return {}; }
+  },
+
+  saveSeason: function (table) {
+    try { localStorage.setItem(this.SEASON_KEY, JSON.stringify(table)); } catch (e) {}
+  },
+
+  /* final classification right now: everyone ranked by distance,
+     finishers ranked by when they took the flag */
+  classification: function () {
+    var rows = [{ name: 'YOU', dist: this.playerDistance(), me: true }];
+    for (var i = 0; i < this.cars.length; i++) {
+      var car = this.cars[i];
+      rows.push({
+        name: car.name,
+        dist: car.finishedAt !== null
+          ? this.totalLaps * this.trackLength + 1e9 - car.finishedAt
+          : (car.lap - 1) * this.trackLength + car.z,
+        me: false
+      });
+    }
+    rows.sort(function (a, b) { return b.dist - a.dist; });
+    return rows;
+  },
+
+  renderStandings: function (pointsEarned) {
+    var season = this.loadSeason();
+    var rows = Object.keys(season).map(function (name) {
+      return { name: name, pts: season[name] };
+    });
+    rows.sort(function (a, b) { return b.pts - a.pts; });
+    var html = '';
+    for (var i = 0; i < rows.length; i++) {
+      var me = rows[i].name === 'YOU';
+      html += '<div class="standing' + (me ? ' me' : '') + '">' +
+        '<span>' + (i + 1) + '. ' + rows[i].name + '</span>' +
+        '<span>' + rows[i].pts + '</span></div>';
+    }
+    document.getElementById('standings-rows').innerHTML = html;
+    document.getElementById('result-points').textContent =
+      pointsEarned > 0 ? '+' + pointsEarned + ' PTS' : '';
+  },
+
   /* all-time best laps, kept per track across sessions */
   recordKey: function (trackId) { return 'f1go-best-' + trackId; },
 
@@ -127,6 +177,10 @@ var Game = {
       document.getElementById('results').classList.add('hidden');
       document.getElementById('menu').classList.remove('hidden');
       self.state = 'menu';
+    });
+    document.getElementById('reset-season').addEventListener('click', function () {
+      try { localStorage.removeItem(self.SEASON_KEY); } catch (e) {}
+      self.renderStandings(0);
     });
   },
 
@@ -499,8 +553,8 @@ var Game = {
       this.speed = Util.limit(this.speed, 0, this.maxSpeed * 1.03);
     }
 
-    /* --- DRS: only on a straight and only when close behind ------- */
-    this.drs = !this.pitting && Math.abs(playerSeg.curve) < 0.6 && ahead && ahead.gap < SEGMENT_LENGTH * 22 && speedPercent > 0.5;
+    /* --- DRS: open on any straight once you are up to speed ------- */
+    this.drs = !this.pitting && Math.abs(playerSeg.curve) < 0.6 && speedPercent > 0.5;
     if (this.drs && this.held(['ArrowUp', 'KeyW'], 'gas')) {
       this.speed = Util.accelerate(this.speed, this.maxSpeed / 12, dt);
       this.speed = Util.limit(this.speed, 0, this.maxSpeed * 1.06);
@@ -648,6 +702,17 @@ var Game = {
     this.finished = true;
     var pos = this.racePosition();
 
+    /* score the race into the championship */
+    var order = this.classification();
+    var season = this.loadSeason();
+    var earned = 0;
+    for (var i = 0; i < order.length; i++) {
+      var pts = this.POINTS[i] || 0;
+      season[order[i].name] = (season[order[i].name] || 0) + pts;
+      if (order[i].me) earned = pts;
+    }
+    this.saveSeason(season);
+
     document.getElementById('hud').classList.add('hidden');
     var results = document.getElementById('results');
     results.classList.remove('hidden');
@@ -658,6 +723,7 @@ var Game = {
     document.getElementById('result-headline').textContent =
       (pos === 1 ? 'RACE WIN' : pos <= 3 ? 'PODIUM' : 'CHEQUERED FLAG') +
       (this.newRecord ? ' · NEW LAP RECORD' : '');
+    this.renderStandings(earned);
     this.refreshRecords();
     Audio.stop();
   },

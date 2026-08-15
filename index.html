@@ -225,9 +225,24 @@
 
   #result-headline { font-size: 15px; letter-spacing: 0.3em; color: var(--muted); }
   #result-pos { font-size: 84px; font-weight: 800; line-height: 1.1; }
-  #result-track { font-size: 13px; letter-spacing: 0.24em; color: var(--muted); margin-bottom: 30px; }
+  #result-points { font-size: 16px; font-weight: 700; color: #b26bff; letter-spacing: 0.2em; min-height: 20px; }
+  #result-track { font-size: 13px; letter-spacing: 0.24em; color: var(--muted); margin-bottom: 24px; }
   .result-grid { display: flex; gap: 42px; }
   .result-grid .value { font-size: 26px; }
+
+  #standings { margin-top: 26px; width: 260px; }
+  #standings .label { text-align: center; margin-bottom: 8px; }
+  .standing {
+    display: flex; justify-content: space-between;
+    font-size: 13px; padding: 4px 10px; border-radius: 6px;
+    color: #b6bfc9; font-variant-numeric: tabular-nums;
+  }
+  .standing.me { background: rgba(226, 0, 15, 0.16); color: var(--text); font-weight: 700; }
+  #reset-season {
+    margin: 10px auto 0; display: block;
+    background: transparent; border: 1px solid var(--line); color: var(--muted);
+    font-size: 10px; letter-spacing: 0.14em; padding: 5px 12px; border-radius: 6px; cursor: pointer;
+  }
 
   @media (max-width: 720px) {
     .title { font-size: 38px; }
@@ -340,6 +355,42 @@
       <p>The Temple of Speed. Flat out for most of the lap, two chicanes to survive, and the Parabolica to bring it home.</p>
       <div class="record">BEST —</div>
     </div>
+    <div class="track-card" data-track="spa">
+      <h3>SPA</h3>
+      <div class="where">Spa-Francorchamps · 19 turns</div>
+      <p>The great old rollercoaster. Flat through Eau Rouge, commit at Pouhon, hold your breath at Blanchimont.</p>
+      <div class="record">BEST —</div>
+    </div>
+    <div class="track-card" data-track="interlagos">
+      <h3>INTERLAGOS</h3>
+      <div class="where">Jose Carlos Pace · 15 turns</div>
+      <p>Anticlockwise and relentless. The Senna S opens the lap, the climb out of Juncao decides it.</p>
+      <div class="record">BEST —</div>
+    </div>
+    <div class="track-card" data-track="bahrain">
+      <h3>BAHRAIN</h3>
+      <div class="where">Sakhir · 15 turns</div>
+      <p>Four straights and heavy braking, with nothing but desert waiting on every exit.</p>
+      <div class="record">BEST —</div>
+    </div>
+    <div class="track-card" data-track="singapore">
+      <h3>SINGAPORE</h3>
+      <div class="where">Marina Bay · 19 turns</div>
+      <p>A night race between the walls. Ninety-degree corners for two solid hours.</p>
+      <div class="record">BEST —</div>
+    </div>
+    <div class="track-card" data-track="cota">
+      <h3>COTA</h3>
+      <div class="where">Circuit of the Americas · 20 turns</div>
+      <p>Up the hill into T1, esses in the Silverstone mould, and a stadium section to finish.</p>
+      <div class="record">BEST —</div>
+    </div>
+    <div class="track-card" data-track="redbullring">
+      <h3>RED BULL RING</h3>
+      <div class="where">Spielberg · 10 turns</div>
+      <p>Three big straights and ten corners in the Styrian hills. Nowhere to hide.</p>
+      <div class="record">BEST —</div>
+    </div>
   </div>
 
   <div class="laps">
@@ -372,10 +423,16 @@
 <div id="results" class="overlay hidden">
   <div id="result-headline">CHEQUERED FLAG</div>
   <div id="result-pos">1st</div>
+  <div id="result-points"></div>
   <div id="result-track">MONACO</div>
   <div class="result-grid">
     <div><div class="label">Best lap</div><div class="value" id="result-best">--:--.---</div></div>
     <div><div class="label">Race time</div><div class="value" id="result-total">--:--.---</div></div>
+  </div>
+  <div id="standings">
+    <div class="label">Championship</div>
+    <div id="standings-rows"></div>
+    <button type="button" id="reset-season">RESET SEASON</button>
   </div>
   <button class="btn" id="again-btn">BACK TO GARAGE</button>
 </div>

@@ -370,7 +370,7 @@ var Render = {
     /* an F1 car is roughly a sixth of the road's width - with the
        road at its full grand-prix width, that is 0.15 of a half */
     var halfRoad = (scale * roadWidth * width) / 2;
-    var w = halfRoad * 0.15;          // half-width of the car in pixels
+    var w = halfRoad * 0.135;         // half-width of the car in pixels
     var h = w * 1.05;
     var x = destX;
     var y = destY - h;

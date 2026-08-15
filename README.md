@@ -4,9 +4,9 @@ A first-person cockpit F1 racer that runs in the browser. No build step, no
 dependencies, no image or audio assets — every pixel is drawn procedurally
 onto a single `<canvas>`.
 
-Four circuits, nine AI rivals, lap timing, DRS, slipstream, tyre wear with
-pit stops, a live track map, persistent lap records, and a halo you look
-through.
+Ten circuits, nine AI rivals, a persistent championship with F1 points,
+lap timing, DRS, slipstream, tyre wear with pit stops, a live track map,
+persistent lap records, and a halo you look through.
 
 ## Running it
 
@@ -77,7 +77,8 @@ whose cutoff tracks speed — that is the entire audio pipeline.
 
 ## Circuits
 
-`monaco`, `silverstone`, `suzuka` and `monza`. Corner sequences, directions and names
+`monaco`, `silverstone`, `suzuka`, `monza`, `spa`, `interlagos`, `bahrain`,
+`singapore`, `cota` and `redbullring`. Corner sequences, directions and names
 follow the real layouts turn by turn; radii and lap lengths are hand-tuned
 approximations tuned for how they drive, not survey data. The ribbon is kept
 level and the sky is a plain gradient, so nothing on screen competes with the
