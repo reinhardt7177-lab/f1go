@@ -75,9 +75,11 @@ whose cutoff tracks speed — that is the entire audio pipeline.
 
 ## Circuits
 
-`monaco`, `silverstone` and `suzuka`. Corner sequences and names follow the
-real layouts; radii, elevations and lap lengths are hand-tuned approximations
-tuned for how they drive, not survey data.
+`monaco`, `silverstone` and `suzuka`. Corner sequences, directions and names
+follow the real layouts turn by turn; radii and lap lengths are hand-tuned
+approximations tuned for how they drive, not survey data. The ribbon is kept
+level and the sky is a plain gradient, so nothing on screen competes with the
+circuit itself.
 
 Adding one means adding a builder to `js/tracks.js` and a card to the menu:
 
@@ -85,7 +87,7 @@ Adding one means adding a builder to `js/tracks.js` and a card to the menu:
 function buildInterlagos() {
   var b = new TrackBuilder(THEMES.silverstone);
   b.straight('START / FINISH', LEN.MEDIUM);
-  b.at('T1 SENNA S', LEN.SHORT, LEN.SHORT, LEN.SHORT, -CRV.HARD, -HIL.MEDIUM);
+  b.at('T1 SENNA S', LEN.SHORT, LEN.SHORT, LEN.SHORT, -CRV.HARD);
   b.esses('T3 CURVA DO SOL', LEN.TINY, CRV.MEDIUM);
   // ...
   return b.finish();

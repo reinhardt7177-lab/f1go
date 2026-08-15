@@ -11,7 +11,7 @@ var Game = {
   drawDistance: 260,
   fieldOfView: 105,
   cameraHeight: 950,          // eye level in the cockpit
-  centrifugal: 0.32,          // how hard corners push you wide
+  centrifugal: 0.25,          // how hard corners push you wide
   offRoadLimit: 0.24,         // fraction of top speed you keep off track
 
   /* --- runtime state --------------------------------------------- */
@@ -229,7 +229,10 @@ var Game = {
 
     var playerSeg = this.findSegment(this.position + this.playerZ);
     var speedPercent = this.speed / this.maxSpeed;
-    var dx = dt * 2.2 * speedPercent;
+    /* lateral authority: at top speed the car needs well over half a
+       second to cross half the road, so it tracks straight instead of
+       darting between the kerbs */
+    var dx = dt * 1.6 * speedPercent;
     var startPosition = this.position;
 
     this.raceTime += dt;
@@ -240,7 +243,11 @@ var Game = {
     var target = 0;
     if (this.held(['ArrowLeft', 'KeyA'], 'left')) target = -1;
     if (this.held(['ArrowRight', 'KeyD'], 'right')) target = 1;
-    this.steerInput += (target - this.steerInput) * Math.min(1, dt * 9);
+    /* Progressive turn-in (~0.4s to full lock) and a quicker return
+       to centre: a tap nudges the car, holding leans it into lock,
+       and letting go straightens it out - weight, not twitch. */
+    var steerRate = target === 0 ? 8 : 5.5;
+    this.steerInput += (target - this.steerInput) * Math.min(1, dt * steerRate);
     this.playerX += dx * this.steerInput;
 
     /* --- throttle and brakes ------------------------------------- */
@@ -263,7 +270,7 @@ var Game = {
     var corneringLimit = this.grip * 1.9 / (Math.abs(playerSeg.curve) + 1.15);
     if (speedPercent > corneringLimit && Math.abs(playerSeg.curve) > 1) {
       this.speed = Util.accelerate(this.speed, -this.maxSpeed / 2.2, dt);
-      this.playerX += dx * playerSeg.curve * 0.35;
+      this.playerX += dx * playerSeg.curve * 0.25;
     }
 
     /* --- leaving the circuit ------------------------------------- */
@@ -307,8 +314,10 @@ var Game = {
     /* --- drivetrain feel ----------------------------------------- */
     this.updateGears(speedPercent);
 
-    /* --- camera shake -------------------------------------------- */
-    var shake = speedPercent * (this.offTrack ? 9 : 2.2);
+    /* --- camera shake: kerbs and contact only --------------------- */
+    /* No constant bob on clean tarmac. A modern F1 car rides flat,
+       and the permanent up-down wobble read as noise, not speed. */
+    var shake = this.offTrack ? speedPercent * 8 : 0;
     this.bumpImpulse = (this.bumpImpulse || 0) * 0.88;
     this.bump = Math.sin(this.raceTime * 34) * shake + this.bumpImpulse;
 
@@ -366,8 +375,9 @@ var Game = {
   checkCarCollisions: function (playerSeg, dx) {
     for (var i = 0; i < playerSeg.cars.length; i++) {
       var car = playerSeg.cars[i];
+      /* widths in road units, matching the slimmer car-to-road ratio */
       if (this.speed > this.maxSpeed * car.pace * 0.6 &&
-          Util.overlap(this.playerX, 0.5, car.offset, 0.6, 0.8)) {
+          Util.overlap(this.playerX, 0.4, car.offset, 0.45, 0.8)) {
         this.speed = this.maxSpeed * car.pace * 0.55;
         this.position = Util.increase(car.z, -this.playerZ, this.trackLength);
         this.playerX += this.playerX > car.offset ? 0.14 : -0.14;
@@ -457,10 +467,7 @@ var Game = {
     var dx = -(baseSegment.curve * basePercent);
     var i, segment;
 
-    /* horizon pitches with the road's gradient */
-    var horizonShift = Util.limit((playerSegment.curve * 0) + (this.bump || 0), -60, 60);
-    Render.background(ctx, width, height, this.theme, this.backgroundOffset || 0, horizonShift * 0.5);
-    this.backgroundOffset = (this.backgroundOffset || 0) - baseSegment.curve * (this.speed / this.maxSpeed) * 4;
+    Render.background(ctx, width, height, this.theme);
 
     /* --- the road, painted front to back ------------------------- */
     for (i = 0; i < this.drawDistance; i++) {

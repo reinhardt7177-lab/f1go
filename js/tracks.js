@@ -2,23 +2,24 @@
    tracks.js - circuit geometry
 
    A circuit is a flat list of segments. Each segment carries a curve
-   (how much the road bends to the right, negative = left) and a world
-   height, so the whole layout is a 1D ribbon: exactly what the
-   pseudo-3D renderer needs.
+   (how much the road bends to the right, negative = left), so the
+   whole layout is a 1D ribbon: exactly what the pseudo-3D renderer
+   needs. The ribbon is kept level - no artificial hills bobbing the
+   horizon - so the corner sequence alone carries the lap.
 
-   Corner sequences and their names follow the real circuits; the radii
-   and elevations are hand-tuned approximations, not survey data.
+   Corner order and direction follow the real circuits turn by turn;
+   radii are tuned so each corner asks for roughly the real entry
+   speed: flat-out kinks stay flat, hairpins crawl.
    ------------------------------------------------------------------ */
 'use strict';
 
 var SEGMENT_LENGTH = 200;   // world units per segment
 var RUMBLE_LENGTH = 3;      // segments per rumble-strip stripe
-var ROAD_WIDTH = 2000;      // half-width of the road in world units
+var ROAD_WIDTH = 2700;      // half-width of the road in world units
 var LANES = 3;
 
 var LEN = { NONE: 0, TINY: 12, SHORT: 25, MEDIUM: 50, LONG: 100, HUGE: 160 };
-var CRV = { NONE: 0, EASY: 2, MEDIUM: 4, HARD: 6, TIGHT: 8, HAIRPIN: 11 };
-var HIL = { NONE: 0, LOW: 20, MEDIUM: 40, HIGH: 60, ALP: 90 };
+var CRV = { NONE: 0, KINK: 1, EASY: 2, MEDIUM: 4, HARD: 6, TIGHT: 8, HAIRPIN: 11 };
 
 /* ------------------------------------------------------------------ */
 
@@ -86,8 +87,8 @@ TrackBuilder.prototype.esses = function (name, len, curve, y) {
 };
 
 /* ------------------------------------------------------------------
-   Scenery. Everything is drawn procedurally - the repository ships no
-   image assets at all.
+   Trackside objects. Only what belongs at a race circuit: the start
+   gantry, grandstands, advertising hoardings and braking boards.
    ------------------------------------------------------------------ */
 TrackBuilder.prototype.addSprite = function (index, type, offset) {
   if (index >= 0 && index < this.segments.length) {
@@ -120,12 +121,12 @@ TrackBuilder.prototype.finish = function () {
 };
 
 /* ------------------------------------------------------------------
-   Themes - colour palettes, barrier style and background type
+   Themes - colour palettes and barrier style. The sky is a plain
+   gradient: no skyline, no props, nothing to distract from the road.
    ------------------------------------------------------------------ */
 var THEMES = {
   monaco: {
     sky: ['#1b3f6b', '#4d86bd', '#a8cbe4'],
-    background: 'city',
     haze: '#a8cbe4',
     grass: ['#4a4d53', '#44474d'],      // Monaco has no run-off, just tarmac
     road: ['#3b3d42', '#37393e'],
@@ -137,7 +138,6 @@ var THEMES = {
   },
   silverstone: {
     sky: ['#5c6d80', '#8ea2b5', '#cfd8de'],
-    background: 'hills',
     haze: '#cfd8de',
     grass: ['#3f6b3a', '#3a6335'],
     road: ['#41444a', '#3d4046'],
@@ -149,7 +149,6 @@ var THEMES = {
   },
   suzuka: {
     sky: ['#123a52', '#3f7fa6', '#bfe0ea'],
-    background: 'hills',
     haze: '#bfe0ea',
     grass: ['#3c6b45', '#376340'],
     road: ['#3e4147', '#3a3d43'],
@@ -162,95 +161,106 @@ var THEMES = {
 };
 
 /* ------------------------------------------------------------------
-   Circuit de Monaco - 19 corners, clockwise, uphill to Casino and back
-   down through the tunnel. Walls everywhere, no room for mistakes.
+   Circuit de Monaco - 19 corners, clockwise. Turn by turn:
+   Sainte Devote (R), Beau Rivage kink (L), Massenet (L), Casino (R),
+   Mirabeau (R), the Grand Hotel hairpin (L - the real one turns
+   left), Mirabeau Bas (R), Portier (R), the tunnel's long right,
+   Nouvelle Chicane (L-R), Tabac (L), Swimming Pool (L-R), Piscine
+   exit (R-L), Rascasse (R), Anthony Noghes (R).
    ------------------------------------------------------------------ */
 function buildMonaco() {
   var b = new TrackBuilder(THEMES.monaco);
 
   b.straight('START / FINISH', LEN.MEDIUM);
   b.at('T1 SAINTE DEVOTE', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.TIGHT);
-  b.at('BEAU RIVAGE', LEN.MEDIUM, LEN.MEDIUM, LEN.SHORT, -CRV.EASY, HIL.HIGH);
-  b.at('T3 MASSENET', LEN.SHORT, LEN.MEDIUM, LEN.SHORT, -CRV.MEDIUM, HIL.LOW);
+  b.at('BEAU RIVAGE', LEN.MEDIUM, LEN.MEDIUM, LEN.SHORT, -CRV.KINK);
+  b.at('T3 MASSENET', LEN.SHORT, LEN.MEDIUM, LEN.SHORT, -CRV.MEDIUM);
   b.at('T4 CASINO', LEN.TINY, LEN.SHORT, LEN.SHORT, CRV.MEDIUM);
-  b.at('T5 MIRABEAU', LEN.TINY, LEN.TINY, LEN.TINY, CRV.HARD, -HIL.LOW);
-  b.at('T6 GRAND HOTEL HAIRPIN', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.HAIRPIN, -HIL.MEDIUM);
-  b.at('T8 PORTIER', LEN.TINY, LEN.TINY, LEN.TINY, CRV.HARD, -HIL.LOW);
-  b.at('TUNNEL', LEN.SHORT, LEN.LONG, LEN.MEDIUM, CRV.EASY);
-  b.at('T10 NOUVELLE CHICANE', LEN.TINY, LEN.TINY, LEN.TINY, CRV.TIGHT);
-  b.at('T11 NOUVELLE CHICANE', LEN.TINY, LEN.TINY, LEN.TINY, -CRV.TIGHT);
+  b.at('T5 MIRABEAU', LEN.TINY, LEN.TINY, LEN.TINY, CRV.HARD);
+  b.at('T6 GRAND HOTEL HAIRPIN', LEN.TINY, LEN.SHORT, LEN.TINY, -CRV.HAIRPIN);
+  b.at('T7 MIRABEAU BAS', LEN.TINY, LEN.TINY, LEN.TINY, CRV.HARD);
+  b.at('T8 PORTIER', LEN.TINY, LEN.TINY, LEN.TINY, CRV.HARD);
+  b.at('TUNNEL', LEN.SHORT, LEN.LONG, LEN.MEDIUM, CRV.KINK);
+  b.at('T10 NOUVELLE CHICANE', LEN.TINY, LEN.TINY, LEN.TINY, -CRV.TIGHT);
+  b.at('T11 NOUVELLE CHICANE', LEN.TINY, LEN.TINY, LEN.TINY, CRV.TIGHT);
   b.at('T12 TABAC', LEN.TINY, LEN.SHORT, LEN.TINY, -CRV.HARD);
-  b.esses('SWIMMING POOL', LEN.TINY, CRV.HARD);
-  b.esses('LOUIS CHIRON', LEN.TINY, -CRV.TIGHT);
+  b.esses('T13-14 SWIMMING POOL', LEN.TINY, -CRV.HARD);
+  b.esses('T15-16 PISCINE', LEN.TINY, CRV.TIGHT);
   b.at('T17 LA RASCASSE', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.HAIRPIN);
   b.at('T19 ANTHONY NOGHES', LEN.TINY, LEN.SHORT, LEN.SHORT, CRV.HARD);
   b.straight('START / FINISH', LEN.SHORT);
 
-  b.scatter(['palm', 'building', 'building', 'yacht'], 16, 1.7, 3.4);
   b.grandstands(30, 90, -1);
   return b.finish();
 }
 
 /* ------------------------------------------------------------------
-   Silverstone - fast, open, and defined by Maggotts-Becketts-Chapel
+   Silverstone - clockwise. Abbey and Copse are flat-out rights, the
+   Maggotts-Becketts-Chapel sweep is the classic left-right-left-
+   right-left, and Hangar Straight runs down to Stowe.
    ------------------------------------------------------------------ */
 function buildSilverstone() {
   var b = new TrackBuilder(THEMES.silverstone);
 
   b.straight('START / FINISH', LEN.MEDIUM);
-  b.at('T1 ABBEY', LEN.SHORT, LEN.SHORT, LEN.SHORT, CRV.MEDIUM);
-  b.at('T2 FARM CURVE', LEN.SHORT, LEN.MEDIUM, LEN.SHORT, -CRV.EASY, HIL.LOW);
-  b.at('T3 VILLAGE', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.HAIRPIN);
+  b.at('T1 ABBEY', LEN.SHORT, LEN.SHORT, LEN.SHORT, CRV.EASY);
+  b.at('T2 FARM CURVE', LEN.SHORT, LEN.MEDIUM, LEN.SHORT, -CRV.EASY);
+  b.at('T3 VILLAGE', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.TIGHT);
   b.at('T4 THE LOOP', LEN.TINY, LEN.SHORT, LEN.TINY, -CRV.TIGHT);
   b.at('T5 AINTREE', LEN.SHORT, LEN.SHORT, LEN.SHORT, -CRV.EASY);
   b.straight('WELLINGTON STRAIGHT', LEN.LONG);
-  b.at('T6 BROOKLANDS', LEN.SHORT, LEN.SHORT, LEN.SHORT, -CRV.HARD);
+  b.at('T6 BROOKLANDS', LEN.SHORT, LEN.SHORT, LEN.SHORT, -CRV.MEDIUM);
   b.at('T7 LUFFIELD', LEN.SHORT, LEN.LONG, LEN.SHORT, CRV.TIGHT);
-  b.at('T9 WOODCOTE', LEN.SHORT, LEN.SHORT, LEN.SHORT, CRV.EASY);
+  b.at('T8 WOODCOTE', LEN.SHORT, LEN.SHORT, LEN.SHORT, CRV.EASY);
   b.straight('NATIONAL PIT STRAIGHT', LEN.MEDIUM);
-  b.at('T9 COPSE', LEN.SHORT, LEN.MEDIUM, LEN.SHORT, CRV.MEDIUM, HIL.LOW);
-  b.at('T10 MAGGOTTS', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.HARD);
-  b.esses('BECKETTS', LEN.TINY, -CRV.HARD);
-  b.at('T13 CHAPEL', LEN.SHORT, LEN.SHORT, LEN.SHORT, -CRV.MEDIUM, -HIL.LOW);
-  b.straight('HANGAR STRAIGHT', LEN.LONG);
-  b.at('T15 STOWE', LEN.SHORT, LEN.MEDIUM, LEN.SHORT, CRV.HARD);
-  b.at('T16 VALE', LEN.TINY, LEN.TINY, LEN.TINY, -CRV.TIGHT, -HIL.LOW);
-  b.at('T18 CLUB', LEN.SHORT, LEN.MEDIUM, LEN.MEDIUM, CRV.MEDIUM, HIL.LOW);
+  b.at('T9 COPSE', LEN.SHORT, LEN.MEDIUM, LEN.SHORT, CRV.EASY);
+  b.at('T10 MAGGOTTS', LEN.TINY, LEN.SHORT, LEN.TINY, -CRV.EASY);
+  b.at('T11 BECKETTS', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.EASY);
+  b.at('T12 BECKETTS', LEN.TINY, LEN.SHORT, LEN.TINY, -CRV.MEDIUM);
+  b.at('T13 BECKETTS', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.MEDIUM);
+  b.at('T14 CHAPEL', LEN.SHORT, LEN.SHORT, LEN.SHORT, -CRV.EASY);
+  b.straight('HANGAR STRAIGHT', LEN.HUGE);
+  b.at('T15 STOWE', LEN.SHORT, LEN.MEDIUM, LEN.SHORT, CRV.MEDIUM);
+  b.at('T16 VALE', LEN.TINY, LEN.TINY, LEN.TINY, -CRV.TIGHT);
+  b.at('T17-18 CLUB', LEN.SHORT, LEN.MEDIUM, LEN.MEDIUM, CRV.MEDIUM);
   b.straight('START / FINISH', LEN.MEDIUM);
 
-  b.scatter(['tree', 'tree', 'tree', 'billboard'], 10, 1.4, 3.2);
+  b.scatter(['billboard'], 26, 1.6, 2.6);
   b.grandstands(20, 70, -1);
   b.grandstands(20, 70, 1);
   return b.finish();
 }
 
 /* ------------------------------------------------------------------
-   Suzuka - the Esses, Degner, the hairpin, Spoon, 130R, the chicane
+   Suzuka - the S curves flow left-right-left-right into Dunlop,
+   Degner 1 and 2 are both rights, the hairpin is a left, Spoon is a
+   double left, and 130R is a single flat-out left before the Casio
+   Triangle chicane.
    ------------------------------------------------------------------ */
 function buildSuzuka() {
   var b = new TrackBuilder(THEMES.suzuka);
 
   b.straight('START / FINISH', LEN.LONG);
-  b.at('T1-2 FIRST CURVE', LEN.SHORT, LEN.MEDIUM, LEN.SHORT, CRV.MEDIUM, HIL.MEDIUM);
-  b.esses('S CURVES', LEN.TINY, -CRV.HARD, HIL.LOW);
-  b.esses('S CURVES', LEN.TINY, -CRV.HARD);
-  b.at('T7 DUNLOP', LEN.SHORT, LEN.MEDIUM, LEN.SHORT, -CRV.MEDIUM, HIL.LOW);
-  b.at('T8 DEGNER 1', LEN.TINY, LEN.TINY, LEN.TINY, CRV.HARD, -HIL.MEDIUM);
-  b.at('T9 DEGNER 2', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.TIGHT, -HIL.LOW);
+  b.at('T1-2 FIRST CURVE', LEN.SHORT, LEN.MEDIUM, LEN.SHORT, CRV.EASY);
+  b.esses('T3-4 S CURVES', LEN.TINY, -CRV.EASY);
+  b.esses('T5-6 S CURVES', LEN.TINY, -CRV.EASY);
+  b.at('T7 DUNLOP', LEN.SHORT, LEN.MEDIUM, LEN.SHORT, -CRV.MEDIUM);
+  b.at('T8 DEGNER 1', LEN.TINY, LEN.TINY, LEN.TINY, CRV.MEDIUM);
+  b.at('T9 DEGNER 2', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.HARD);
   b.straight('CROSSOVER', LEN.SHORT);
   b.at('T11 HAIRPIN', LEN.TINY, LEN.SHORT, LEN.TINY, -CRV.HAIRPIN);
-  b.at('T12-13 200R', LEN.MEDIUM, LEN.LONG, LEN.MEDIUM, CRV.EASY, HIL.LOW);
-  b.at('T14 SPOON', LEN.SHORT, LEN.MEDIUM, LEN.TINY, -CRV.HARD);
-  b.at('T15 SPOON', LEN.TINY, LEN.MEDIUM, LEN.SHORT, -CRV.TIGHT, -HIL.LOW);
+  b.at('T12-13 200R', LEN.MEDIUM, LEN.LONG, LEN.MEDIUM, CRV.EASY);
+  b.at('T14 SPOON', LEN.SHORT, LEN.MEDIUM, LEN.TINY, -CRV.MEDIUM);
+  b.at('T15 SPOON', LEN.TINY, LEN.MEDIUM, LEN.SHORT, -CRV.HARD);
   b.straight('BACK STRAIGHT', LEN.HUGE);
-  b.at('T15 130R', LEN.SHORT, LEN.MEDIUM, LEN.SHORT, -CRV.MEDIUM);
+  b.at('T15 130R', LEN.SHORT, LEN.MEDIUM, LEN.SHORT, -CRV.KINK);
   b.straight('CASIO TRIANGLE', LEN.SHORT);
   b.at('T16 CHICANE', LEN.TINY, LEN.TINY, LEN.TINY, CRV.TIGHT);
   b.at('T17 CHICANE', LEN.TINY, LEN.TINY, LEN.TINY, -CRV.TIGHT);
   b.at('T18 FINAL CORNER', LEN.SHORT, LEN.MEDIUM, LEN.MEDIUM, CRV.MEDIUM);
   b.straight('START / FINISH', LEN.MEDIUM);
 
-  b.scatter(['tree', 'tree', 'ferris', 'billboard'], 11, 1.4, 3.0);
+  b.scatter(['billboard'], 26, 1.6, 2.6);
   b.grandstands(25, 80, -1);
   return b.finish();
 }
