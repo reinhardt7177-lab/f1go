@@ -51,6 +51,10 @@ var Render = {
     Render.polygon(ctx, x1 - w1 * 0.34, y1, x1 + w1 * 0.34, y1, x2 + w2 * 0.34, y2, x2 - w2 * 0.34, y2, 'rgba(0,0,0,0.07)');
     Render.polygon(ctx, x1 - w1 * 0.16, y1, x1 + w1 * 0.16, y1, x2 + w2 * 0.16, y2, x2 - w2 * 0.16, y2, 'rgba(0,0,0,0.06)');
 
+    /* continuous white track-limit lines just inside the kerbs */
+    Render.polygon(ctx, x1 - w1 * 0.985, y1, x1 - w1 * 0.935, y1, x2 - w2 * 0.935, y2, x2 - w2 * 0.985, y2, 'rgba(240,242,245,0.8)');
+    Render.polygon(ctx, x1 + w1 * 0.935, y1, x1 + w1 * 0.985, y1, x2 + w2 * 0.985, y2, x2 + w2 * 0.935, y2, 'rgba(240,242,245,0.8)');
+
     /* No lane markings: a grand prix circuit is one unbroken ribbon
        of tarmac, not a motorway. */
 
@@ -65,29 +69,27 @@ var Render = {
     }
 
     if (theme.walls) {
-      var h1 = w1 * 0.42;
-      var h2 = w2 * 0.42;
-      var wc = theme.wallColor[i];
-      var cap1 = h1 * 0.18;
-      var cap2 = h2 * 0.18;
+      /* One continuous barrier, the way a street circuit reads: a
+         light face, a red accent band along the top, and no per-stripe
+         colour changes or dark caps - those broke the wall into
+         floating slabs once the haze ate the light faces. */
+      var h1 = w1 * 0.36;
+      var h2 = w2 * 0.36;
+      var wc = theme.wallColor[0];
+      var band1 = h1 * 0.16;
+      var band2 = h2 * 0.16;
       var lx1 = x1 - w1 - r1, lx2 = x2 - w2 - r2;
       var rx1 = x1 + w1 + r1, rx2 = x2 + w2 + r2;
 
       Render.polygon(ctx, lx1, y1, lx1, y1 - h1, lx2, y2 - h2, lx2, y2, wc);
+      Render.polygon(ctx, lx1, y1, lx1, y1 - h1 * 0.45, lx2, y2 - h2 * 0.45, lx2, y2, 'rgba(0,0,0,0.10)');
+      Render.polygon(ctx, lx1, y1 - h1, lx1, y1 - h1 + band1, lx2, y2 - h2 + band2, lx2, y2 - h2, '#d43c3c');
+
       /* the right wall steps aside where the pit lane runs */
       if (!seg.pit) {
         Render.polygon(ctx, rx1, y1, rx1, y1 - h1, rx2, y2 - h2, rx2, y2, wc);
-      }
-
-      /* shade the lower half so the face reads as a solid barrier */
-      Render.polygon(ctx, lx1, y1, lx1, y1 - h1 * 0.5, lx2, y2 - h2 * 0.5, lx2, y2, 'rgba(0,0,0,0.14)');
-
-      /* dark rail along the top of the barrier so it reads as Armco */
-      var rail = seg.dark ? '#343b44' : '#2d343d';
-      Render.polygon(ctx, lx1, y1 - h1, lx1, y1 - h1 + cap1, lx2, y2 - h2 + cap2, lx2, y2 - h2, rail);
-      if (!seg.pit) {
-        Render.polygon(ctx, rx1, y1, rx1, y1 - h1 * 0.5, rx2, y2 - h2 * 0.5, rx2, y2, 'rgba(0,0,0,0.14)');
-        Render.polygon(ctx, rx1, y1 - h1, rx1, y1 - h1 + cap1, rx2, y2 - h2 + cap2, rx2, y2 - h2, rail);
+        Render.polygon(ctx, rx1, y1, rx1, y1 - h1 * 0.45, rx2, y2 - h2 * 0.45, rx2, y2, 'rgba(0,0,0,0.10)');
+        Render.polygon(ctx, rx1, y1 - h1, rx1, y1 - h1 + band1, rx2, y2 - h2 + band2, rx2, y2 - h2, '#d43c3c');
       }
     }
 
@@ -102,6 +104,15 @@ var Render = {
   rgba: function (hex, a) {
     var n = parseInt(hex.slice(1), 16);
     return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + a + ')';
+  },
+
+  /* a darker (f<1) or lighter (f>1) version of a '#rrggbb' colour */
+  shade: function (hex, f) {
+    var n = parseInt(hex.slice(1), 16);
+    return 'rgb(' +
+      Math.min(255, Math.round((n >> 16 & 255) * f)) + ',' +
+      Math.min(255, Math.round((n >> 8 & 255) * f)) + ',' +
+      Math.min(255, Math.round((n & 255) * f)) + ')';
   },
 
   /* ----------------------------------------------------------------
@@ -385,81 +396,83 @@ var Render = {
       ctx.clip();
     }
 
+    var dark = Render.shade(color, 0.62);
+
     /* shadow */
     ctx.fillStyle = 'rgba(0,0,0,0.32)';
     ctx.beginPath();
-    ctx.ellipse(x, y + h * 0.97, w * 0.66, h * 0.09, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, y + h * 0.97, w * 0.70, h * 0.09, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    /* floor and diffuser, with strakes */
+    /* floor and diffuser: a wide dark base under everything */
     ctx.fillStyle = '#0c0e11';
-    ctx.fillRect(x - w * 0.60, y + h * 0.82, w * 1.20, h * 0.13);
+    ctx.fillRect(x - w * 0.56, y + h * 0.84, w * 1.12, h * 0.12);
     ctx.fillStyle = '#20242a';
     for (var d = -1; d <= 1; d++) {
-      ctx.fillRect(x + d * w * 0.20 - w * 0.02, y + h * 0.83, w * 0.04, h * 0.12);
+      ctx.fillRect(x + d * w * 0.18 - w * 0.02, y + h * 0.85, w * 0.04, h * 0.11);
     }
 
-    /* rear tyres, compound band on the sidewall */
-    ctx.fillStyle = '#16181c';
-    ctx.fillRect(x - w * 0.60, y + h * 0.40, w * 0.26, h * 0.55);
-    ctx.fillRect(x + w * 0.34, y + h * 0.40, w * 0.26, h * 0.55);
+    /* rear tyres: big, and clearly OUTSIDE the bodywork - the open
+       wheels are what makes the silhouette read as a formula car */
+    ctx.fillStyle = '#101317';
+    ctx.fillRect(x - w * 0.66, y + h * 0.36, w * 0.29, h * 0.60);
+    ctx.fillRect(x + w * 0.37, y + h * 0.36, w * 0.29, h * 0.60);
     if (tyreColor && h > 10) {
       ctx.fillStyle = tyreColor;
-      ctx.fillRect(x - w * 0.60, y + h * 0.47, w * 0.26, h * 0.05);
-      ctx.fillRect(x + w * 0.34, y + h * 0.47, w * 0.26, h * 0.05);
+      ctx.fillRect(x - w * 0.66, y + h * 0.44, w * 0.29, h * 0.05);
+      ctx.fillRect(x + w * 0.37, y + h * 0.44, w * 0.29, h * 0.05);
     }
 
-    /* body between the tyres, top edge leaning with perspective */
+    /* sidepod shoulders: low slabs in the shaded team colour */
+    ctx.fillStyle = dark;
+    ctx.fillRect(x - w * 0.37, y + h * 0.58, w * 0.30, h * 0.28);
+    ctx.fillRect(x + w * 0.07, y + h * 0.58, w * 0.30, h * 0.28);
+
+    /* engine cover: a narrow bright spine between the sidepods */
     ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.moveTo(x - w * 0.32, y + h * 0.93);
-    ctx.lineTo(x + w * 0.32, y + h * 0.93);
-    ctx.lineTo(x + w * 0.20 + s6, y + h * 0.38);
-    ctx.lineTo(x - w * 0.20 + s6, y + h * 0.38);
+    ctx.moveTo(x - w * 0.16, y + h * 0.86);
+    ctx.lineTo(x + w * 0.16, y + h * 0.86);
+    ctx.lineTo(x + w * 0.09 + s6, y + h * 0.30);
+    ctx.lineTo(x - w * 0.09 + s6, y + h * 0.30);
     ctx.closePath();
     ctx.fill();
 
     /* the flank facing away from centre falls into shade */
     if (p && h > 6) {
-      ctx.fillStyle = 'rgba(0,0,0,' + (Math.abs(p) * 0.28).toFixed(3) + ')';
-      ctx.beginPath();
+      ctx.fillStyle = 'rgba(0,0,0,' + (Math.abs(p) * 0.30).toFixed(3) + ')';
       if (p > 0) {
-        ctx.moveTo(x + w * 0.32, y + h * 0.93);
-        ctx.lineTo(x + w * 0.20 + s6, y + h * 0.38);
-        ctx.lineTo(x + w * 0.06 + s6, y + h * 0.38);
-        ctx.lineTo(x + w * 0.14, y + h * 0.93);
+        ctx.fillRect(x + w * 0.07, y + h * 0.58, w * 0.30, h * 0.28);
       } else {
-        ctx.moveTo(x - w * 0.32, y + h * 0.93);
-        ctx.lineTo(x - w * 0.20 + s6, y + h * 0.38);
-        ctx.lineTo(x - w * 0.06 + s6, y + h * 0.38);
-        ctx.lineTo(x - w * 0.14, y + h * 0.93);
+        ctx.fillRect(x - w * 0.37, y + h * 0.58, w * 0.30, h * 0.28);
       }
-      ctx.closePath();
-      ctx.fill();
     }
 
-    /* halo over the cockpit, shark fin behind it */
+    /* shark fin, then the halo hooped over the cockpit */
+    ctx.fillStyle = '#1a1e24';
+    ctx.fillRect(x - w * 0.025 + s * 0.7, y + h * 0.12, w * 0.05, h * 0.24);
     if (h > 8) {
       ctx.strokeStyle = '#111418';
-      ctx.lineWidth = Math.max(1, w * 0.07);
+      ctx.lineWidth = Math.max(1, w * 0.075);
       ctx.beginPath();
-      ctx.arc(x + s * 0.8, y + h * 0.40, w * 0.18, Math.PI, 0);
+      ctx.arc(x + s * 0.8, y + h * 0.42, w * 0.20, Math.PI, 0);
       ctx.stroke();
     }
-    ctx.fillStyle = '#1a1e24';
-    ctx.fillRect(x - w * 0.025 + s * 0.7, y + h * 0.14, w * 0.05, h * 0.26);
 
-    /* rear wing: main plane on the pylon, endplates outside */
-    ctx.fillStyle = color;
-    ctx.fillRect(x - w * 0.44 + s, y + h * 0.06, w * 0.88, h * 0.11);
+    /* rear wing held high: dark flap over the coloured main plane,
+       endplates dropping well below it */
     ctx.fillStyle = '#191d22';
-    ctx.fillRect(x - w * 0.44 + s, y + h * 0.01, w * 0.88, h * 0.045);
-    ctx.fillRect(x - w * 0.49 + s, y, w * 0.06, h * 0.24);
-    ctx.fillRect(x + w * 0.43 + s, y, w * 0.06, h * 0.24);
+    ctx.fillRect(x - w * 0.52 + s, y, w * 0.075, h * 0.30);
+    ctx.fillRect(x + w * 0.445 + s, y, w * 0.075, h * 0.30);
+    ctx.fillRect(x - w * 0.47 + s, y + h * 0.005, w * 0.94, h * 0.04);
+    ctx.fillStyle = color;
+    ctx.fillRect(x - w * 0.47 + s, y + h * 0.055, w * 0.94, h * 0.095);
 
-    /* rain light down the pylon */
+    /* wing pylon with the rain light */
+    ctx.fillStyle = '#14171b';
+    ctx.fillRect(x - w * 0.03 + s * 0.9, y + h * 0.15, w * 0.06, h * 0.18);
     ctx.fillStyle = '#ff2a2a';
-    ctx.fillRect(x - w * 0.035 + s * 0.75, y + h * 0.44, w * 0.07, h * 0.10);
+    ctx.fillRect(x - w * 0.035 + s * 0.85, y + h * 0.20, w * 0.07, h * 0.09);
 
     ctx.restore();
   },

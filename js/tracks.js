@@ -144,7 +144,7 @@ var THEMES = {
     rumble: ['#d92b2b', '#f4f4f4'],
     lane: '#f0f0f0',
     walls: true,
-    wallColor: ['#eceef1', '#cdd1d6'],
+    wallColor: ['#dfe3e8', '#dfe3e8'],
     fogDensity: 4
   },
   silverstone: {
