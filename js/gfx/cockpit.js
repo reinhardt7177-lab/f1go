@@ -62,6 +62,53 @@ const makeTyreGeometry = (radius, width) => {
   return g;
 };
 
+/**
+ * The wheel behind the tyre: brake disc, rim face and spokes.
+ *
+ * This exists for one reason — a plain black cylinder spinning is
+ * indistinguishable from a plain black cylinder standing still. There
+ * has to be something asymmetric on the wheel or the rotation the code
+ * is applying is invisible, which is exactly how the first version
+ * looked. Spokes and a bright wheel nut give the eye something to
+ * track.
+ */
+const makeRimGeometry = (radius, width) => {
+  const parts = [];
+
+  /* Brake disc, inboard of the rim and slightly smaller. */
+  const disc = new THREE.CylinderGeometry(radius * 0.62, radius * 0.62, width * 0.18, 14);
+  disc.rotateZ(Math.PI / 2);
+  parts.push(disc);
+
+  /* Rim barrel. */
+  const barrel = new THREE.CylinderGeometry(radius * 0.66, radius * 0.66, width * 0.9, 14);
+  barrel.rotateZ(Math.PI / 2);
+  parts.push(barrel);
+
+  /* Five spokes across the outboard face. */
+  for (let i = 0; i < 5; i++) {
+    const spoke = new THREE.BoxGeometry(width * 0.14, radius * 1.15, radius * 0.16);
+    spoke.rotateX(Math.PI / 2);
+    spoke.rotateX(0);
+    /* Rotate about the axle (X) to fan them out. */
+    const m = new THREE.Matrix4().makeRotationX((i / 5) * Math.PI * 2);
+    spoke.applyMatrix4(m);
+    spoke.translate(width * 0.46, 0, 0);
+    parts.push(spoke);
+  }
+
+  /* Centre nut — the single brightest thing on the wheel, and the
+     easiest for the eye to follow round. */
+  const nut = new THREE.CylinderGeometry(radius * 0.12, radius * 0.12, width * 0.24, 6);
+  nut.rotateZ(Math.PI / 2);
+  nut.translate(width * 0.52, 0, 0);
+  parts.push(nut);
+
+  const g = mergeGeometries(parts, false);
+  parts.forEach((p) => p.dispose());
+  return g;
+};
+
 export class PlayerCockpit {
   constructor(camera, accentColor) {
     this.group = new THREE.Group();
@@ -135,25 +182,28 @@ export class PlayerCockpit {
     const bodyParts = [];
     const carbonParts = [];
 
-    /* Nose, in three steps so it visibly tapers toward the wing. */
-    const n1 = new THREE.BoxGeometry(0.44, 0.15, 0.95);
-    n1.translate(0, ROAD + 0.44, -1.62);
+    /* The tub, then the nose tapering away from it.
+
+       These used to be separate slabs with air between them, which is
+       what made the bonnet look unfinished: from the seat you see the
+       gaps end-on and the car reads as parts rather than a shape. Each
+       piece now starts inside the one behind it, so the silhouette is
+       continuous however the light falls on it. */
+    const tub = new THREE.BoxGeometry(0.94, 0.22, 1.00);
+    tub.translate(0, ROAD + 0.50, -1.05);
+    bodyParts.push(tub);
+
+    const n1 = new THREE.BoxGeometry(0.66, 0.18, 1.10);
+    n1.translate(0, ROAD + 0.46, -1.90);
     bodyParts.push(n1);
 
-    const n2 = new THREE.BoxGeometry(0.32, 0.12, 1.1);
-    n2.translate(0, ROAD + 0.40, -2.60);
+    const n2 = new THREE.BoxGeometry(0.44, 0.14, 1.10);
+    n2.translate(0, ROAD + 0.41, -2.85);
     bodyParts.push(n2);
 
-    const n3 = new THREE.BoxGeometry(0.22, 0.10, 0.8);
-    n3.translate(0, ROAD + 0.35, -3.50);
+    const n3 = new THREE.BoxGeometry(0.26, 0.11, 0.95);
+    n3.translate(0, ROAD + 0.36, -3.70);
     bodyParts.push(n3);
-
-    /* The tub sides, sloping up to the cockpit opening — also livery. */
-    for (const side of [-1, 1]) {
-      const flank = new THREE.BoxGeometry(0.20, 0.20, 1.05);
-      flank.translate(side * 0.42, ROAD + 0.50, -1.15);
-      bodyParts.push(flank);
-    }
 
     /* Front wing: main plane plus endplates, at the end of the nose. */
     const wing = new THREE.BoxGeometry(1.85, 0.04, 0.46);
@@ -222,60 +272,30 @@ export class PlayerCockpit {
     this.group.add(this.stripe);
   }
 
-  /* --- halo ------------------------------------------------------- */
+  /* --- halo -------------------------------------------------------
+     Deliberately absent.
+
+     Modelled at true scale from an eye-level seat, a halo is an arch
+     across the whole upper half of the screen with a leg down each
+     side. That is accurate and it ruins the view — real onboard
+     cameras only get away with showing one because they sit above and
+     behind the hoop, which a driver's eye does not. There is no
+     framing that keeps both the halo and an open road, so the road
+     wins.  */
   _buildHalo() {
-    const ROAD = -1.12;
-    const parts = [];
-
-    /* The hoop arcs OVER the driver: a half torus in the XY plane,
-       upper half kept. Rotating it the other way — which is easy to
-       do by accident — buries the arc under the bodywork, where it
-       reads as a missing halo rather than an upside-down one. */
-    /* The ring surrounds the driver's head rather than standing in
-       front of it, so it is centred almost level with the eye. Placed
-       further forward it becomes a triumphal arch across the whole
-       screen instead of the thin band a driver actually sees. */
-    /* Distance sets how much of the arc is on screen: too close and
-       the apex leaves the frame entirely, so only the corners show
-       and the halo reads as two mystery posts. Half a metre out puts
-       the whole arc inside a 68° view. */
-    const hoop = new THREE.TorusGeometry(0.46, 0.026, 6, 24, Math.PI);
-    hoop.rotateX(-0.14);
-    hoop.translate(0, ROAD + 0.88, -0.55);
-    parts.push(hoop);
-
-    /* The struts carrying the hoop down to the chassis. */
-    for (const side of [-1, 1]) {
-      const strut = new THREE.CylinderGeometry(0.024, 0.030, 0.30, 6);
-      strut.translate(side * 0.46, ROAD + 0.74, -0.55);
-      parts.push(strut);
-    }
-
-    /* The front pillar, dead ahead in the eyeline — the part of a
-       halo everyone recognises. */
-    const pillar = new THREE.CylinderGeometry(0.015, 0.019, 0.46, 6);
-    pillar.rotateX(-0.12);
-    pillar.translate(0, ROAD + 1.00, -0.70);
-    parts.push(pillar);
-
-    const merged = mergeGeometries(parts, false);
-    parts.forEach((p) => p.dispose());
-
-    this.halo = new THREE.Mesh(merged, this.carbonMat);
-    this.halo.frustumCulled = false;
-    this.group.add(this.halo);
+    this.halo = null;
   }
 
   /* --- steering wheel --------------------------------------------- */
   _buildWheel() {
     this.wheel = new THREE.Group();
-    /* High enough to sit in the bottom of the frame rather than out of
-       it: in an onboard shot the top of the wheel and its display are
-       always visible under the nose, and losing them makes the view
-       feel like a drone rather than a seat. */
-    this.wheel.position.set(0, -1.12 + 0.70, -0.50);
-    this.wheel.rotation.x = -0.52;          // laid back toward the driver
-    this.wheel.scale.setScalar(1.25);
+    /* Sat up into the lower third of the frame and enlarged. Placed
+       "realistically" — down by the driver's lap — it falls out of a
+       68° view almost entirely, and a cockpit whose wheel you cannot
+       see reads as a drone shot. Every racing game cheats this. */
+    this.wheel.position.set(0, -1.12 + 0.80, -0.46);
+    this.wheel.rotation.x = -0.40;          // laid back toward the driver
+    this.wheel.scale.setScalar(1.7);
     this.group.add(this.wheel);
 
     const parts = [];
@@ -333,25 +353,34 @@ export class PlayerCockpit {
        them turn is most of what sells a cockpit view as a car rather
        than a floating camera. */
     const tyre = makeTyreGeometry(0.36, 0.34);
-    const rim = makeTyreGeometry(0.20, 0.36);
+    const rim = makeRimGeometry(0.36, 0.34);
 
     this.frontWheels = [];
     for (const side of [-1, 1]) {
+      /* Two nested groups: the outer one steers, the inner one spins.
+         Combining both on one object makes the steering axis tumble
+         with road speed, which looks like a broken gimbal. */
       const hub = new THREE.Group();
       /* Axle height is the road plus the tyre's radius — anything else
          has the car either floating or buried. */
       hub.position.set(side * 0.92, -1.12 + 0.36, -2.30);
       this.group.add(hub);
 
+      const spinner = new THREE.Group();
+      /* The rim's detail sits on the outboard face, so it is mirrored
+         for the left-hand wheel. */
+      spinner.scale.x = side;
+      hub.add(spinner);
+
       const t = new THREE.Mesh(tyre, this.rubberMat);
       t.frustumCulled = false;
-      hub.add(t);
+      spinner.add(t);
 
       const r = new THREE.Mesh(rim, this.rimMat);
       r.frustumCulled = false;
-      hub.add(r);
+      spinner.add(r);
 
-      this.frontWheels.push(hub);
+      this.frontWheels.push({ hub, spinner });
     }
   }
 
@@ -369,12 +398,13 @@ export class PlayerCockpit {
        is true of the real thing and reads better besides. */
     this.wheel.rotation.z = -steer * 0.9;
 
-    this.spin += speed * dt * 26;
+    /* Road speed to wheel speed: at full pace the wheel turns fast
+       enough that the spokes strobe, which is what it does in life. */
+    this.spin += speed * dt * 34;
     for (let i = 0; i < this.frontWheels.length; i++) {
-      const hub = this.frontWheels[i];
-      hub.rotation.y = -steer * 0.34;
-      hub.children[0].rotation.x = this.spin;
-      hub.children[1].rotation.x = this.spin;
+      const w = this.frontWheels[i];
+      w.hub.rotation.y = -steer * 0.34;
+      w.spinner.rotation.x = this.spin;
     }
 
     /* Rev lights: green, red, then blue at the shift point. */

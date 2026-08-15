@@ -188,13 +188,71 @@ export class LightingManager {
    Speed effects. Not lighting, but the same job: making the picture
    say how fast the car is going.
    ------------------------------------------------------------------ */
+/**
+ * Radial streaks, drawn once into a canvas and stretched over the
+ * whole view. Blur at the edges of vision is what the eye reads as
+ * speed when the road ahead is empty — on a long straight the geometry
+ * itself barely changes, so without this a flat-out lap and a slow one
+ * look nearly identical. Cheap: one transparent quad on the camera.
+ */
+const makeStreakTexture = () => {
+  const s = 256;
+  const c = document.createElement('canvas');
+  c.width = c.height = s;
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, s, s);
+  ctx.translate(s / 2, s / 2);
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 220; i++) {
+    const a = Math.random() * Math.PI * 2;
+    /* Nothing near the middle: streaks over the road you are aiming
+       at would read as dirt on the lens rather than motion. */
+    const r0 = 46 + Math.random() * 44;
+    const len = 16 + Math.random() * 62;
+    const alpha = 0.05 + Math.random() * 0.16;
+    ctx.strokeStyle = 'rgba(255,255,255,' + alpha.toFixed(3) + ')';
+    ctx.lineWidth = 0.7 + Math.random() * 1.8;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a) * r0, Math.sin(a) * r0);
+    ctx.lineTo(Math.cos(a) * (r0 + len), Math.sin(a) * (r0 + len));
+    ctx.stroke();
+  }
+  return new THREE.CanvasTexture(c);
+};
+
 export class SpeedEffects {
-  constructor() {
+  constructor(camera) {
     this.fovBoost = 0;
     this.shakeX = 0;
     this.shakeY = 0;
     this.roll = 0;
     this._t = 0;
+
+    /* Parented to the camera and sitting just past the near plane, so
+       it always fills the view and never intersects the world. */
+    this.streakMat = new THREE.MeshBasicMaterial({
+      map: makeStreakTexture(),
+      transparent: true,
+      opacity: 0,
+      depthTest: false,
+      depthWrite: false,
+      fog: false,
+      blending: THREE.AdditiveBlending
+    });
+    this.streaks = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.streakMat);
+    this.streaks.position.set(0, 0, -0.2);
+    this.streaks.renderOrder = 999;
+    this.streaks.frustumCulled = false;
+    this.streaks.visible = false;
+    if (camera) camera.add(this.streaks);
+    this.camera = camera;
+  }
+
+  /** Keep the overlay covering the frame whatever the lens is doing. */
+  fitStreaks(camera) {
+    const d = 0.2;
+    const h = 2 * Math.tan((camera.fov * Math.PI / 180) / 2) * d;
+    this.streaks.scale.set((h * camera.aspect) / 2, h / 2, 1);
   }
 
   /**
@@ -209,20 +267,33 @@ export class SpeedEffects {
 
     /* Widening the lens with speed is the oldest trick there is and
        still the most effective: the edges stretch, the road rushes,
-       and nothing about the simulation had to change. */
-    const target = speed01 * speed01 * 13;
-    this.fovBoost += (target - this.fovBoost) * Math.min(1, dt * 3);
+       and nothing about the simulation had to change.
+
+       The curve is deliberately steep at the top end. A linear boost
+       spends most of its range at speeds you spend little time at, and
+       the flat-out straights — where the complaint always is that
+       nothing is happening — barely move at all. */
+    const target = Math.pow(speed01, 1.6) * 26;
+    this.fovBoost += (target - this.fovBoost) * Math.min(1, dt * 2.5);
 
     /* Vibration scales with speed, and jumps on a kerb. Kept small —
        a camera that shakes hard is unreadable rather than fast. */
-    const amp = (0.0016 + rough * 0.010) * (0.3 + speed01);
+    const amp = (0.0042 + rough * 0.014) * (0.25 + speed01 * 1.4);
     this.shakeX = Math.sin(this._t * 41.3) * amp;
-    this.shakeY = Math.sin(this._t * 57.7 + 1.3) * amp * 0.8;
+    this.shakeY = Math.sin(this._t * 57.7 + 1.3) * amp * 0.8
+                + Math.sin(this._t * 23.1) * amp * 0.5;
 
     /* A touch of roll into the corner, from the steering the driver
        is actually applying. */
     const rollTarget = -steer * 0.020 * (0.4 + speed01);
     this.roll += (rollTarget - this.roll) * Math.min(1, dt * 5);
+
+    /* Streaks only once genuinely quick, and rolling with the wheel
+       so the blur turns with the car rather than sitting on the glass. */
+    const streak = Math.max(0, speed01 - 0.45) * 1.5;
+    this.streakMat.opacity = streak * 0.5;
+    this.streaks.visible = streak > 0.02;
+    this.streaks.rotation.z += dt * speed01 * 0.35;
 
     return baseFov + this.fovBoost;
   }

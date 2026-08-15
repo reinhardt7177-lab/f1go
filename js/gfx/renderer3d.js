@@ -75,7 +75,7 @@ export class Renderer3D {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.lighting = new LightingManager(this.renderer, this.scene);
     this.lighting.applyTheme(null, null);
-    this.speedFx = new SpeedEffects();
+    this.speedFx = new SpeedEffects(this.camera);
 
     this._placeholder();
 
@@ -218,6 +218,7 @@ export class Renderer3D {
     this.camera.fov = this.portrait ? FOV_PORTRAIT : FOV_LANDSCAPE;
     this.camera.updateProjectionMatrix();
     this.quality.refreshDpr();
+    if (this.speedFx) this.speedFx.fitStreaks(this.camera);
   }
 
   enable(on) {
@@ -250,6 +251,7 @@ export class Renderer3D {
     if (Math.abs(this.camera.fov - fov) > 0.05) {
       this.camera.fov = fov;
       this.camera.updateProjectionMatrix();
+      this.speedFx.fitStreaks(this.camera);
     }
 
     this.camera.position.set(
