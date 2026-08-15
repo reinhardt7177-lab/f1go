@@ -4,8 +4,9 @@ A first-person cockpit F1 racer that runs in the browser. No build step, no
 dependencies, no image or audio assets — every pixel is drawn procedurally
 onto a single `<canvas>`.
 
-Four circuits, nine AI rivals, lap timing, DRS, slipstream, persistent lap
-records, and a halo you look through.
+Four circuits, nine AI rivals, lap timing, DRS, slipstream, tyre wear with
+pit stops, a live track map, persistent lap records, and a halo you look
+through.
 
 ## Running it
 

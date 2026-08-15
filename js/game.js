@@ -211,6 +211,12 @@ var Game = {
     this.newRecord = false;
     this.bestFlash = 0;
     this.tunnelT = 0;
+    this.tyreWear = 0;
+    this.pitting = false;
+    this.pitPhase = null;
+    this.pitTimer = 0;
+    this.weightT = 0;
+    this.buildMap();
     Audio.unlock();             // the start click is our user gesture
 
     this.resetCars();
@@ -219,6 +225,84 @@ var Game = {
     document.getElementById('results').classList.add('hidden');
     document.getElementById('hud').classList.remove('hidden');
     document.getElementById('track-name').textContent = def.name;
+  },
+
+  /* ----------------------------------------------------------------
+     Minimap: integrate the ribbon's curvature into a 2D outline. The
+     ribbon never closes geometrically, so the endpoint error is
+     smeared along the lap and the shape normalised into the panel.
+     ---------------------------------------------------------------- */
+  buildMap: function () {
+    var pts = [], hx = 0, hy = 0, heading = 0;
+    var i, n = this.segments.length;
+    for (i = 0; i < n; i++) {
+      heading += this.segments[i].curve * 0.008;
+      hx += Math.sin(heading);
+      hy -= Math.cos(heading);
+      pts.push([hx, hy]);
+    }
+    var ex = pts[n - 1][0], ey = pts[n - 1][1];
+    for (i = 0; i < n; i++) {
+      var f = (i + 1) / n;
+      pts[i][0] -= ex * f;
+      pts[i][1] -= ey * f;
+    }
+    var minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
+    for (i = 0; i < n; i++) {
+      minX = Math.min(minX, pts[i][0]); maxX = Math.max(maxX, pts[i][0]);
+      minY = Math.min(minY, pts[i][1]); maxY = Math.max(maxY, pts[i][1]);
+    }
+    var size = 132, pad = 14;
+    var sc = (size - pad * 2) / Math.max(maxX - minX, maxY - minY, 1e-6);
+    var ox = (size - (maxX - minX) * sc) / 2 - minX * sc;
+    var oy = (size - (maxY - minY) * sc) / 2 - minY * sc;
+    this.mapPts = [];
+    for (i = 0; i < n; i++) {
+      this.mapPts.push([pts[i][0] * sc + ox, pts[i][1] * sc + oy]);
+    }
+    this.mapPath = new Path2D();
+    this.mapPath.moveTo(this.mapPts[0][0], this.mapPts[0][1]);
+    for (i = 1; i < n; i++) this.mapPath.lineTo(this.mapPts[i][0], this.mapPts[i][1]);
+    this.mapPath.closePath();
+  },
+
+  mapPoint: function (z) {
+    return this.mapPts[Math.floor(z / SEGMENT_LENGTH) % this.mapPts.length];
+  },
+
+  drawMap: function () {
+    var mc = document.getElementById('minimap');
+    if (!mc || !this.mapPts) return;
+    var g = mc.getContext('2d');
+    g.clearRect(0, 0, 132, 132);
+    g.lineWidth = 3;
+    g.lineJoin = 'round';
+    g.strokeStyle = 'rgba(255,255,255,0.28)';
+    g.stroke(this.mapPath);
+
+    /* start/finish notch */
+    var s0 = this.mapPts[0];
+    g.fillStyle = '#f4f4f4';
+    g.fillRect(s0[0] - 2.5, s0[1] - 2.5, 5, 5);
+
+    for (var i = 0; i < this.cars.length; i++) {
+      var car = this.cars[i];
+      if (car.finishedAt !== null) continue;
+      var cp = this.mapPoint(car.z);
+      g.fillStyle = car.color;
+      g.beginPath();
+      g.arc(cp[0], cp[1], 2.6, 0, Math.PI * 2);
+      g.fill();
+    }
+
+    var pp = this.mapPoint(this.position + this.playerZ);
+    g.fillStyle = '#e2000f';
+    g.strokeStyle = '#ffffff';
+    g.lineWidth = 1.6;
+    g.beginPath();
+    g.arc(pp[0], pp[1], 4, 0, Math.PI * 2);
+    g.fill();
+    g.stroke();
   },
 
   /* ---------------------------------------------------------------- */
@@ -242,6 +326,8 @@ var Game = {
         wobble: Math.random() * Math.PI * 2,
         /* soft red, medium yellow or hard white sidewalls */
         tyre: Util.randomChoice(['#e10600', '#ffd12e', '#f0f0f0']),
+        wear: 0,
+        pitTimer: 0,
         finishedAt: null
       });
     }
@@ -290,33 +376,84 @@ var Game = {
        and letting go straightens it out - weight, not twitch. */
     var steerRate = target === 0 ? 8 : 5.5;
     this.steerInput += (target - this.steerInput) * Math.min(1, dt * steerRate);
-    this.playerX += dx * this.steerInput;
+    if (!this.pitting) this.playerX += dx * this.steerInput;
 
     /* --- throttle and brakes ------------------------------------- */
     var accel = this.maxSpeed / 4.2;
     var braking = -this.maxSpeed / 1.6;
     var decel = -this.maxSpeed / 7;
+    var gasHeld = this.held(['ArrowUp', 'KeyW'], 'gas');
+    var brakeHeld = this.held(['ArrowDown', 'KeyS', 'Space'], 'brake');
 
-    if (this.held(['ArrowUp', 'KeyW'], 'gas')) {
+    if (gasHeld) {
       this.speed = Util.accelerate(this.speed, accel, dt);
-    } else if (this.held(['ArrowDown', 'KeyS', 'Space'], 'brake')) {
+    } else if (brakeHeld) {
       this.speed = Util.accelerate(this.speed, braking, dt);
     } else {
       this.speed = Util.accelerate(this.speed, decel, dt);
     }
 
-    /* --- cornering forces ---------------------------------------- */
-    this.playerX -= dx * speedPercent * playerSeg.curve * this.centrifugal;
+    /* --- four contact patches, arcade style ----------------------- */
+    /* Weight transfer between the axles: braking loads the front and
+       sharpens turn-in, power unloads it and pushes the nose wide. */
+    this.weightT += (((brakeHeld ? 1 : 0) - (gasHeld ? 0.6 : 0)) - this.weightT) * Math.min(1, dt * 4);
 
-    /* too fast for the corner and you understeer off the road */
-    var corneringLimit = this.grip * 1.9 / (Math.abs(playerSeg.curve) + 1.15);
-    if (speedPercent > corneringLimit && Math.abs(playerSeg.curve) > 1) {
-      this.speed = Util.accelerate(this.speed, -this.maxSpeed / 2.2, dt);
-      this.playerX += dx * playerSeg.curve * 0.25;
+    /* --- tyre wear ------------------------------------------------ */
+    if (!this.pitting) {
+      this.tyreWear = Util.limit(
+        this.tyreWear + dt * speedPercent * (1 + Math.abs(playerSeg.curve) * 0.12) / 210, 0, 1);
+    }
+
+    /* --- pit lane: pull right onto the apron at start/finish ------ */
+    if (!this.pitting && playerSeg.pit && this.playerX > 1.02) {
+      this.pitting = true;
+      this.pitPhase = 'in';
+      this.pitTimer = 0;
+    }
+    if (this.pitting) {
+      /* guided down the lane; the wheel is out of your hands */
+      this.steerInput += (0 - this.steerInput) * Math.min(1, dt * 8);
+      var limiter = this.maxSpeed * 0.22;
+      if (this.pitPhase === 'in') {
+        this.playerX += (1.42 - this.playerX) * Math.min(1, dt * 3);
+        this.speed = Math.min(this.speed, limiter);
+        this.pitTimer += dt;
+        if (this.pitTimer > 1.0) { this.pitPhase = 'stop'; this.pitTimer = 2.6; }
+      } else if (this.pitPhase === 'stop') {
+        this.speed = 0;
+        this.pitTimer -= dt;
+        if (this.pitTimer <= 0) {
+          this.tyreWear = 0;
+          this.pitPhase = 'out';
+          Audio.beep(660, 0.18, 0.09);
+        }
+      } else {
+        this.speed = Math.min(this.speed, limiter);
+        if (!playerSeg.pit) {
+          this.playerX += (0.85 - this.playerX) * Math.min(1, dt * 2.5);
+          if (this.playerX < 1.0) { this.pitting = false; this.pitPhase = null; }
+        } else {
+          this.playerX += (1.42 - this.playerX) * Math.min(1, dt * 3);
+        }
+      }
+    }
+
+    /* --- cornering forces ---------------------------------------- */
+    if (!this.pitting) {
+      this.playerX -= dx * speedPercent * playerSeg.curve * this.centrifugal * (1 - this.weightT * 0.12);
+
+      /* too fast for the corner and you understeer off the road;
+         worn tyres bring that point forward, trail-braking delays it */
+      var effGrip = this.grip * (1 - this.tyreWear * 0.35) * (1 + this.weightT * 0.10);
+      var corneringLimit = effGrip * 1.9 / (Math.abs(playerSeg.curve) + 1.15);
+      if (speedPercent > corneringLimit && Math.abs(playerSeg.curve) > 1) {
+        this.speed = Util.accelerate(this.speed, -this.maxSpeed / 2.2, dt);
+        this.playerX += dx * playerSeg.curve * 0.25;
+      }
     }
 
     /* --- leaving the circuit ------------------------------------- */
-    this.offTrack = Math.abs(this.playerX) > 1;
+    this.offTrack = !this.pitting && Math.abs(this.playerX) > 1;
     if (this.offTrack) {
       if (this.speed > this.maxSpeed * this.offRoadLimit) {
         this.speed = Util.accelerate(this.speed, -this.maxSpeed / 1.8, dt);
@@ -330,7 +467,7 @@ var Game = {
     }
 
     /* --- contact with rivals ------------------------------------- */
-    this.checkCarCollisions(playerSeg, dx);
+    if (!this.pitting) this.checkCarCollisions(playerSeg, dx);
 
     this.playerX = Util.limit(this.playerX, -2.4, 2.4);
     this.speed = Util.limit(this.speed, 0, this.maxSpeed);
@@ -355,7 +492,7 @@ var Game = {
 
     /* --- slipstream: sit in the hole in the air ------------------- */
     var ahead = this.carAhead();
-    this.tow = !!(ahead && ahead.gap < SEGMENT_LENGTH * 30 &&
+    this.tow = !!(!this.pitting && ahead && ahead.gap < SEGMENT_LENGTH * 30 &&
                   Math.abs(playerSeg.curve) < 1 && speedPercent > 0.55);
     if (this.tow && this.held(['ArrowUp', 'KeyW'], 'gas')) {
       this.speed = Util.accelerate(this.speed, this.maxSpeed / 18, dt);
@@ -363,7 +500,7 @@ var Game = {
     }
 
     /* --- DRS: only on a straight and only when close behind ------- */
-    this.drs = Math.abs(playerSeg.curve) < 0.6 && ahead && ahead.gap < SEGMENT_LENGTH * 22 && speedPercent > 0.5;
+    this.drs = !this.pitting && Math.abs(playerSeg.curve) < 0.6 && ahead && ahead.gap < SEGMENT_LENGTH * 22 && speedPercent > 0.5;
     if (this.drs && this.held(['ArrowUp', 'KeyW'], 'gas')) {
       this.speed = Util.accelerate(this.speed, this.maxSpeed / 12, dt);
       this.speed = Util.limit(this.speed, 0, this.maxSpeed * 1.06);
@@ -374,8 +511,10 @@ var Game = {
 
     /* --- camera shake: kerbs and contact only --------------------- */
     /* No constant bob on clean tarmac. A modern F1 car rides flat,
-       and the permanent up-down wobble read as noise, not speed. */
-    var shake = this.offTrack ? speedPercent * 8 : 0;
+       and the permanent up-down wobble read as noise, not speed.
+       Riding a kerb buzzes the two wheels that are actually on it. */
+    var onKerb = !this.offTrack && !this.pitting && Math.abs(this.playerX) > 0.92;
+    var shake = this.offTrack ? speedPercent * 8 : onKerb ? speedPercent * 3.5 : 0;
     this.bumpImpulse = (this.bumpImpulse || 0) * 0.88;
     this.bump = Math.sin(this.raceTime * 34) * shake + this.bumpImpulse;
 
@@ -407,14 +546,24 @@ var Game = {
 
       var seg = this.findSegment(car.z);
       /* rivals brake for corners and drift towards the racing line;
-         their pace ebbs and flows so battles breathe */
+         their pace ebbs and flows so battles breathe, and their tyres
+         wear out and get changed just like yours */
       var cornerFactor = 1 - Math.min(0.55, Math.abs(seg.curve) * 0.085);
       var ebb = 1 + Math.sin(car.wobble * 0.4) * 0.02;
-      var speed = this.maxSpeed * car.pace * cornerFactor * ebb;
+      var speed = this.maxSpeed * car.pace * cornerFactor * ebb * (1 - car.wear * 0.07);
+
+      car.wear = Util.limit(car.wear + dt * car.pace / 230, 0, 1);
+      if (car.pitTimer > 0) {
+        car.pitTimer -= dt;
+        speed = this.maxSpeed * 0.14;
+        car.offset += (0.8 - car.offset) * Math.min(1, dt * 2);
+      }
 
       car.wobble += dt * 1.4;
       var line = -Math.sign(seg.curve) * Math.min(0.45, Math.abs(seg.curve) * 0.08);
-      car.offset += ((line + Math.sin(car.wobble) * 0.12) - car.offset) * Math.min(1, dt * 1.5);
+      if (car.pitTimer <= 0) {
+        car.offset += ((line + Math.sin(car.wobble) * 0.12) - car.offset) * Math.min(1, dt * 1.5);
+      }
       car.offset = Util.limit(car.offset, -0.92, 0.92);
 
       car.z = Util.increase(car.z, dt * speed, this.trackLength);
@@ -423,6 +572,10 @@ var Game = {
         if (car.lap > this.totalLaps) {
           car.finishedAt = this.raceTime;
           this.finishOrder.push(car.name);
+        } else if (car.wear > 0.68) {
+          /* worn: dive into the pit at the lap change */
+          car.pitTimer = 5.5;
+          car.wear = 0;
         }
       }
     }
@@ -573,8 +726,9 @@ var Game = {
         var cx = Util.interpolate(segment.p1.screen.x, segment.p2.screen.x, carPercent) +
                  (scale * car.offset * ROAD_WIDTH * width) / 2;
         var cy = Util.interpolate(segment.p1.screen.y, segment.p2.screen.y, carPercent);
+        var persp = Util.limit((cx - width / 2) / (width / 2), -1, 1);
         Render.car(ctx, width, height, ROAD_WIDTH, car.color, scale, cx, cy, segment.clip,
-          segment.fog, car.tyre);
+          segment.fog, car.tyre, persp);
       }
 
       for (var k = 0; k < segment.sprites.length; k++) {
@@ -659,8 +813,23 @@ var Game = {
     /* the Last cell flashes purple while a fresh track record stands */
     document.getElementById('last-value').classList.toggle('record-flash', this.bestFlash > 0);
 
+    /* tyres, and the call to box when they are done */
+    var tyreEl = document.getElementById('tyre-value');
+    if (tyreEl) {
+      tyreEl.textContent = this.pitting && this.pitPhase === 'stop'
+        ? 'BOX'
+        : Math.round((1 - this.tyreWear) * 100) + '%';
+      tyreEl.style.color =
+        this.tyreWear > 0.7 ? '#ff5252' : this.tyreWear > 0.45 ? '#f5c518' : '';
+    }
+    var boxTag = document.getElementById('box-tag');
+    if (boxTag) boxTag.classList.toggle('on', !this.pitting && this.tyreWear > 0.65);
+
     var seg = this.findSegment(this.position + this.playerZ);
-    document.getElementById('corner-value').textContent = seg.section || '';
+    document.getElementById('corner-value').textContent =
+      this.pitting ? (this.pitPhase === 'stop' ? 'PIT STOP' : 'PIT LANE') : (seg.section || '');
+
+    this.drawMap();
 
     var rev = document.getElementById('rev-fill');
     rev.style.width = (this.rpm * 100).toFixed(0) + '%';

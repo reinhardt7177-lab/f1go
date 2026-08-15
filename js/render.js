@@ -54,6 +54,16 @@ var Render = {
     /* No lane markings: a grand prix circuit is one unbroken ribbon
        of tarmac, not a motorway. */
 
+    /* pit apron along the right of the opening straight */
+    if (seg.pit) {
+      Render.polygon(ctx, x1 + w1 + r1, y1, x1 + w1 * 1.66, y1, x2 + w2 * 1.66, y2, x2 + w2 + r2, y2, '#4a4e55');
+      Render.polygon(ctx, x1 + w1 + r1, y1, x1 + w1 + r1 * 1.6, y1, x2 + w2 + r2 * 1.6, y2, x2 + w2 + r2, y2, '#e8ebee');
+      /* pit boxes: dashed dark bays along the outside */
+      if (seg.dark) {
+        Render.polygon(ctx, x1 + w1 * 1.40, y1, x1 + w1 * 1.60, y1, x2 + w2 * 1.60, y2, x2 + w2 * 1.40, y2, 'rgba(0,0,0,0.18)');
+      }
+    }
+
     if (theme.walls) {
       var h1 = w1 * 0.42;
       var h2 = w2 * 0.42;
@@ -64,16 +74,21 @@ var Render = {
       var rx1 = x1 + w1 + r1, rx2 = x2 + w2 + r2;
 
       Render.polygon(ctx, lx1, y1, lx1, y1 - h1, lx2, y2 - h2, lx2, y2, wc);
-      Render.polygon(ctx, rx1, y1, rx1, y1 - h1, rx2, y2 - h2, rx2, y2, wc);
+      /* the right wall steps aside where the pit lane runs */
+      if (!seg.pit) {
+        Render.polygon(ctx, rx1, y1, rx1, y1 - h1, rx2, y2 - h2, rx2, y2, wc);
+      }
 
       /* shade the lower half so the face reads as a solid barrier */
       Render.polygon(ctx, lx1, y1, lx1, y1 - h1 * 0.5, lx2, y2 - h2 * 0.5, lx2, y2, 'rgba(0,0,0,0.14)');
-      Render.polygon(ctx, rx1, y1, rx1, y1 - h1 * 0.5, rx2, y2 - h2 * 0.5, rx2, y2, 'rgba(0,0,0,0.14)');
 
       /* dark rail along the top of the barrier so it reads as Armco */
       var rail = seg.dark ? '#343b44' : '#2d343d';
       Render.polygon(ctx, lx1, y1 - h1, lx1, y1 - h1 + cap1, lx2, y2 - h2 + cap2, lx2, y2 - h2, rail);
-      Render.polygon(ctx, rx1, y1 - h1, rx1, y1 - h1 + cap1, rx2, y2 - h2 + cap2, rx2, y2 - h2, rail);
+      if (!seg.pit) {
+        Render.polygon(ctx, rx1, y1, rx1, y1 - h1 * 0.5, rx2, y2 - h2 * 0.5, rx2, y2, 'rgba(0,0,0,0.14)');
+        Render.polygon(ctx, rx1, y1 - h1, rx1, y1 - h1 + cap1, rx2, y2 - h2 + cap2, rx2, y2 - h2, rail);
+      }
     }
 
     Render.fog(ctx, 0, y1, width, y2 - y1, fog, theme.haze);
@@ -118,7 +133,7 @@ var Render = {
      road, used by the start gantry). Sizes are expressed as multiples
      of the projected half-road-width, so scenery shrinks with distance
      exactly like the tarmac does. */
-  sprite: function (ctx, width, height, roadWidth, type, scale, destX, destY, side, clipY, fog) {
+  sprite: function (ctx, width, height, roadWidth, type, scale, destX, destY, side, clipY, fog, seed) {
     var halfRoad = (scale * roadWidth * width) / 2;
     var w = halfRoad * Render.spriteSize(type);
     var h = w * Render.spriteRatio(type);
@@ -137,19 +152,21 @@ var Render = {
     if (clipY) {
       var visible = clipY - y;
       if (visible <= 0) { ctx.restore(); return; }
+      /* wider than the sprite box: roofs and side faces overhang it */
       ctx.beginPath();
-      ctx.rect(x - w / 2, y, w, Math.min(h, visible));
+      ctx.rect(x - w, y, w * 2, Math.min(h, visible));
       ctx.clip();
     }
-    Render.drawSprite(ctx, type, x, y, w, h);
+    Render.drawSprite(ctx, type, x, y, w, h, seed || 0, side);
     ctx.restore();
   },
 
   spriteSize: function (type) {
     switch (type) {
       case 'gantry': return 2.7;
-      case 'grandstand': return 1.9;
-      case 'billboard': return 0.7;
+      case 'grandstand': return 2.3;
+      case 'pitbuilding': return 1.7;
+      case 'billboard': return 0.95;
       case 'board1': case 'board2': case 'board3': return 0.26;
       default: return 0.5;
     }
@@ -158,36 +175,151 @@ var Render = {
   spriteRatio: function (type) {
     switch (type) {
       case 'gantry': return 0.5;
-      case 'grandstand': return 0.5;
-      case 'billboard': return 0.7;
+      case 'grandstand': return 0.40;
+      case 'pitbuilding': return 0.42;
+      case 'billboard': return 0.30;
       case 'board1': case 'board2': case 'board3': return 1.2;
       default: return 1.5;
     }
   },
 
-  /* x,y is the top-centre of the sprite box; w,h its full size */
-  drawSprite: function (ctx, type, x, y, w, h) {
-    var hw = w * 0.5;
-    switch (type) {
-      case 'grandstand':
-        ctx.fillStyle = '#8d939b';
-        ctx.fillRect(x - hw, y + h * 0.15, hw * 2, h * 0.85);
-        for (var s = 0; s < 6; s++) {
-          ctx.fillStyle = s % 2 ? '#d8dde2' : '#b3bac2';
-          ctx.fillRect(x - hw, y + h * 0.25 + s * h * 0.12, hw * 2, h * 0.09);
-        }
-        ctx.fillStyle = '#2b3138';
-        ctx.fillRect(x - hw * 1.05, y, hw * 2.1, h * 0.18);
-        break;
+  /* stable pseudo-random 0..1 from integers - crowds must not flicker */
+  hash: function (n) {
+    var s = Math.sin(n * 127.1) * 43758.5453;
+    return s - Math.floor(s);
+  },
 
-      case 'billboard':
-        ctx.fillStyle = '#4a4f57';
-        ctx.fillRect(x - hw * 0.06, y + h * 0.5, hw * 0.12, h * 0.5);
-        ctx.fillStyle = '#e8eaed';
-        ctx.fillRect(x - hw, y, hw * 2, h * 0.55);
-        ctx.fillStyle = '#c62828';
-        ctx.fillRect(x - hw * 0.9, y + h * 0.08, hw * 1.8, h * 0.12);
+  crowdColors: ['#e8535c', '#f2b134', '#4fc3f7', '#9ccc65', '#f48fb1', '#ce93d8', '#eeeeee', '#ffab61'],
+
+  /* x,y is the top-centre of the sprite box; w,h its full size.
+     `seed` keeps per-instance detail stable; `side` leans roofs and
+     side faces toward the track for a polygonal sense of depth. */
+  drawSprite: function (ctx, type, x, y, w, h, seed, side) {
+    var hw = w * 0.5;
+    var lean = side < 0 ? 1 : -1;   // the track-facing end of the sprite
+    switch (type) {
+      case 'grandstand': {
+        /* A tiered wedge stepping down toward the circuit - seating
+           bowl, not a building. Each step carries a scatter of tiny
+           spectators; the whole thing sits under a cantilever roof. */
+        var steps = 6;
+        var topW = 0.62, frontW = 1.0;
+        ctx.fillStyle = 'rgba(0,0,0,0.20)';
+        ctx.fillRect(x - hw * 1.02, y + h * 0.86, w * 1.02, h * 0.05);
+
+        for (var r = 0; r < steps; r++) {
+          var t0 = r / steps, t1 = (r + 1) / steps;
+          var sy0 = y + h * (0.24 + 0.62 * t0);
+          var sy1 = y + h * (0.24 + 0.62 * t1);
+          var w0 = hw * (topW + (frontW - topW) * t0);
+          var w1b = hw * (topW + (frontW - topW) * t1);
+          /* step face, as a trapezoid so the bowl visibly leans back */
+          ctx.fillStyle = r % 2 ? '#454b53' : '#3d434b';
+          ctx.beginPath();
+          ctx.moveTo(x - w0, sy0);
+          ctx.lineTo(x + w0, sy0);
+          ctx.lineTo(x + w1b, sy1);
+          ctx.lineTo(x - w1b, sy1);
+          ctx.closePath();
+          ctx.fill();
+
+          /* the crowd: tiny stable specks, not windows */
+          if (w > 60) {
+            var cols = 24;
+            for (var c = 0; c < cols; c++) {
+              var jx = Render.hash(seed * 31 + r * 17 + c * 7);
+              if (jx < 0.14) continue;      // empty seats here and there
+              ctx.fillStyle = Render.crowdColors[
+                Math.floor(jx * Render.crowdColors.length)];
+              ctx.fillRect(
+                x - w0 + (c + jx * 0.6) * (w0 * 2 / cols),
+                sy0 + (sy1 - sy0) * 0.12,
+                Math.max(1.5, w * 0.013),
+                (sy1 - sy0) * 0.40
+              );
+            }
+          } else {
+            ctx.fillStyle = 'rgba(215,185,160,0.4)';
+            ctx.fillRect(x - w0 * 0.94, sy0 + (sy1 - sy0) * 0.12, w0 * 1.88, (sy1 - sy0) * 0.35);
+          }
+        }
+
+        /* end wall on the track-facing side, skewed for depth */
+        ctx.fillStyle = '#2f353d';
+        ctx.beginPath();
+        if (lean > 0) {
+          ctx.moveTo(x + hw * topW, y + h * 0.24);
+          ctx.lineTo(x + hw * 1.14, y + h * 0.34);
+          ctx.lineTo(x + hw * 1.14, y + h * 0.88);
+          ctx.lineTo(x + hw, y + h * 0.86);
+        } else {
+          ctx.moveTo(x - hw * topW, y + h * 0.24);
+          ctx.lineTo(x - hw * 1.14, y + h * 0.34);
+          ctx.lineTo(x - hw * 1.14, y + h * 0.88);
+          ctx.lineTo(x - hw, y + h * 0.86);
+        }
+        ctx.closePath();
+        ctx.fill();
+
+        /* cantilever roof, leaning over the seats toward the track */
+        ctx.fillStyle = '#20242a';
+        ctx.beginPath();
+        ctx.moveTo(x - hw * (lean > 0 ? 0.70 : 1.10), y + h * 0.05);
+        ctx.lineTo(x + hw * (lean > 0 ? 1.10 : 0.70), y + h * 0.05);
+        ctx.lineTo(x + hw * (lean > 0 ? 1.16 : 0.74), y + h * 0.16);
+        ctx.lineTo(x - hw * (lean > 0 ? 0.74 : 1.16), y + h * 0.16);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = '#e8ebee';
+        ctx.fillRect(x - hw * (lean > 0 ? 0.74 : 1.16), y + h * 0.155,
+                     hw * 1.9, h * 0.035);
+
+        /* slender roof masts */
+        ctx.fillStyle = '#59606a';
+        ctx.fillRect(x - hw * 0.55, y + h * 0.16, Math.max(1.5, hw * 0.045), h * 0.24);
+        ctx.fillRect(x + hw * 0.50, y + h * 0.16, Math.max(1.5, hw * 0.045), h * 0.24);
         break;
+      }
+
+      case 'billboard': {
+        /* a low trackside hoarding, not a pole sign */
+        ctx.fillStyle = 'rgba(0,0,0,0.18)';
+        ctx.fillRect(x - hw * 0.98, y + h * 0.88, w * 0.98, h * 0.06);
+        ctx.fillStyle = '#f2f3f5';
+        ctx.fillRect(x - hw, y + h * 0.18, w, h * 0.64);
+        var logos = ['#c62828', '#1a56b0', '#0b8f5a', '#20242a'];
+        ctx.fillStyle = logos[Math.floor(Render.hash(seed * 13 + 5) * logos.length)];
+        var lw2 = w * (0.4 + Render.hash(seed * 7 + 1) * 0.25);
+        ctx.fillRect(x - hw * 0.88, y + h * 0.36, lw2, h * 0.28);
+        ctx.fillStyle = '#20242a';
+        ctx.fillRect(x - hw, y + h * 0.76, w, h * 0.06);
+        break;
+      }
+
+      case 'pitbuilding': {
+        /* the long low garage block behind the pit apron */
+        ctx.fillStyle = '#9aa1a9';
+        ctx.fillRect(x - hw, y + h * 0.18, w, h * 0.70);
+        /* roof slab with a light fascia */
+        ctx.fillStyle = '#282d34';
+        ctx.fillRect(x - hw * 1.05, y + h * 0.10, w * 1.05, h * 0.12);
+        ctx.fillStyle = '#e8ebee';
+        ctx.fillRect(x - hw * 1.05, y + h * 0.20, w * 1.05, h * 0.045);
+        /* garage bays, each with a team-coloured strip above the door */
+        var bays = 4;
+        for (var b2 = 0; b2 < bays; b2++) {
+          var bx = x - hw * 0.92 + b2 * (w * 0.92 / bays) * 1.0;
+          var bw2 = (w * 0.92 / bays) * 0.72;
+          ctx.fillStyle = Render.crowdColors[
+            Math.floor(Render.hash(seed * 19 + b2 * 11) * Render.crowdColors.length)];
+          ctx.fillRect(bx, y + h * 0.30, bw2, h * 0.07);
+          ctx.fillStyle = '#171b20';
+          ctx.fillRect(bx, y + h * 0.38, bw2, h * 0.46);
+        }
+        ctx.fillStyle = 'rgba(0,0,0,0.20)';
+        ctx.fillRect(x - hw, y + h * 0.85, w, h * 0.05);
+        break;
+      }
 
       case 'board1': case 'board2': case 'board3':
         ctx.fillStyle = '#20242a';
@@ -223,7 +355,7 @@ var Render = {
      halo over the cockpit, shark-fin engine cover, diffuser strakes,
      and slick tyres with a compound-coloured sidewall band.
      ---------------------------------------------------------------- */
-  car: function (ctx, width, height, roadWidth, color, scale, destX, destY, clipY, fog, tyreColor) {
+  car: function (ctx, width, height, roadWidth, color, scale, destX, destY, clipY, fog, tyreColor, persp) {
     /* an F1 car is roughly a sixth of the road's width - with the
        road at its full grand-prix width, that is 0.15 of a half */
     var halfRoad = (scale * roadWidth * width) / 2;
@@ -235,6 +367,13 @@ var Render = {
 
     var a = fog === undefined ? 1 : Util.limit(fog, 0, 1);
     if (a < 0.05) return;
+
+    /* one-point perspective: a car off to the side leans its upper
+       bodywork toward the vanishing point while the tyres stay put,
+       and its outer flank falls into shade */
+    var p = Util.limit(persp || 0, -1, 1);
+    var s = -p * w * 0.22;            // shift at wing height
+    var s6 = s * 0.6;                 // shift at body-top height
 
     ctx.save();
     ctx.globalAlpha = a;
@@ -270,38 +409,57 @@ var Render = {
       ctx.fillRect(x + w * 0.34, y + h * 0.47, w * 0.26, h * 0.05);
     }
 
-    /* body between the tyres */
+    /* body between the tyres, top edge leaning with perspective */
     ctx.fillStyle = color;
     ctx.beginPath();
     ctx.moveTo(x - w * 0.32, y + h * 0.93);
     ctx.lineTo(x + w * 0.32, y + h * 0.93);
-    ctx.lineTo(x + w * 0.20, y + h * 0.38);
-    ctx.lineTo(x - w * 0.20, y + h * 0.38);
+    ctx.lineTo(x + w * 0.20 + s6, y + h * 0.38);
+    ctx.lineTo(x - w * 0.20 + s6, y + h * 0.38);
     ctx.closePath();
     ctx.fill();
+
+    /* the flank facing away from centre falls into shade */
+    if (p && h > 6) {
+      ctx.fillStyle = 'rgba(0,0,0,' + (Math.abs(p) * 0.28).toFixed(3) + ')';
+      ctx.beginPath();
+      if (p > 0) {
+        ctx.moveTo(x + w * 0.32, y + h * 0.93);
+        ctx.lineTo(x + w * 0.20 + s6, y + h * 0.38);
+        ctx.lineTo(x + w * 0.06 + s6, y + h * 0.38);
+        ctx.lineTo(x + w * 0.14, y + h * 0.93);
+      } else {
+        ctx.moveTo(x - w * 0.32, y + h * 0.93);
+        ctx.lineTo(x - w * 0.20 + s6, y + h * 0.38);
+        ctx.lineTo(x - w * 0.06 + s6, y + h * 0.38);
+        ctx.lineTo(x - w * 0.14, y + h * 0.93);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
 
     /* halo over the cockpit, shark fin behind it */
     if (h > 8) {
       ctx.strokeStyle = '#111418';
       ctx.lineWidth = Math.max(1, w * 0.07);
       ctx.beginPath();
-      ctx.arc(x, y + h * 0.40, w * 0.18, Math.PI, 0);
+      ctx.arc(x + s * 0.8, y + h * 0.40, w * 0.18, Math.PI, 0);
       ctx.stroke();
     }
     ctx.fillStyle = '#1a1e24';
-    ctx.fillRect(x - w * 0.025, y + h * 0.14, w * 0.05, h * 0.26);
+    ctx.fillRect(x - w * 0.025 + s * 0.7, y + h * 0.14, w * 0.05, h * 0.26);
 
     /* rear wing: main plane on the pylon, endplates outside */
     ctx.fillStyle = color;
-    ctx.fillRect(x - w * 0.44, y + h * 0.06, w * 0.88, h * 0.11);
+    ctx.fillRect(x - w * 0.44 + s, y + h * 0.06, w * 0.88, h * 0.11);
     ctx.fillStyle = '#191d22';
-    ctx.fillRect(x - w * 0.44, y + h * 0.01, w * 0.88, h * 0.045);
-    ctx.fillRect(x - w * 0.49, y, w * 0.06, h * 0.24);
-    ctx.fillRect(x + w * 0.43, y, w * 0.06, h * 0.24);
+    ctx.fillRect(x - w * 0.44 + s, y + h * 0.01, w * 0.88, h * 0.045);
+    ctx.fillRect(x - w * 0.49 + s, y, w * 0.06, h * 0.24);
+    ctx.fillRect(x + w * 0.43 + s, y, w * 0.06, h * 0.24);
 
     /* rain light down the pylon */
     ctx.fillStyle = '#ff2a2a';
-    ctx.fillRect(x - w * 0.035, y + h * 0.44, w * 0.07, h * 0.10);
+    ctx.fillRect(x - w * 0.035 + s * 0.75, y + h * 0.44, w * 0.07, h * 0.10);
 
     ctx.restore();
   },
@@ -357,6 +515,27 @@ var Render = {
     ctx.closePath();
     ctx.fill();
     ctx.restore();
+
+    /* --- front tyres, turning with the wheel ---------------------- */
+    /* The tops of the front wheels poke into view at the screen edges
+       and visibly steer - the car has four corners, and from the seat
+       you can see two of them working. */
+    for (var fw = 0; fw < 2; fw++) {
+      var fSide = fw === 0 ? -1 : 1;
+      var fx = width * (fw === 0 ? 0.035 : 0.965);
+      ctx.save();
+      ctx.translate(fx, height * 0.70 + bump * 1.2);
+      ctx.rotate(steer * 0.30);
+      ctx.fillStyle = '#0e1114';
+      Render.roundRect(ctx, -width * 0.034, -height * 0.115, width * 0.068, height * 0.30, width * 0.012);
+      ctx.fill();
+      /* sidewall sheen and a tread band, so it reads as a tyre */
+      ctx.fillStyle = 'rgba(255,255,255,0.06)';
+      ctx.fillRect(-width * 0.034, -height * 0.075, width * 0.068, height * 0.028);
+      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      ctx.fillRect(fSide * width * 0.012 - width * 0.005, -height * 0.10, width * 0.010, height * 0.26);
+      ctx.restore();
+    }
 
     /* --- nose / bodywork ----------------------------------------- */
     ctx.save();

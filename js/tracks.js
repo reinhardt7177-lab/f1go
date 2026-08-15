@@ -92,7 +92,8 @@ TrackBuilder.prototype.esses = function (name, len, curve, y) {
    ------------------------------------------------------------------ */
 TrackBuilder.prototype.addSprite = function (index, type, offset) {
   if (index >= 0 && index < this.segments.length) {
-    this.segments[index].sprites.push({ type: type, offset: offset });
+    /* seed keeps per-instance detail (crowd colours) stable per spot */
+    this.segments[index].sprites.push({ type: type, offset: offset, seed: index });
   }
 };
 
@@ -112,6 +113,16 @@ TrackBuilder.prototype.grandstands = function (from, to, side) {
 
 TrackBuilder.prototype.finish = function () {
   var segs = this.segments;
+  /* the pit lane runs down the right of the opening straight,
+     with the garage block standing behind it. Capped in length so a
+     stop costs seconds, not the whole straight. */
+  var first = segs[0].section;
+  for (var p = 0; p < segs.length && segs[p].section === first && p < 60; p++) {
+    segs[p].pit = true;
+  }
+  for (var g = 6; g < p - 6; g += 10) {
+    this.addSprite(g, 'pitbuilding', 2.5);
+  }
   /* start/finish gantry and the boards leading up to it */
   this.addSprite(2, 'gantry', 0);
   for (var b = 1; b <= 5; b++) {
