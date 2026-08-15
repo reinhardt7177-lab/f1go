@@ -128,8 +128,8 @@ var THEMES = {
   monaco: {
     sky: ['#1b3f6b', '#4d86bd', '#a8cbe4'],
     haze: '#a8cbe4',
-    grass: ['#4a4d53', '#44474d'],      // Monaco has no run-off, just tarmac
-    road: ['#3b3d42', '#37393e'],
+    grass: ['#5a5e66', '#555960'],      // Monaco has no run-off, just pavement
+    road: ['#33363b', '#2f3237'],       // clearly darker than the pavement
     rumble: ['#d92b2b', '#f4f4f4'],
     lane: '#f0f0f0',
     walls: true,
@@ -139,8 +139,8 @@ var THEMES = {
   silverstone: {
     sky: ['#5c6d80', '#8ea2b5', '#cfd8de'],
     haze: '#cfd8de',
-    grass: ['#3f6b3a', '#3a6335'],
-    road: ['#41444a', '#3d4046'],
+    grass: ['#41703b', '#366030'],
+    road: ['#3b3e44', '#373a40'],
     rumble: ['#c62828', '#f4f4f4'],
     lane: '#f0f0f0',
     walls: false,
@@ -150,8 +150,8 @@ var THEMES = {
   suzuka: {
     sky: ['#123a52', '#3f7fa6', '#bfe0ea'],
     haze: '#bfe0ea',
-    grass: ['#3c6b45', '#376340'],
-    road: ['#3e4147', '#3a3d43'],
+    grass: ['#3e7048', '#33613c'],
+    road: ['#393c42', '#35383e'],
     rumble: ['#1a56b0', '#f4f4f4'],
     lane: '#f0f0f0',
     walls: false,
@@ -161,8 +161,8 @@ var THEMES = {
   monza: {
     sky: ['#274b78', '#6f9fc9', '#dce8ef'],
     haze: '#dce8ef',
-    grass: ['#4a7c43', '#44743d'],
-    road: ['#43464c', '#3f4248'],
+    grass: ['#4c8045', '#417238'],
+    road: ['#3f4248', '#3b3e44'],
     rumble: ['#1f9d4e', '#f4f4f4'],   // a nod to the tricolore kerbs
     lane: '#f0f0f0',
     walls: false,

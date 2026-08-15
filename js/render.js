@@ -38,9 +38,18 @@ var Render = {
     ctx.fillStyle = theme.grass[i];
     ctx.fillRect(0, y2, width, y1 - y2);
 
+    /* grounding shadow where the verge meets the kerb */
+    var s1 = r1 * 0.8, s2 = r2 * 0.8;
+    Render.polygon(ctx, x1 - w1 - r1 - s1, y1, x1 - w1 - r1, y1, x2 - w2 - r2, y2, x2 - w2 - r2 - s2, y2, 'rgba(0,0,0,0.10)');
+    Render.polygon(ctx, x1 + w1 + r1 + s1, y1, x1 + w1 + r1, y1, x2 + w2 + r2, y2, x2 + w2 + r2 + s2, y2, 'rgba(0,0,0,0.10)');
+
     Render.polygon(ctx, x1 - w1 - r1, y1, x1 - w1, y1, x2 - w2, y2, x2 - w2 - r2, y2, theme.rumble[i]);
     Render.polygon(ctx, x1 + w1 + r1, y1, x1 + w1, y1, x2 + w2, y2, x2 + w2 + r2, y2, theme.rumble[i]);
     Render.polygon(ctx, x1 - w1, y1, x1 + w1, y1, x2 + w2, y2, x2 - w2, y2, theme.road[i]);
+
+    /* the rubbered-in racing groove down the middle of the tarmac */
+    Render.polygon(ctx, x1 - w1 * 0.34, y1, x1 + w1 * 0.34, y1, x2 + w2 * 0.34, y2, x2 - w2 * 0.34, y2, 'rgba(0,0,0,0.07)');
+    Render.polygon(ctx, x1 - w1 * 0.16, y1, x1 + w1 * 0.16, y1, x2 + w2 * 0.16, y2, x2 - w2 * 0.16, y2, 'rgba(0,0,0,0.06)');
 
     /* No lane markings: a grand prix circuit is one unbroken ribbon
        of tarmac, not a motorway. */
@@ -57,8 +66,12 @@ var Render = {
       Render.polygon(ctx, lx1, y1, lx1, y1 - h1, lx2, y2 - h2, lx2, y2, wc);
       Render.polygon(ctx, rx1, y1, rx1, y1 - h1, rx2, y2 - h2, rx2, y2, wc);
 
+      /* shade the lower half so the face reads as a solid barrier */
+      Render.polygon(ctx, lx1, y1, lx1, y1 - h1 * 0.5, lx2, y2 - h2 * 0.5, lx2, y2, 'rgba(0,0,0,0.14)');
+      Render.polygon(ctx, rx1, y1, rx1, y1 - h1 * 0.5, rx2, y2 - h2 * 0.5, rx2, y2, 'rgba(0,0,0,0.14)');
+
       /* dark rail along the top of the barrier so it reads as Armco */
-      var rail = seg.dark ? '#2c3138' : '#242930';
+      var rail = seg.dark ? '#343b44' : '#2d343d';
       Render.polygon(ctx, lx1, y1 - h1, lx1, y1 - h1 + cap1, lx2, y2 - h2 + cap2, lx2, y2 - h2, rail);
       Render.polygon(ctx, rx1, y1 - h1, rx1, y1 - h1 + cap1, rx2, y2 - h2 + cap2, rx2, y2 - h2, rail);
     }
@@ -68,6 +81,12 @@ var Render = {
 
   rumbleWidth: function (projectedRoadWidth, lanes) {
     return projectedRoadWidth / Math.max(6, 2 * lanes);
+  },
+
+  /* 'rgba(r,g,b,a)' from a '#rrggbb' hex */
+  rgba: function (hex, a) {
+    var n = parseInt(hex.slice(1), 16);
+    return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + a + ')';
   },
 
   /* ----------------------------------------------------------------
@@ -81,6 +100,15 @@ var Render = {
     sky.addColorStop(1, theme.sky[2]);
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, width, height);
+
+    /* atmosphere pooling on the horizon, so road and sky meet softly
+       instead of along a razor edge */
+    var top = height * 0.36;
+    var band = ctx.createLinearGradient(0, top, 0, height * 0.505);
+    band.addColorStop(0, Render.rgba(theme.haze, 0));
+    band.addColorStop(1, Render.rgba(theme.haze, 0.85));
+    ctx.fillStyle = band;
+    ctx.fillRect(0, top, width, height * 0.505 - top);
   },
 
   /* ----------------------------------------------------------------
@@ -90,17 +118,22 @@ var Render = {
      road, used by the start gantry). Sizes are expressed as multiples
      of the projected half-road-width, so scenery shrinks with distance
      exactly like the tarmac does. */
-  sprite: function (ctx, width, height, roadWidth, type, scale, destX, destY, side, clipY) {
+  sprite: function (ctx, width, height, roadWidth, type, scale, destX, destY, side, clipY, fog) {
     var halfRoad = (scale * roadWidth * width) / 2;
     var w = halfRoad * Render.spriteSize(type);
     var h = w * Render.spriteRatio(type);
     if (w < 2 || h < 2) return;
+
+    /* distant objects sink into the haze like the road does */
+    var a = fog === undefined ? 1 : Util.limit(fog, 0, 1);
+    if (a < 0.05) return;
 
     var x = destX + side * w * 0.5;
     var y = destY - h;
     if (y > height || x + w < 0 || x - w > width) return;
 
     ctx.save();
+    ctx.globalAlpha = a;
     if (clipY) {
       var visible = clipY - y;
       if (visible <= 0) { ctx.restore(); return; }
@@ -186,9 +219,11 @@ var Render = {
   },
 
   /* ----------------------------------------------------------------
-     A rival car, seen from behind: rear wing, diffuser, fat tyres.
+     A rival car, seen from behind: wing on its pylon with endplates,
+     halo over the cockpit, shark-fin engine cover, diffuser strakes,
+     and slick tyres with a compound-coloured sidewall band.
      ---------------------------------------------------------------- */
-  car: function (ctx, width, height, roadWidth, color, scale, destX, destY, clipY) {
+  car: function (ctx, width, height, roadWidth, color, scale, destX, destY, clipY, fog, tyreColor) {
     /* an F1 car is roughly a sixth of the road's width - with the
        road at its full grand-prix width, that is 0.15 of a half */
     var halfRoad = (scale * roadWidth * width) / 2;
@@ -198,7 +233,11 @@ var Render = {
     var y = destY - h;
     if (h < 1.5) return;
 
+    var a = fog === undefined ? 1 : Util.limit(fog, 0, 1);
+    if (a < 0.05) return;
+
     ctx.save();
+    ctx.globalAlpha = a;
     if (clipY) {
       var visible = clipY - y;
       if (visible <= 0) { ctx.restore(); return; }
@@ -210,38 +249,59 @@ var Render = {
     /* shadow */
     ctx.fillStyle = 'rgba(0,0,0,0.32)';
     ctx.beginPath();
-    ctx.ellipse(x, y + h * 0.97, w * 0.62, h * 0.1, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, y + h * 0.97, w * 0.66, h * 0.09, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    /* tyres */
-    ctx.fillStyle = '#16181c';
-    ctx.fillRect(x - w * 0.58, y + h * 0.42, w * 0.26, h * 0.52);
-    ctx.fillRect(x + w * 0.32, y + h * 0.42, w * 0.26, h * 0.52);
+    /* floor and diffuser, with strakes */
+    ctx.fillStyle = '#0c0e11';
+    ctx.fillRect(x - w * 0.60, y + h * 0.82, w * 1.20, h * 0.13);
+    ctx.fillStyle = '#20242a';
+    for (var d = -1; d <= 1; d++) {
+      ctx.fillRect(x + d * w * 0.20 - w * 0.02, y + h * 0.83, w * 0.04, h * 0.12);
+    }
 
-    /* body + engine cover */
+    /* rear tyres, compound band on the sidewall */
+    ctx.fillStyle = '#16181c';
+    ctx.fillRect(x - w * 0.60, y + h * 0.40, w * 0.26, h * 0.55);
+    ctx.fillRect(x + w * 0.34, y + h * 0.40, w * 0.26, h * 0.55);
+    if (tyreColor && h > 10) {
+      ctx.fillStyle = tyreColor;
+      ctx.fillRect(x - w * 0.60, y + h * 0.47, w * 0.26, h * 0.05);
+      ctx.fillRect(x + w * 0.34, y + h * 0.47, w * 0.26, h * 0.05);
+    }
+
+    /* body between the tyres */
     ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.moveTo(x - w * 0.3, y + h * 0.95);
-    ctx.lineTo(x + w * 0.3, y + h * 0.95);
-    ctx.lineTo(x + w * 0.2, y + h * 0.42);
-    ctx.lineTo(x - w * 0.2, y + h * 0.42);
+    ctx.moveTo(x - w * 0.32, y + h * 0.93);
+    ctx.lineTo(x + w * 0.32, y + h * 0.93);
+    ctx.lineTo(x + w * 0.20, y + h * 0.38);
+    ctx.lineTo(x - w * 0.20, y + h * 0.38);
     ctx.closePath();
     ctx.fill();
 
-    /* diffuser */
-    ctx.fillStyle = '#0f1114';
-    ctx.fillRect(x - w * 0.28, y + h * 0.8, w * 0.56, h * 0.15);
+    /* halo over the cockpit, shark fin behind it */
+    if (h > 8) {
+      ctx.strokeStyle = '#111418';
+      ctx.lineWidth = Math.max(1, w * 0.07);
+      ctx.beginPath();
+      ctx.arc(x, y + h * 0.40, w * 0.18, Math.PI, 0);
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#1a1e24';
+    ctx.fillRect(x - w * 0.025, y + h * 0.14, w * 0.05, h * 0.26);
 
-    /* rear wing */
+    /* rear wing: main plane on the pylon, endplates outside */
     ctx.fillStyle = color;
-    ctx.fillRect(x - w * 0.42, y + h * 0.1, w * 0.84, h * 0.16);
-    ctx.fillStyle = '#1b1e23';
-    ctx.fillRect(x - w * 0.44, y + h * 0.24, w * 0.06, h * 0.2);
-    ctx.fillRect(x + w * 0.38, y + h * 0.24, w * 0.06, h * 0.2);
+    ctx.fillRect(x - w * 0.44, y + h * 0.06, w * 0.88, h * 0.11);
+    ctx.fillStyle = '#191d22';
+    ctx.fillRect(x - w * 0.44, y + h * 0.01, w * 0.88, h * 0.045);
+    ctx.fillRect(x - w * 0.49, y, w * 0.06, h * 0.24);
+    ctx.fillRect(x + w * 0.43, y, w * 0.06, h * 0.24);
 
-    /* rain light */
+    /* rain light down the pylon */
     ctx.fillStyle = '#ff2a2a';
-    ctx.fillRect(x - w * 0.04, y + h * 0.5, w * 0.08, h * 0.1);
+    ctx.fillRect(x - w * 0.035, y + h * 0.44, w * 0.07, h * 0.10);
 
     ctx.restore();
   },
@@ -253,13 +313,13 @@ var Render = {
   cockpit: function (ctx, width, height, state) {
     var steer = state.steer;          // -1 .. 1
     var bump = state.bump;            // vertical shake in px
-    var wheelY = height * 0.955 + bump;
-    var wheelW = width * 0.30;
+    var wheelY = height * 0.945 + bump;
+    var wheelW = width * 0.31;
     var wheelH = wheelW * 0.40;
 
     /* The bodywork rim the driver looks over. Kept low so the road,
        not the car, owns the screen. */
-    var noseApex = height * 0.84;
+    var noseApex = height * 0.81;
     var rimCtrlY = noseApex - height * 0.075;
 
     ctx.save();
@@ -278,6 +338,14 @@ var Render = {
     ctx.quadraticCurveTo(width * 0.5, -height * 0.06, width * 1.02, height * 0.50);
     ctx.stroke();
 
+    /* a thin sheen along the hoop so it reads as carbon, not a void */
+    ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+    ctx.lineWidth = height * 0.012;
+    ctx.beginPath();
+    ctx.moveTo(-width * 0.02, height * 0.485);
+    ctx.quadraticCurveTo(width * 0.5, -height * 0.075, width * 1.02, height * 0.485);
+    ctx.stroke();
+
     /* --- halo centre pillar: slim, apex down into the chassis ----- */
     var apexY = height * 0.215;
     ctx.fillStyle = '#15181d';
@@ -289,34 +357,6 @@ var Render = {
     ctx.closePath();
     ctx.fill();
     ctx.restore();
-
-    /* --- mirrors ------------------------------------------------- */
-    /* Height of the bodywork rim under a given x. The rim is the
-       quadratic drawn below, and its x component happens to be linear —
-       x(t) = (-0.05 + 1.1t)·width — so where the rim sits under a
-       mirror is a closed form rather than a search. Anchoring to it is
-       what keeps the mirrors attached at every aspect ratio instead of
-       only at the one this was eyeballed on. */
-    var rimY = function (x) {
-      var t = (x / width + 0.05) / 1.1;
-      var u = 1 - t;
-      return u * u * height * 0.97 + 2 * t * u * rimCtrlY + t * t * height * 0.97;
-    };
-
-    var mirrorW = width * 0.095;
-    /* Cap against the width too: on a tall portrait screen a flat
-       fraction of height makes the housing taller than it is wide. */
-    var mirrorH = Math.min(height * 0.05, mirrorW * 0.45);
-
-    /* Perched on the cockpit sides, inboard of the bottom-corner HUD
-       boxes, with a short stalk down to the rim. */
-    for (var m = 0; m < 2; m++) {
-      var mSide = m === 0 ? -1 : 1;
-      var mx = width * (m === 0 ? 0.19 : 0.81);
-      var foot = rimY(mx) + bump;
-      var my = height * 0.685 + bump * 0.5;
-      Render.mirror(ctx, mx, my, mirrorW, mirrorH, state, mSide, foot);
-    }
 
     /* --- nose / bodywork ----------------------------------------- */
     ctx.save();
@@ -340,7 +380,37 @@ var Render = {
     ctx.moveTo(-width * 0.05, height * 0.97);
     ctx.quadraticCurveTo(width * 0.5, rimCtrlY, width * 1.05, height * 0.97);
     ctx.stroke();
+
+    /* --- cockpit side cowls: the humps the mirrors sit on --------- */
+    var cowl = ctx.createLinearGradient(0, height * 0.60, 0, height);
+    cowl.addColorStop(0, '#2a313b');
+    cowl.addColorStop(1, '#0d1015');
+    ctx.fillStyle = cowl;
+    ctx.beginPath();
+    ctx.moveTo(-width * 0.06, height * 1.05);
+    ctx.quadraticCurveTo(width * 0.19, height * 0.35, width * 0.44, height * 1.05);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(width * 1.06, height * 1.05);
+    ctx.quadraticCurveTo(width * 0.81, height * 0.35, width * 0.56, height * 1.05);
+    ctx.closePath();
+    ctx.fill();
     ctx.restore();
+
+    /* --- mirrors: perched on the cowl peaks ----------------------- */
+    var mirrorW = width * 0.095;
+    /* Cap against the width too: on a tall portrait screen a flat
+       fraction of height makes the housing taller than it is wide. */
+    var mirrorH = Math.min(height * 0.05, mirrorW * 0.45);
+
+    for (var m = 0; m < 2; m++) {
+      var mSide = m === 0 ? -1 : 1;
+      var mx = width * (m === 0 ? 0.19 : 0.81);
+      var foot = height * 0.74 + bump;
+      var my = height * 0.645 + bump * 0.5;
+      Render.mirror(ctx, mx, my, mirrorW, mirrorH, state, mSide, foot);
+    }
 
     /* --- steering wheel ------------------------------------------ */
     ctx.save();
@@ -387,17 +457,15 @@ var Render = {
   mirror: function (ctx, cx, cy, w, h, state, side, mountY) {
     ctx.save();
 
-    /* The stalk back to the bodywork. Without it the housing is a box
-       floating in mid-air — which is what it was, and which reads as a
-       glitch rather than a mirror at any aspect ratio. It angles inward
-       towards the cockpit, so it is drawn before the housing and ends
-       up tucked behind it. */
+    /* A short stalk straight down into the cowl the housing sits on.
+       Without it the housing is a box floating in mid-air, which reads
+       as a glitch rather than a mirror. */
     ctx.strokeStyle = '#15181d';
-    ctx.lineWidth = Math.max(2, h * 0.20);
+    ctx.lineWidth = Math.max(2, h * 0.22);
     ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(cx - side * w * 0.10, cy + h * 0.40);
-    ctx.lineTo(cx - side * w * 0.55, mountY);
+    ctx.moveTo(cx, cy + h * 0.40);
+    ctx.lineTo(cx - side * w * 0.08, mountY);
     ctx.stroke();
 
     ctx.fillStyle = '#101318';
@@ -432,16 +500,77 @@ var Render = {
     ctx.closePath();
   },
 
-  /* speed blur creeping in from the edges at high speed */
+  /* ----------------------------------------------------------------
+     Monaco's tunnel: a dark ceiling, sodium glow, and a run of strip
+     lights receding overhead. Faded in and out by `t`.
+     ---------------------------------------------------------------- */
+  tunnel: function (ctx, width, height, t) {
+    if (t < 0.02) return;
+
+    var ceil = ctx.createLinearGradient(0, 0, 0, height * 0.52);
+    ceil.addColorStop(0, 'rgba(12,9,6,' + (0.96 * t).toFixed(3) + ')');
+    ceil.addColorStop(0.7, 'rgba(12,9,6,' + (0.55 * t).toFixed(3) + ')');
+    ceil.addColorStop(1, 'rgba(12,9,6,0)');
+    ctx.fillStyle = ceil;
+    ctx.fillRect(0, 0, width, height * 0.52);
+
+    /* sodium-lamp warmth over everything */
+    ctx.fillStyle = 'rgba(255,150,40,' + (0.10 * t).toFixed(3) + ')';
+    ctx.fillRect(0, 0, width, height);
+
+    /* the ceiling strip lights, receding toward the exit */
+    for (var i = 0; i < 8; i++) {
+      var p = i / 8;
+      var y = height * (0.06 + 0.38 * Math.pow(p, 1.6));
+      var lw = width * 0.14 * (1 - p * 0.9);
+      ctx.fillStyle = 'rgba(255,200,110,' + (0.6 * t * (1 - p * 0.6)).toFixed(3) + ')';
+      ctx.fillRect(width / 2 - lw / 2, y, lw, Math.max(1.5, height * 0.010 * (1 - p * 0.7)));
+    }
+  },
+
+  /* constant soft vignette pulling the eye to the road. A full-screen
+     radial gradient is ~18ms a frame if rebuilt live, so it is drawn
+     once to an offscreen canvas and blitted. */
+  vignette: function (ctx, width, height) {
+    var c = Render._vig;
+    if (!c || c.width !== width || c.height !== height) {
+      c = Render._vig = document.createElement('canvas');
+      c.width = width;
+      c.height = height;
+      var vctx = c.getContext('2d');
+      var g = vctx.createRadialGradient(
+        width / 2, height * 0.45, height * 0.40,
+        width / 2, height * 0.45, height * 1.0
+      );
+      g.addColorStop(0, 'rgba(0,0,0,0)');
+      g.addColorStop(1, 'rgba(0,0,0,0.22)');
+      vctx.fillStyle = g;
+      vctx.fillRect(0, 0, width, height);
+    }
+    ctx.drawImage(c, 0, 0);
+  },
+
+  /* speed blur creeping in from the edges at high speed. Cached at
+     full strength; per-frame intensity rides on globalAlpha. */
   speedLines: function (ctx, width, height, intensity) {
     if (intensity <= 0.02) return;
-    var g = ctx.createRadialGradient(
-      width / 2, height / 2, height * 0.25,
-      width / 2, height / 2, height * 0.85
-    );
-    g.addColorStop(0, 'rgba(0,0,0,0)');
-    g.addColorStop(1, 'rgba(0,0,0,' + (0.55 * intensity).toFixed(3) + ')');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, width, height);
+    var c = Render._blur;
+    if (!c || c.width !== width || c.height !== height) {
+      c = Render._blur = document.createElement('canvas');
+      c.width = width;
+      c.height = height;
+      var bctx = c.getContext('2d');
+      var g = bctx.createRadialGradient(
+        width / 2, height / 2, height * 0.25,
+        width / 2, height / 2, height * 0.85
+      );
+      g.addColorStop(0, 'rgba(0,0,0,0)');
+      g.addColorStop(1, 'rgba(0,0,0,0.55)');
+      bctx.fillStyle = g;
+      bctx.fillRect(0, 0, width, height);
+    }
+    ctx.globalAlpha = Util.limit(intensity, 0, 1);
+    ctx.drawImage(c, 0, 0);
+    ctx.globalAlpha = 1;
   }
 };

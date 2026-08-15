@@ -210,6 +210,7 @@ var Game = {
     this.tow = false;
     this.newRecord = false;
     this.bestFlash = 0;
+    this.tunnelT = 0;
     Audio.unlock();             // the start click is our user gesture
 
     this.resetCars();
@@ -239,6 +240,8 @@ var Game = {
            so no two grands prix play out the same */
         pace: 0.80 + (names.length - i) * 0.018 + (Math.random() - 0.5) * 0.02,
         wobble: Math.random() * Math.PI * 2,
+        /* soft red, medium yellow or hard white sidewalls */
+        tyre: Util.randomChoice(['#e10600', '#ffd12e', '#f0f0f0']),
         finishedAt: null
       });
     }
@@ -570,7 +573,8 @@ var Game = {
         var cx = Util.interpolate(segment.p1.screen.x, segment.p2.screen.x, carPercent) +
                  (scale * car.offset * ROAD_WIDTH * width) / 2;
         var cy = Util.interpolate(segment.p1.screen.y, segment.p2.screen.y, carPercent);
-        Render.car(ctx, width, height, ROAD_WIDTH, car.color, scale, cx, cy, segment.clip);
+        Render.car(ctx, width, height, ROAD_WIDTH, car.color, scale, cx, cy, segment.clip,
+          segment.fog, car.tyre);
       }
 
       for (var k = 0; k < segment.sprites.length; k++) {
@@ -579,9 +583,14 @@ var Game = {
         var sx = segment.p1.screen.x + (sscale * sprite.offset * ROAD_WIDTH * width) / 2;
         var sy = segment.p1.screen.y;
         Render.sprite(ctx, width, height, ROAD_WIDTH, sprite.type, sscale, sx, sy,
-          Math.sign(sprite.offset), segment.clip);
+          Math.sign(sprite.offset), segment.clip, segment.fog);
       }
     }
+
+    /* --- tunnel ambience, fading over a few frames ---------------- */
+    var tunnelTarget = playerSegment.section === 'TUNNEL' ? 1 : 0;
+    this.tunnelT = (this.tunnelT || 0) + (tunnelTarget - (this.tunnelT || 0)) * 0.06;
+    Render.tunnel(ctx, width, height, this.tunnelT);
 
     /* --- cockpit and effects ------------------------------------- */
     var speedPercent = this.speed / this.maxSpeed;
@@ -600,6 +609,8 @@ var Game = {
         ? { distance: behind.gap / (SEGMENT_LENGTH * 14), offset: behind.car.offset, color: behind.car.color }
         : null
     });
+
+    Render.vignette(ctx, width, height);
 
     if (this.state === 'countdown') this.renderCountdown(ctx, width, height);
     this.updateHud(speedPercent);
@@ -726,7 +737,7 @@ var Audio = {
   },
 
   hit: function () {
-    if (!this.ready) return;
+    if (!this.ready || this.ctx.state !== 'running') return;
     var o = this.ctx.createOscillator();
     var g = this.ctx.createGain();
     o.type = 'square';
@@ -739,9 +750,11 @@ var Audio = {
     o.stop(this.ctx.currentTime + 0.25);
   },
 
-  /* start-light beeps and other one-shot tones */
+  /* start-light beeps and other one-shot tones. The state guard
+     matters: on a suspended context currentTime never advances, so
+     scheduled stops never fire and the nodes pile up forever. */
   beep: function (freq, dur, gain) {
-    if (!this.ready) return;
+    if (!this.ready || this.ctx.state !== 'running') return;
     var o = this.ctx.createOscillator();
     var g = this.ctx.createGain();
     o.type = 'sine';
