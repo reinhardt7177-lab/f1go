@@ -68,6 +68,18 @@ export class TrackSpline {
       this.bend[i] = segments[i].curve * CURVE_TO_RADIANS;
     }
 
+    /* Compass heading at each segment, accumulated from the start.
+       The rolling window always puts the car at the origin facing -Z,
+       which means the distant scenery has to rotate instead — without
+       this the mountains would swing round with every corner and sit
+       in a different place each lap. */
+    this.absHeading = new Float32Array(this.segmentCount);
+    let h = 0;
+    for (let i = 0; i < this.segmentCount; i++) {
+      h += this.bend[i];
+      this.absHeading[i] = h;
+    }
+
     /* --- the window ---------------------------------------------- */
     /* Sized once, at the largest draw distance any quality tier asks
        for, and then only partly filled. Growing it mid-race would mean

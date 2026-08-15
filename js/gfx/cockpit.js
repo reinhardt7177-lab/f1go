@@ -82,9 +82,20 @@ export class PlayerCockpit {
       roughness: 0.55,
       metalness: 0.15
     });
+    /* The livery: a clear-coated paint rather than a flat colour.
+       Clearcoat is what makes bodywork look wet-sprayed instead of
+       matte plastic, and it is the cheapest step toward the finish a
+       modern car has. */
+    this.liveryMat = new THREE.MeshPhysicalMaterial({
+      color: accentColor || 0xf0620f,
+      roughness: 0.28,
+      metalness: 0.05,
+      clearcoat: 0.85,
+      clearcoatRoughness: 0.12
+    });
     this.accentMat = new THREE.MeshStandardMaterial({
-      color: accentColor || 0xe2000f,
-      roughness: 0.35,
+      color: 0x16181c,
+      roughness: 0.4,
       metalness: 0.1
     });
     this.rubberMat = new THREE.MeshStandardMaterial({
@@ -115,51 +126,97 @@ export class PlayerCockpit {
      the nose through the windscreen and the halo under the floor.  */
   _buildShell() {
     const ROAD = -1.12;
-    const parts = [];
 
-    /* Nose: a long taper running away to the front wing, well below
-       the eyeline. Two boxes rather than one, so it visibly narrows. */
-    const nose = new THREE.BoxGeometry(0.34, 0.11, 1.5);
-    nose.translate(0, ROAD + 0.38, -2.15);
-    parts.push(nose);
+    /* Two materials, two meshes: the bodywork the driver looks along
+       is in the team's colour, and only the structure around the
+       cockpit is bare carbon. An all-carbon car reads as a prototype
+       rather than a livery, and the coloured nose running away to the
+       wing is the single strongest cue that this is *your* car. */
+    const bodyParts = [];
+    const carbonParts = [];
 
-    const nozeTip = new THREE.BoxGeometry(0.22, 0.09, 0.9);
-    nozeTip.translate(0, ROAD + 0.34, -3.25);
-    parts.push(nozeTip);
+    /* Nose, in three steps so it visibly tapers toward the wing. */
+    const n1 = new THREE.BoxGeometry(0.44, 0.15, 0.95);
+    n1.translate(0, ROAD + 0.44, -1.62);
+    bodyParts.push(n1);
 
-    /* Front wing, seen edge-on at the far end of the nose. */
-    const wing = new THREE.BoxGeometry(1.9, 0.05, 0.42);
-    wing.translate(0, ROAD + 0.12, -3.62);
-    parts.push(wing);
+    const n2 = new THREE.BoxGeometry(0.32, 0.12, 1.1);
+    n2.translate(0, ROAD + 0.40, -2.60);
+    bodyParts.push(n2);
 
-    /* The cockpit sides the driver's shoulders sit between. Kept low
-       and short: from the seat these are in the bottom corners of
-       vision, not a pair of rails down the middle of the screen. */
+    const n3 = new THREE.BoxGeometry(0.22, 0.10, 0.8);
+    n3.translate(0, ROAD + 0.35, -3.50);
+    bodyParts.push(n3);
+
+    /* The tub sides, sloping up to the cockpit opening — also livery. */
     for (const side of [-1, 1]) {
-      const cowl = new THREE.BoxGeometry(0.17, 0.13, 0.70);
-      cowl.translate(side * 0.46, ROAD + 0.46, -1.05);
-      parts.push(cowl);
-
-      /* Mirror on its stalk, out where it can see past the rear tyre. */
-      const stalk = new THREE.BoxGeometry(0.20, 0.03, 0.03);
-      stalk.translate(side * 0.53, ROAD + 0.66, -1.14);
-      parts.push(stalk);
-
-      const housing = new THREE.BoxGeometry(0.19, 0.11, 0.05);
-      housing.translate(side * 0.64, ROAD + 0.66, -1.17);
-      parts.push(housing);
+      const flank = new THREE.BoxGeometry(0.20, 0.20, 1.05);
+      flank.translate(side * 0.42, ROAD + 0.50, -1.15);
+      bodyParts.push(flank);
     }
 
-    const merged = mergeGeometries(parts, false);
-    parts.forEach((p) => p.dispose());
+    /* Front wing: main plane plus endplates, at the end of the nose. */
+    const wing = new THREE.BoxGeometry(1.85, 0.04, 0.46);
+    wing.translate(0, ROAD + 0.13, -3.92);
+    bodyParts.push(wing);
+    const flap = new THREE.BoxGeometry(1.80, 0.035, 0.26);
+    flap.translate(0, ROAD + 0.21, -3.78);
+    bodyParts.push(flap);
+    for (const side of [-1, 1]) {
+      const ep = new THREE.BoxGeometry(0.04, 0.30, 0.55);
+      ep.translate(side * 0.94, ROAD + 0.20, -3.90);
+      carbonParts.push(ep);
+    }
 
-    this.shell = new THREE.Mesh(merged, this.carbonMat);
+    /* Cockpit rim in carbon, framing the opening. */
+    for (const side of [-1, 1]) {
+      const rim = new THREE.BoxGeometry(0.10, 0.07, 0.95);
+      rim.translate(side * 0.44, ROAD + 0.61, -1.10);
+      carbonParts.push(rim);
+
+      /* Mirror on its stalk. */
+      const stalk = new THREE.BoxGeometry(0.20, 0.03, 0.03);
+      stalk.translate(side * 0.55, ROAD + 0.68, -1.20);
+      carbonParts.push(stalk);
+      const housing = new THREE.BoxGeometry(0.19, 0.11, 0.05);
+      housing.translate(side * 0.66, ROAD + 0.68, -1.23);
+      carbonParts.push(housing);
+    }
+
+    /* Suspension: the upper and lower wishbones running out to each
+       front upright. These are what tie the wheels to the car — with
+       them missing the tyres look like they are floating alongside,
+       which is exactly how the first pass read. */
+    for (const side of [-1, 1]) {
+      for (const arm of [{ y: 0.30, z: -2.00, len: 0.62 }, { y: 0.52, z: -2.14, len: 0.58 }]) {
+        const a = new THREE.BoxGeometry(arm.len, 0.035, 0.05);
+        a.rotateY(side * 0.30);
+        a.translate(side * (0.30 + arm.len / 2), ROAD + arm.y, arm.z);
+        carbonParts.push(a);
+      }
+      /* Trackrod, further forward and thinner. */
+      const rod = new THREE.BoxGeometry(0.58, 0.025, 0.03);
+      rod.rotateY(side * 0.18);
+      rod.translate(side * 0.60, ROAD + 0.36, -2.42);
+      carbonParts.push(rod);
+    }
+
+    const bodyGeo = mergeGeometries(bodyParts, false);
+    bodyParts.forEach((p) => p.dispose());
+    this.body = new THREE.Mesh(bodyGeo, this.liveryMat);
+    this.body.frustumCulled = false;
+    this.group.add(this.body);
+
+    const carbonGeo = mergeGeometries(carbonParts, false);
+    carbonParts.forEach((p) => p.dispose());
+    this.shell = new THREE.Mesh(carbonGeo, this.carbonMat);
     this.shell.frustumCulled = false;
     this.group.add(this.shell);
 
-    /* A team stripe down the nose — the one piece that is not carbon. */
-    const stripe = new THREE.BoxGeometry(0.14, 0.02, 2.3);
-    stripe.translate(0, ROAD + 0.465, -2.45);
+    /* A dark spine down the centre of the nose, which is what gives
+       the bodywork its length in the view. */
+    const stripe = new THREE.BoxGeometry(0.10, 0.02, 2.9);
+    stripe.translate(0, ROAD + 0.51, -2.35);
     this.stripe = new THREE.Mesh(stripe, this.accentMat);
     this.stripe.frustumCulled = false;
     this.group.add(this.stripe);
@@ -212,10 +269,13 @@ export class PlayerCockpit {
   /* --- steering wheel --------------------------------------------- */
   _buildWheel() {
     this.wheel = new THREE.Group();
-    /* Just below the eyeline and close in — from the seat you see the
-       top half of the wheel and your own hands, not the whole rim. */
-    this.wheel.position.set(0, -1.12 + 0.62, -0.42);
-    this.wheel.rotation.x = -0.62;          // laid back toward the driver
+    /* High enough to sit in the bottom of the frame rather than out of
+       it: in an onboard shot the top of the wheel and its display are
+       always visible under the nose, and losing them makes the view
+       feel like a drone rather than a seat. */
+    this.wheel.position.set(0, -1.12 + 0.70, -0.50);
+    this.wheel.rotation.x = -0.52;          // laid back toward the driver
+    this.wheel.scale.setScalar(1.25);
     this.group.add(this.wheel);
 
     const parts = [];
@@ -330,7 +390,7 @@ export class PlayerCockpit {
     }
     this.revLights.instanceColor.needsUpdate = true;
 
-    this.accentMat.emissive.setScalar(drs ? 0.12 : 0);
+    this.liveryMat.emissive.setScalar(drs ? 0.05 : 0);
   }
 
   dispose() {
@@ -340,6 +400,7 @@ export class PlayerCockpit {
     });
     this.carbonMat.map.dispose();
     this.carbonMat.dispose();
+    this.liveryMat.dispose();
     this.accentMat.dispose();
     this.rubberMat.dispose();
     this.rimMat.dispose();

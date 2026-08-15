@@ -17,6 +17,7 @@ import { TrackSpline } from './spline.js';
 import { TrackGeometry } from './geometry.js';
 import { KerbInstancing } from './kerbs.js';
 import { PlayerCockpit } from './cockpit.js';
+import { EnvironmentManager } from './environment.js';
 
 /* Field of view is split by orientation because the two shapes want
    different framing: a landscape screen wants a near-cinematic 68°,
@@ -150,6 +151,7 @@ export class Renderer3D {
     this.trackGroup.add(this.road.mesh);
 
     this.kerbs = new KerbInstancing(this.trackGroup);
+    this.environment = new EnvironmentManager(this.trackGroup, this.theme, this.trackId);
 
     /* Ground under everything. The window never reaches far, so this
        only has to cover the draw distance, not a whole circuit. */
@@ -194,6 +196,7 @@ export class Renderer3D {
     });
     if (this.road) { this.road.dispose(); this.road = null; }
     if (this.kerbs) { this.kerbs.dispose(); this.kerbs = null; }
+    if (this.environment) { this.environment.dispose(); this.environment = null; }
     this.trackGroup = null;
     this.ground = null;
     if (this.spline) this.spline.dispose();
@@ -272,6 +275,12 @@ export class Renderer3D {
     this.scene.fog.far = roadReach * 0.92;
     this.road.update(this.spline);
     this.kerbs.update(this.spline, this.theme, q.kerbLod);
+
+    /* The backdrop needs the car's compass bearing, which the window
+       deliberately throws away — it always faces -Z. */
+    const s = this.spline;
+    const seg = s.absHeading[s.carSegment] || 0;
+    this.environment.update(s, q.envDetail, seg);
 
     this.updateCamera(game);
 
