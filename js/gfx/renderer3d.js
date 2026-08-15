@@ -18,6 +18,8 @@ import { TrackGeometry } from './geometry.js';
 import { KerbInstancing } from './kerbs.js';
 import { PlayerCockpit } from './cockpit.js';
 import { EnvironmentManager } from './environment.js';
+import { AICarRenderer } from './aicars.js';
+import { LightingManager, SpeedEffects } from './lighting.js';
 
 /* Field of view is split by orientation because the two shapes want
    different framing: a landscape screen wants a near-cinematic 68°,
@@ -69,14 +71,11 @@ export class Renderer3D {
     this.world = new THREE.Group();
     this.scene.add(this.world);
 
-    /* Provisional lighting so the standard materials are visible at
-       all. LightingManager takes this over in stage 7. */
-    this.sun = new THREE.DirectionalLight(0xfff2dd, 2.6);
-    this.sun.position.set(60, 90, 40);
-    this.scene.add(this.sun);
-    this.scene.add(this.sun.target);
-    this.hemi = new THREE.HemisphereLight(0xbcd4e4, 0x4a5340, 1.1);
-    this.scene.add(this.hemi);
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.lighting = new LightingManager(this.renderer, this.scene);
+    this.lighting.applyTheme(null, null);
+    this.speedFx = new SpeedEffects();
 
     this._placeholder();
 
@@ -152,6 +151,8 @@ export class Renderer3D {
 
     this.kerbs = new KerbInstancing(this.trackGroup);
     this.environment = new EnvironmentManager(this.trackGroup, this.theme, this.trackId);
+    this.aiCars = new AICarRenderer(this.trackGroup);
+    this.lighting.applyTheme(this.theme, this.trackId);
 
     /* Ground under everything. The window never reaches far, so this
        only has to cover the draw distance, not a whole circuit. */
@@ -197,6 +198,7 @@ export class Renderer3D {
     if (this.road) { this.road.dispose(); this.road = null; }
     if (this.kerbs) { this.kerbs.dispose(); this.kerbs = null; }
     if (this.environment) { this.environment.dispose(); this.environment = null; }
+    if (this.aiCars) { this.aiCars.dispose(); this.aiCars = null; }
     this.trackGroup = null;
     this.ground = null;
     if (this.spline) this.spline.dispose();
@@ -233,11 +235,28 @@ export class Renderer3D {
    * Keeping the car at the origin also keeps world coordinates small,
    * which keeps float precision comfortable however long the race.
    */
-  updateCamera(game) {
+  updateCamera(game, dt) {
     const eye = 1.12;                       // driver's eye height, metres
     const lateral = game.playerX * this.spline.halfWidth;
 
-    this.camera.position.set(lateral, eye, 0);
+    /* Speed effects: a wider lens and a little vibration, driven by
+       the same off-track and kerb tests the game already runs, so the
+       picture reacts to the surface the physics thinks it is on. */
+    const speed01 = game.speed / game.maxSpeed;
+    const rough = game.offTrack ? 1 : Math.abs(game.playerX) > 0.92 ? 0.45 : 0;
+    const baseFov = this.portrait ? FOV_PORTRAIT : FOV_LANDSCAPE;
+    const fov = this.speedFx.update(speed01, baseFov, rough, game.steerInput, dt);
+
+    if (Math.abs(this.camera.fov - fov) > 0.05) {
+      this.camera.fov = fov;
+      this.camera.updateProjectionMatrix();
+    }
+
+    this.camera.position.set(
+      lateral + this.speedFx.shakeX,
+      eye + this.speedFx.shakeY + (game.bump || 0) * 0.0022,
+      0
+    );
 
     /* Aim a little way down the road rather than straight ahead: the
        eye leads the car into a corner, and a camera that does not do
@@ -251,6 +270,8 @@ export class Renderer3D {
     const lookZ = s.count ? s.pz[ahead] : -22;
     this._camTarget.set(lookX, eye * 0.86, lookZ);
     this.camera.lookAt(this._camTarget);
+    /* Roll goes on after lookAt, which would otherwise level it. */
+    this.camera.rotateZ(this.speedFx.roll);
   }
 
   /** Draw straight from the live game object — no snapshot copy. */
@@ -282,13 +303,17 @@ export class Renderer3D {
     const seg = s.absHeading[s.carSegment] || 0;
     this.environment.update(s, q.envDetail, seg);
 
-    this.updateCamera(game);
+    const dt = Math.min(this.perf.frameMs / 1000, 0.05);
+    this.aiCars.update(s, game.cars, dt, q.envDetail);
+    this.lighting.applyQuality(q);
+
+    this.updateCamera(game, dt);
 
     this.cockpit.update(
       game.steerInput,
       game.rpm,
       game.speed / game.maxSpeed,
-      Math.min(this.perf.frameMs / 1000, 0.05),
+      dt,
       game.drs
     );
     this.render(null, now || performance.now());
