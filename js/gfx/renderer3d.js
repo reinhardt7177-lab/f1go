@@ -16,6 +16,7 @@ import { QualityManager } from './quality.js';
 import { TrackSpline } from './spline.js';
 import { TrackGeometry } from './geometry.js';
 import { KerbInstancing } from './kerbs.js';
+import { PlayerCockpit } from './cockpit.js';
 
 /* Field of view is split by orientation because the two shapes want
    different framing: a landscape screen wants a near-cinematic 68°,
@@ -52,8 +53,14 @@ export class Renderer3D {
     this.scene.fog = new THREE.Fog(0xbcd4e4, 120, this.quality.settings.drawDistance);
     this.scene.background = new THREE.Color(0x9fc4de);
 
-    this.camera = new THREE.PerspectiveCamera(FOV_LANDSCAPE, 1, 0.25, 4000);
+    this.camera = new THREE.PerspectiveCamera(FOV_LANDSCAPE, 1, 0.12, 4000);
     this.camera.position.set(0, 1.6, 0);
+    /* The cockpit hangs off the camera, and three only updates the
+       world matrices of objects it can reach from the scene — so the
+       camera has to be in the graph, not merely pointed at it. */
+    this.scene.add(this.camera);
+
+    this.cockpit = new PlayerCockpit(this.camera, 0xe2000f);
 
     /* Everything that belongs to the current circuit hangs off this,
        so switching tracks is one removal rather than a bookkeeping
@@ -267,6 +274,14 @@ export class Renderer3D {
     this.kerbs.update(this.spline, this.theme, q.kerbLod);
 
     this.updateCamera(game);
+
+    this.cockpit.update(
+      game.steerInput,
+      game.rpm,
+      game.speed / game.maxSpeed,
+      Math.min(this.perf.frameMs / 1000, 0.05),
+      game.drs
+    );
     this.render(null, now || performance.now());
   }
 
