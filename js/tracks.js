@@ -157,6 +157,17 @@ var THEMES = {
     walls: false,
     wallColor: ['#dddddd', '#c8c8c8'],
     fogDensity: 5
+  },
+  monza: {
+    sky: ['#274b78', '#6f9fc9', '#dce8ef'],
+    haze: '#dce8ef',
+    grass: ['#4a7c43', '#44743d'],
+    road: ['#43464c', '#3f4248'],
+    rumble: ['#1f9d4e', '#f4f4f4'],   // a nod to the tricolore kerbs
+    lane: '#f0f0f0',
+    walls: false,
+    wallColor: ['#dddddd', '#c8c8c8'],
+    fogDensity: 5
   }
 };
 
@@ -265,6 +276,37 @@ function buildSuzuka() {
   return b.finish();
 }
 
+/* ------------------------------------------------------------------
+   Monza - the Temple of Speed. Flat out down the main straight into
+   the Rettifilo chicane (R-L), Curva Grande's long fast right, the
+   Roggia chicane (L-R), two Lesmo rights, Ascari (L-R-L), the back
+   straight, and the Parabolica's long right to bring it home.
+   ------------------------------------------------------------------ */
+function buildMonza() {
+  var b = new TrackBuilder(THEMES.monza);
+
+  b.straight('START / FINISH', LEN.HUGE);
+  b.at('T1 RETTIFILO', LEN.TINY, LEN.TINY, LEN.TINY, CRV.TIGHT);
+  b.at('T2 RETTIFILO', LEN.TINY, LEN.TINY, LEN.TINY, -CRV.TIGHT);
+  b.at('T3 CURVA GRANDE', LEN.SHORT, LEN.LONG, LEN.SHORT, CRV.KINK);
+  b.at('T4 ROGGIA', LEN.TINY, LEN.TINY, LEN.TINY, -CRV.TIGHT);
+  b.at('T5 ROGGIA', LEN.TINY, LEN.TINY, LEN.TINY, CRV.TIGHT);
+  b.at('T6 LESMO 1', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.HARD);
+  b.at('T7 LESMO 2', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.HARD);
+  b.straight('SERRAGLIO', LEN.LONG);
+  b.at('T8 ASCARI', LEN.TINY, LEN.SHORT, LEN.TINY, -CRV.HARD);
+  b.at('T9 ASCARI', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.MEDIUM);
+  b.at('T10 ASCARI', LEN.TINY, LEN.SHORT, LEN.TINY, -CRV.MEDIUM);
+  b.straight('BACK STRAIGHT', LEN.HUGE);
+  b.at('T11 PARABOLICA', LEN.SHORT, LEN.LONG, LEN.MEDIUM, CRV.MEDIUM);
+  b.straight('START / FINISH', LEN.MEDIUM);
+
+  b.scatter(['billboard'], 26, 1.6, 2.6);
+  b.grandstands(15, 75, -1);
+  b.grandstands(15, 75, 1);
+  return b.finish();
+}
+
 var TRACKS = {
   monaco: {
     id: 'monaco',
@@ -289,5 +331,13 @@ var TRACKS = {
     blurb: 'Figure-of-eight. Rhythm through the Esses decides your whole lap.',
     grip: 1.0,
     build: buildSuzuka
+  },
+  monza: {
+    id: 'monza',
+    name: 'MONZA',
+    subtitle: 'Autodromo Nazionale Monza',
+    blurb: 'The Temple of Speed. Flat out, two chicanes, and the Parabolica.',
+    grip: 1.02,
+    build: buildMonza
   }
 };

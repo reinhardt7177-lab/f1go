@@ -57,9 +57,35 @@ var Game = {
     window.addEventListener('resize', this.resize.bind(this));
     this.bindInput();
     this.bindMenu();
+    this.refreshRecords();
 
     this.last = performance.now();
     requestAnimationFrame(this.frame.bind(this));
+  },
+
+  /* all-time best laps, kept per track across sessions */
+  recordKey: function (trackId) { return 'f1go-best-' + trackId; },
+
+  loadRecord: function (trackId) {
+    try {
+      var v = parseFloat(localStorage.getItem(this.recordKey(trackId)));
+      return isFinite(v) ? v : null;
+    } catch (e) { return null; }
+  },
+
+  saveRecord: function (trackId, seconds) {
+    try { localStorage.setItem(this.recordKey(trackId), seconds.toFixed(3)); } catch (e) {}
+  },
+
+  refreshRecords: function () {
+    var self = this;
+    Array.prototype.forEach.call(document.querySelectorAll('.track-card'), function (card) {
+      var el = card.querySelector('.record');
+      if (!el) return;
+      var best = self.loadRecord(card.getAttribute('data-track'));
+      el.textContent = best === null ? 'BEST —' : 'BEST ' + Util.formatTime(best);
+      el.classList.toggle('set', best !== null);
+    });
   },
 
   resize: function () {
@@ -177,10 +203,14 @@ var Game = {
     this.bestLap = null;
     this.finished = false;
     this.finishOrder = [];
-    this.countdown = 4.2;
+    this.countdown = 5.4;       // five lights, then out
     this.state = 'countdown';
     this.gear = 1;
     this.rpm = 0;
+    this.tow = false;
+    this.newRecord = false;
+    this.bestFlash = 0;
+    Audio.unlock();             // the start click is our user gesture
 
     this.resetCars();
 
@@ -205,8 +235,9 @@ var Game = {
         offset: slot % 2 === 0 ? -0.4 : 0.4,
         z: this.playerZ + slot * SEGMENT_LENGTH * 3.2,
         lap: 1,
-        /* each rival has its own pace so the field spreads out */
-        pace: 0.80 + (names.length - i) * 0.018,
+        /* each rival has its own pace, plus a little per-race scatter
+           so no two grands prix play out the same */
+        pace: 0.80 + (names.length - i) * 0.018 + (Math.random() - 0.5) * 0.02,
         wobble: Math.random() * Math.PI * 2,
         finishedAt: null
       });
@@ -220,8 +251,16 @@ var Game = {
 
   update: function (dt) {
     if (this.state === 'countdown') {
+      var prevLight = Math.ceil(this.countdown);
       this.countdown -= dt;
-      if (this.countdown <= 0) this.state = 'racing';
+      /* one beep per light, a long one when they go out */
+      if (Math.ceil(this.countdown) !== prevLight && this.countdown > 0.2) {
+        Audio.beep(440, 0.12, 0.08);
+      }
+      if (this.countdown <= 0) {
+        this.state = 'racing';
+        Audio.beep(880, 0.5, 0.1);
+      }
       this.updateCars(dt, true);
       return;
     }
@@ -298,13 +337,29 @@ var Game = {
     if (this.position < startPosition) {
       this.lastLap = this.lapTime;
       if (this.bestLap === null || this.lapTime < this.bestLap) this.bestLap = this.lapTime;
+      /* all-time record for the circuit, kept across sessions */
+      var record = this.loadRecord(this.track.id);
+      if (record === null || this.lastLap < record) {
+        this.saveRecord(this.track.id, this.lastLap);
+        this.newRecord = true;
+        this.bestFlash = 3;
+      }
       this.lapTime = 0;
       this.lap++;
       if (this.lap > this.totalLaps) this.finish();
     }
+    this.bestFlash = Math.max(0, this.bestFlash - dt);
+
+    /* --- slipstream: sit in the hole in the air ------------------- */
+    var ahead = this.carAhead();
+    this.tow = !!(ahead && ahead.gap < SEGMENT_LENGTH * 30 &&
+                  Math.abs(playerSeg.curve) < 1 && speedPercent > 0.55);
+    if (this.tow && this.held(['ArrowUp', 'KeyW'], 'gas')) {
+      this.speed = Util.accelerate(this.speed, this.maxSpeed / 18, dt);
+      this.speed = Util.limit(this.speed, 0, this.maxSpeed * 1.03);
+    }
 
     /* --- DRS: only on a straight and only when close behind ------- */
-    var ahead = this.carAhead();
     this.drs = Math.abs(playerSeg.curve) < 0.6 && ahead && ahead.gap < SEGMENT_LENGTH * 22 && speedPercent > 0.5;
     if (this.drs && this.held(['ArrowUp', 'KeyW'], 'gas')) {
       this.speed = Util.accelerate(this.speed, this.maxSpeed / 12, dt);
@@ -328,6 +383,9 @@ var Game = {
   updateGears: function (speedPercent) {
     var gears = 8;
     var g = Util.limit(Math.ceil(speedPercent * gears), 1, gears);
+    if (g !== this.gear && this.state === 'racing' && speedPercent > 0.1) {
+      Audio.shift();
+    }
     this.gear = g;
     var low = (g - 1) / gears;
     var high = g / gears;
@@ -345,9 +403,11 @@ var Game = {
       if (gridOnly) continue;
 
       var seg = this.findSegment(car.z);
-      /* rivals brake for corners and drift towards the racing line */
+      /* rivals brake for corners and drift towards the racing line;
+         their pace ebbs and flows so battles breathe */
       var cornerFactor = 1 - Math.min(0.55, Math.abs(seg.curve) * 0.085);
-      var speed = this.maxSpeed * car.pace * cornerFactor;
+      var ebb = 1 + Math.sin(car.wobble * 0.4) * 0.02;
+      var speed = this.maxSpeed * car.pace * cornerFactor * ebb;
 
       car.wobble += dt * 1.4;
       var line = -Math.sign(seg.curve) * Math.min(0.45, Math.abs(seg.curve) * 0.08);
@@ -440,7 +500,9 @@ var Game = {
     document.getElementById('result-best').textContent = Util.formatTime(this.bestLap);
     document.getElementById('result-total').textContent = Util.formatTime(this.raceTime);
     document.getElementById('result-headline').textContent =
-      pos === 1 ? 'RACE WIN' : pos <= 3 ? 'PODIUM' : 'CHEQUERED FLAG';
+      (pos === 1 ? 'RACE WIN' : pos <= 3 ? 'PODIUM' : 'CHEQUERED FLAG') +
+      (this.newRecord ? ' · NEW LAP RECORD' : '');
+    this.refreshRecords();
     Audio.stop();
   },
 
@@ -576,6 +638,16 @@ var Game = {
     document.getElementById('best-value').textContent = Util.formatTime(this.bestLap);
     document.getElementById('last-value').textContent = Util.formatTime(this.lastLap);
 
+    /* live gap to the car ahead, in seconds at current speed */
+    var ahead = this.carAhead();
+    document.getElementById('gap-value').textContent =
+      ahead && this.speed > this.maxSpeed * 0.1
+        ? '+' + (ahead.gap / this.speed).toFixed(2)
+        : '—';
+
+    /* the Last cell flashes purple while a fresh track record stands */
+    document.getElementById('last-value').classList.toggle('record-flash', this.bestFlash > 0);
+
     var seg = this.findSegment(this.position + this.playerZ);
     document.getElementById('corner-value').textContent = seg.section || '';
 
@@ -584,6 +656,7 @@ var Game = {
     rev.style.background = this.rpm > 0.92 ? '#3b7dff' : this.rpm > 0.75 ? '#e2000f' : '#12d16b';
 
     document.getElementById('drs-tag').classList.toggle('on', !!this.drs);
+    document.getElementById('tow-tag').classList.toggle('on', !!this.tow && !this.drs);
     document.getElementById('offtrack-tag').classList.toggle('on', !!this.offTrack);
   },
 
@@ -664,6 +737,26 @@ var Audio = {
     g.connect(this.ctx.destination);
     o.start();
     o.stop(this.ctx.currentTime + 0.25);
+  },
+
+  /* start-light beeps and other one-shot tones */
+  beep: function (freq, dur, gain) {
+    if (!this.ready) return;
+    var o = this.ctx.createOscillator();
+    var g = this.ctx.createGain();
+    o.type = 'sine';
+    o.frequency.value = freq;
+    g.gain.value = gain || 0.08;
+    g.gain.setTargetAtTime(0, this.ctx.currentTime + dur * 0.7, 0.05);
+    o.connect(g);
+    g.connect(this.ctx.destination);
+    o.start();
+    o.stop(this.ctx.currentTime + dur + 0.3);
+  },
+
+  /* the clack of an upshift or downshift */
+  shift: function () {
+    this.beep(150, 0.04, 0.05);
   },
 
   stop: function () {

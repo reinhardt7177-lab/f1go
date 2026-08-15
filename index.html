@@ -128,7 +128,10 @@
   }
   .tag.on { color: #06080b; }
   #drs-tag.on { background: var(--green); border-color: var(--green); }
+  #tow-tag.on { background: #3b7dff; border-color: #3b7dff; color: #fff; }
   #offtrack-tag.on { background: #f5c518; border-color: #f5c518; }
+
+  #last-value.record-flash { color: #b26bff; }
 
   /* ---------------- Menu & results ---------------- */
   .overlay {
@@ -143,7 +146,7 @@
   .subtitle { color: var(--muted); font-size: 13px; letter-spacing: 0.28em; margin: 10px 0 6px; }
   .byline { color: var(--muted); font-size: 12px; letter-spacing: 0.08em; margin-bottom: 30px; opacity: 0.75; }
 
-  .tracks { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; max-width: 900px; }
+  .tracks { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; max-width: 1160px; }
 
   .track-card {
     width: 260px; text-align: left; cursor: pointer;
@@ -156,6 +159,11 @@
   .track-card h3 { font-size: 20px; letter-spacing: 0.05em; }
   .track-card .where { font-size: 11px; color: var(--muted); margin: 4px 0 12px; letter-spacing: 0.1em; }
   .track-card p { font-size: 12px; line-height: 1.55; color: #b6bfc9; }
+  .track-card .record {
+    margin-top: 12px; font-size: 11px; letter-spacing: 0.12em;
+    color: var(--muted); font-variant-numeric: tabular-nums;
+  }
+  .track-card .record.set { color: #b26bff; }
 
   .laps { display: flex; gap: 8px; align-items: center; margin: 28px 0 8px; }
   .laps .label { margin-right: 6px; }
@@ -246,6 +254,7 @@
     <div id="track-name"></div>
     <div id="tags">
       <div class="tag" id="drs-tag">DRS</div>
+      <div class="tag" id="tow-tag">TOW</div>
       <div class="tag" id="offtrack-tag">OFF TRACK</div>
     </div>
   </div>
@@ -259,6 +268,7 @@
     <div class="row"><div class="label">Current</div><div class="value" id="time-value">0:00.000</div></div>
     <div class="row"><div class="label">Best</div><div class="value" id="best-value">--:--.---</div></div>
     <div class="row"><div class="label">Last</div><div class="value" id="last-value">--:--.---</div></div>
+    <div class="row"><div class="label">Gap ahead</div><div class="value" id="gap-value">—</div></div>
   </div>
 
   <div id="hud-speed" class="hud-box">
@@ -284,16 +294,25 @@
       <h3>MONACO</h3>
       <div class="where">Circuit de Monaco · 19 turns</div>
       <p>Street circuit. Walls on every exit, no run-off, and the slowest corner of the year at the Grand Hotel hairpin.</p>
+      <div class="record">BEST —</div>
     </div>
     <div class="track-card" data-track="silverstone">
       <h3>SILVERSTONE</h3>
       <div class="where">Silverstone Circuit · 18 turns</div>
       <p>Fast and flowing. Maggotts–Becketts–Chapel is flat out if you are brave enough to keep your foot in.</p>
+      <div class="record">BEST —</div>
     </div>
     <div class="track-card" data-track="suzuka">
       <h3>SUZUKA</h3>
       <div class="where">Suzuka International · 18 turns</div>
       <p>Figure-of-eight. The rhythm you find through the Esses decides the rest of your lap.</p>
+      <div class="record">BEST —</div>
+    </div>
+    <div class="track-card" data-track="monza">
+      <h3>MONZA</h3>
+      <div class="where">Autodromo Nazionale · 11 turns</div>
+      <p>The Temple of Speed. Flat out for most of the lap, two chicanes to survive, and the Parabolica to bring it home.</p>
+      <div class="record">BEST —</div>
     </div>
   </div>
 
