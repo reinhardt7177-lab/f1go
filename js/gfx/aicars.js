@@ -173,6 +173,55 @@ export class AICarRenderer {
     this._pose = { x: 0, y: 0, z: 0, heading: 0 };
     this._col = new THREE.Color();
     this.spin = 0;
+    this.modelled = false;
+  }
+
+  /**
+   * Swap the blocked-out car for a real model.
+   *
+   * Only the body and trim runs are replaced: the model arrives as one
+   * shape, so its wings and floor are already part of it, and the
+   * procedural wheels stay on top because a generated model rarely
+   * labels its wheels well enough to spin them separately.
+   *
+   * Called once, if and when the GLB finishes loading — the game is
+   * already playable before it arrives, and stays playable if it never
+   * does.
+   */
+  useModel(model) {
+    if (!model || !model.ready || this.modelled) return;
+
+    this.body.geometry.dispose();
+    this.body.geometry = model.bodyGeometry;
+    /* The model's own texture, tinted per instance. The bodywork was
+       generated deliberately plain white so a team colour multiplies
+       over it cleanly instead of fighting a painted-on livery. */
+    this.body.material = model.material;
+    this.body.material.vertexColors = false;
+
+    /* Its wings and floor came with it, so the separate trim run has
+       nothing left to draw. */
+    this.trim.visible = false;
+
+    if (model.hasWheels) {
+      /* The model labelled its wheels, so they were split out and can
+         be spun. Move the corners to its own track and wheelbase. */
+      const halfWidth = model.size ? model.size.x * 0.46 : 0.85;
+      const halfBase = model.size ? model.size.z * 0.32 : 1.4;
+      this.wheelLayout = [
+        [-halfWidth, -halfBase], [halfWidth, -halfBase],
+        [-halfWidth, halfBase], [halfWidth, halfBase]
+      ];
+    } else {
+      /* It did not, so its wheels are baked into the body — drawing
+         ours on top would give every rival eight. They lose their
+         spin, which at the distance a rival is ever seen costs
+         nothing next to having the right wheels in the right places. */
+      this.wheels.visible = false;
+      this.bands.visible = false;
+    }
+
+    this.modelled = true;
   }
 
   /**
@@ -219,13 +268,15 @@ export class AICarRenderer {
         /* Written at its own running index, not the body's: the near
            cars have to be contiguous from zero or `count` would draw
            whichever far car happened to sit in the gap. */
-        this._pos.set(pose.x, 0, pose.z);
-        this._m.compose(this._pos, this._q, this._scl);
-        this.trim.setMatrixAt(t++, this._m);
+        if (!this.modelled) {
+          this._pos.set(pose.x, 0, pose.z);
+          this._m.compose(this._pos, this._q, this._scl);
+          this.trim.setMatrixAt(t++, this._m);
+        }
 
         /* Four corners, in the car's own frame then rotated into the
            window's. Rears sit wider, as they do on the real thing. */
-        const corners = [
+        const corners = this.wheelLayout || [
           [-0.82, -1.55], [0.82, -1.55],
           [-0.92, 1.15], [0.92, 1.15]
         ];
@@ -270,6 +321,10 @@ export class AICarRenderer {
 
   dispose() {
     this.group.traverse((o) => {
+      /* The model's geometry and material are shared and outlive any
+         one circuit — disposing them here would leave the next track
+         drawing from freed buffers. They belong to CarModel. */
+      if (o === this.body && this.modelled) return;
       if (o.geometry) o.geometry.dispose();
       if (o.material) {
         if (o.material.map) o.material.map.dispose();

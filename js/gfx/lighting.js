@@ -121,35 +121,48 @@ export class LightingManager {
     const night = trackId === 'singapore';
     this.night = night;
 
+    /* Ambient is kept deliberately low against the sun. A strong fill
+       is the other half of why everything looked washed out: it lifts
+       the shadows until they stop being shadows, and a scene with no
+       dark in it has no shape in it either. Roughly 4:1 sun to sky is
+       what a clear day actually measures. */
     if (night) {
-      this.sun.color.set(0xbfd0ff);
-      this.sun.intensity = 0.55;
+      this.sun.color.set(0xc6d4ff);
+      this.sun.intensity = 0.9;
       this.hemi.color.set(0x2c3550);
-      this.hemi.groundColor.set(0x191c22);
-      this.hemi.intensity = 0.75;
+      this.hemi.groundColor.set(0x14171c);
+      this.hemi.intensity = 0.40;
     } else if (trackId === 'bahrain') {
-      this.sun.color.set(0xffe9c4);
-      this.sun.intensity = 3.4;
-      this.hemi.color.set(0xe8ddc4);
-      this.hemi.groundColor.set(0x8a7350);
-      this.hemi.intensity = 1.05;
+      this.sun.color.set(0xffe4b8);
+      this.sun.intensity = 3.6;
+      this.hemi.color.set(0xd8c9a8);
+      this.hemi.groundColor.set(0x6e5c3f);
+      this.hemi.intensity = 0.50;
     } else {
-      this.sun.color.set(0xfff4e2);
-      this.sun.intensity = 3.0;
+      this.sun.color.set(0xfff0d8);
+      this.sun.intensity = 3.3;
       this.hemi.color.set(theme ? new THREE.Color(theme.haze) : 0xbcd4e4);
-      this.hemi.groundColor.set(theme ? new THREE.Color(theme.grass[1]) : 0x50553f);
-      this.hemi.intensity = 1.0;
+      this.hemi.groundColor.set(theme ? new THREE.Color(theme.grass[1]) : 0x3a3f33);
+      this.hemi.intensity = 0.45;
     }
 
-    /* Low sun: long shadows across the road read as afternoon, which
-       is when these races are run and how they are photographed. */
-    const elev = night ? 1.2 : 0.62;
+    /* A LOW sun, and low on purpose.
+
+       The first version put it near the zenith, where a car's shadow
+       hides underneath it and every surface is lit head-on. That is
+       what made the whole scene read as flat paper: no cast shadows
+       anywhere, no shaded sides, nothing to tell the eye which way a
+       surface faces. A sun 18° above the horizon throws shadows long
+       across the road, lights one flank and shades the other, and
+       does more for the picture than any amount of geometry. */
+    const elev = night ? 0.55 : 0.32;          // radians above horizon
+    const r = 120;
     this.sun.position.set(
-      Math.cos(this.azimuth) * 90,
-      Math.sin(elev) * 95,
-      Math.sin(this.azimuth) * 90
+      Math.cos(this.azimuth) * Math.cos(elev) * r,
+      Math.sin(elev) * r,
+      Math.sin(this.azimuth) * Math.cos(elev) * r
     );
-    this.sun.target.position.set(0, 0, -30);
+    this.sun.target.position.set(0, 0, -20);
     this.sun.target.updateMatrixWorld();
 
     this._buildEnvironment(theme, night);
@@ -290,8 +303,11 @@ export class SpeedEffects {
 
     /* Streaks only once genuinely quick, and rolling with the wheel
        so the blur turns with the car rather than sitting on the glass. */
-    const streak = Math.max(0, speed01 - 0.45) * 1.5;
-    this.streakMat.opacity = streak * 0.5;
+    /* Half the previous strength: at full opacity the streaks covered
+       the upper half of the screen and hid the barriers and skyline —
+       reading as fog on the lens rather than as speed. */
+    const streak = Math.max(0, speed01 - 0.55) * 1.4;
+    this.streakMat.opacity = streak * 0.26;
     this.streaks.visible = streak > 0.02;
     this.streaks.rotation.z += dt * speed01 * 0.35;
 

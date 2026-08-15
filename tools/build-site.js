@@ -27,7 +27,7 @@ fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out, { recursive: true });
 
 // --- the arcade racer, verbatim -------------------------------------
-for (const entry of ['index.html', 'js', 'README.md']) {
+for (const entry of ['index.html', 'js', 'assets', 'README.md']) {
   const src = path.join(root, entry);
   if (fs.existsSync(src)) copy(src, path.join(out, entry));
 }

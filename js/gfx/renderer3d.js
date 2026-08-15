@@ -20,6 +20,7 @@ import { PlayerCockpit } from './cockpit.js';
 import { EnvironmentManager } from './environment.js';
 import { AICarRenderer } from './aicars.js';
 import { LightingManager, SpeedEffects } from './lighting.js';
+import { CarModel } from './carmodel.js';
 
 /* Field of view is split by orientation because the two shapes want
    different framing: a landscape screen wants a near-cinematic 68°,
@@ -43,7 +44,10 @@ export class Renderer3D {
     /* ACES filmic keeps the bright sky from clipping to flat white and
        is most of what separates "stylised realism" from "flat toy". */
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    /* Pulled down from 1.05: with the ambient reduced to a realistic
+       fill, the old exposure blew the road and the sky into the same
+       pale grey and the picture lost its contrast entirely. */
+    this.renderer.toneMappingExposure = 0.82;
 
     this.perf = new PerformanceMonitor();
     this.quality = new QualityManager(this.renderer);
@@ -78,6 +82,18 @@ export class Renderer3D {
     this.speedFx = new SpeedEffects(this.camera);
 
     this._placeholder();
+
+    /* The car model loads in the background. Everything works without
+       it — the blocked-out car is a complete fallback — so nothing
+       waits on this and a failed fetch costs a console line, not a
+       broken game. */
+    this.carModel = new CarModel();
+    this.carModel.load('assets/car.glb',
+      (m) => {
+        if (this.aiCars) this.aiCars.useModel(m);
+        console.info('[gfx] car model:', Math.round(m.triangles), 'triangles');
+      },
+      (err) => console.warn('[gfx] car model unavailable, using the blocked-out car:', err));
 
     this.enabled = false;
     this.ready = false;
@@ -152,6 +168,7 @@ export class Renderer3D {
     this.kerbs = new KerbInstancing(this.trackGroup);
     this.environment = new EnvironmentManager(this.trackGroup, this.theme, this.trackId);
     this.aiCars = new AICarRenderer(this.trackGroup);
+    if (this.carModel && this.carModel.ready) this.aiCars.useModel(this.carModel);
     this.lighting.applyTheme(this.theme, this.trackId);
 
     /* Ground under everything. The window never reaches far, so this
