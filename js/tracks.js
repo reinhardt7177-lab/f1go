@@ -18,7 +18,13 @@ var RUMBLE_LENGTH = 3;      // segments per rumble-strip stripe
 var ROAD_WIDTH = 3000;      // half-width of the road in world units
 var LANES = 3;
 
-var LEN = { NONE: 0, TINY: 12, SHORT: 25, MEDIUM: 50, LONG: 100, HUGE: 160 };
+/* Section lengths, in segments. Scaled up from the original set by
+   about three quarters: the circuits were quick enough to be over
+   before they had said anything, and a grand prix lap wants room for
+   a rhythm rather than a sequence of corners taken back to back.
+   Everything moves together, so the shape of each circuit is
+   unchanged — only the time it takes to drive it. */
+var LEN = { NONE: 0, TINY: 21, SHORT: 44, MEDIUM: 88, LONG: 175, HUGE: 280 };
 var CRV = { NONE: 0, KINK: 1, EASY: 2, MEDIUM: 4, HARD: 6, TIGHT: 8, HAIRPIN: 11 };
 
 /* ------------------------------------------------------------------ */

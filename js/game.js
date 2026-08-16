@@ -254,6 +254,7 @@ var Game = {
     this.position = 0;
     this.speed = 0;
     this.playerX = 0;
+    this.lateralV = 0;
     this.lap = 1;
     this.lapTime = 0;
     this.raceTime = 0;
@@ -366,7 +367,13 @@ var Game = {
   /* ---------------------------------------------------------------- */
   resetCars: function () {
     var names = ['VERGARA', 'ANDERSSON', 'KIM', 'ROSSI', 'DUBOIS', 'NAKAMURA', 'SILVA', 'MULLER', 'OKONKWO'];
-    var colors = ['#0b8f5a', '#e2000f', '#f97316', '#1e5fd8', '#8b5cf6', '#e4b400', '#00b8d4', '#d81b60', '#7c9a2e'];
+    /* Paint, not highlighter. These are read as an instance tint over
+       an unlit white model, so a fully saturated value comes back as
+       glowing plastic — the greens and purples in particular looked
+       lit from within. Deeper, slightly greyed colours read as a car
+       that has been sprayed rather than one that is emitting. */
+    var colors = ['#0f6b46', '#a8161d', '#c25410', '#1c4a9c', '#5b4a9e',
+                  '#b08a12', '#127d92', '#9c2450', '#4f6b28'];
     this.cars = [];
     for (var i = 0; i < names.length; i++) {
       /* You line up last, so the grid is staggered on the road ahead:
@@ -439,12 +446,35 @@ var Game = {
        and letting go straightens it out - weight, not twitch. */
     var steerRate = target === 0 ? 8 : 5.5;
     this.steerInput += (target - this.steerInput) * Math.min(1, dt * steerRate);
-    if (!this.pitting) this.playerX += dx * this.steerInput;
+
+    /* Lateral inertia.
+     *
+     * The wheel used to move the car directly — steering set a
+     * position change, so the car started and stopped moving sideways
+     * on the same frame the input did. That is what made it feel
+     * weightless however slowly the wheel itself turned.
+     *
+     * Now the input sets a target rate and the car accelerates
+     * toward it, so there is a moment of load as it takes a set and
+     * another as it comes back. Same authority, eight hundred
+     * kilograms of delay in front of it. */
+    if (!this.pitting) {
+      var wanted = dx * this.steerInput;
+      this.lateralV = (this.lateralV || 0);
+      this.lateralV += (wanted - this.lateralV) * Math.min(1, dt * 5.2);
+      this.playerX += this.lateralV;
+    } else {
+      this.lateralV = 0;
+    }
 
     /* --- throttle and brakes ------------------------------------- */
-    var accel = this.maxSpeed / 4.2;
-    var braking = -this.maxSpeed / 1.6;
-    var decel = -this.maxSpeed / 7;
+    /* Longer to wind up and longer to stop. A car that reaches top
+       speed in four seconds and sheds it in under two has no mass in
+       it; these figures put a corner exit and a braking zone back in
+       the lap as things that take time to do. */
+    var accel = this.maxSpeed / 6.4;
+    var braking = -this.maxSpeed / 2.4;
+    var decel = -this.maxSpeed / 11;
     var gasHeld = this.held(['ArrowUp', 'KeyW'], 'gas');
     var brakeHeld = this.held(['ArrowDown', 'KeyS', 'Space'], 'brake');
 
@@ -633,7 +663,11 @@ var Game = {
       if (car.pitTimer > 0) {
         car.pitTimer -= dt;
         speed = this.maxSpeed * 0.14;
-        car.offset += (0.8 - car.offset) * Math.min(1, dt * 2);
+        /* Out to the pit lane, at the same offset the player uses.
+           At 0.8 a stopped car sits inside the white line — on the
+           racing line, at walking pace, looking for all the world
+           like someone parked a barrier across the road. */
+        car.offset += (1.42 - car.offset) * Math.min(1, dt * 2.5);
       }
 
       car.wobble += dt * 1.4;
@@ -641,7 +675,12 @@ var Game = {
       if (car.pitTimer <= 0) {
         car.offset += ((line + Math.sin(car.wobble) * 0.12) - car.offset) * Math.min(1, dt * 1.5);
       }
-      car.offset = Util.limit(car.offset, -0.92, 0.92);
+      /* Racing cars stay between the white lines; a car serving a stop
+         has to be allowed past them, or it parks on the racing line at
+         walking pace and reads as a barricade across the road. */
+      car.offset = car.pitTimer > 0
+        ? Util.limit(car.offset, -0.92, 1.45)
+        : Util.limit(car.offset, -0.92, 0.92);
 
       car.z = Util.increase(car.z, dt * speed, this.trackLength);
       if (car.z < oldZ) {
