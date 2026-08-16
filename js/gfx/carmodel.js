@@ -32,14 +32,44 @@ export class CarModel {
     this.wheelOffsets = [];     // wheel centres in car space
     this.wheelRadius = 0.36;
     this.material = null;
+
+    /* Set these to a decoder directory to enable compressed models.
+       Left null because nothing shipped needs them yet. */
+    this.draco = null;
+    this.ktx2 = null;
   }
 
   /**
    * @param url        path to the .glb
    * @param onDone     called with this once parsed
+   * @param onError    called if it cannot be used
+   * @param renderer   needed only to detect which compressed texture
+   *                   formats the GPU supports
    */
-  load(url, onDone, onError) {
+  load(url, onDone, onError, renderer) {
     const loader = new GLTFLoader();
+
+    /* Draco and KTX2 are wired up but loaded lazily: a model that uses
+       neither should not pay for either, and the decoders are large.
+       The GLB shipped today is uncompressed, so in practice neither
+       import runs — this exists so a compressed model can be dropped
+       in later without touching the loading path. */
+    if (this.draco) {
+      import('three/addons/loaders/DRACOLoader.js').then((m) => {
+        const d = new m.DRACOLoader();
+        d.setDecoderPath(this.draco);
+        loader.setDRACOLoader(d);
+      });
+    }
+    if (this.ktx2 && renderer) {
+      import('three/addons/loaders/KTX2Loader.js').then((m) => {
+        const k = new m.KTX2Loader();
+        k.setTranscoderPath(this.ktx2);
+        k.detectSupport(renderer);
+        loader.setKTX2Loader(k);
+      });
+    }
+
     loader.load(url, (gltf) => {
       try {
         this._absorb(gltf.scene);

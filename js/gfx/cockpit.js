@@ -163,6 +163,25 @@ export class PlayerCockpit {
 
     this.steer = 0;
     this.spin = 0;
+    this.modelled = false;
+  }
+
+  /**
+   * A real car model has taken over the chassis.
+   *
+   * Everything blocked out from boxes goes away — nose, tub, wings,
+   * mirrors, front wheels — because the model carries all of it and
+   * carries it better. The steering wheel stays: the model has nothing
+   * that turns with the input, and a wheel that does not move is worse
+   * than no wheel at all.
+   */
+  useModel() {
+    if (this.modelled) return;
+    if (this.body) this.body.visible = false;
+    if (this.shell) this.shell.visible = false;
+    if (this.stripe) this.stripe.visible = false;
+    for (const w of this.frontWheels) w.hub.visible = false;
+    this.modelled = true;
   }
 
   /* --- the tub the driver sits in --------------------------------
@@ -300,14 +319,36 @@ export class PlayerCockpit {
 
     const parts = [];
 
-    /* Modern F1 wheels are a squared-off yoke, not a ring. */
-    const body = new THREE.BoxGeometry(0.30, 0.14, 0.035);
-    parts.push(body);
+    /* A modern F1 wheel is a squared-off yoke with a hole through the
+       middle, not a slab. The first version was one solid box, which
+       read as a dashboard rather than as something you hold — the gap
+       is the whole silhouette. Built as a rim of four bars around an
+       opening, with the display filling the opening. */
+    const railTop = new THREE.BoxGeometry(0.34, 0.055, 0.04);
+    railTop.translate(0, 0.088, 0);
+    parts.push(railTop);
+
+    const railBottom = new THREE.BoxGeometry(0.26, 0.05, 0.04);
+    railBottom.translate(0, -0.095, 0);
+    parts.push(railBottom);
+
     for (const side of [-1, 1]) {
-      const grip = new THREE.BoxGeometry(0.075, 0.20, 0.055);
-      grip.translate(side * 0.155, -0.01, 0.01);
+      /* Uprights joining top and bottom, just inboard of the grips. */
+      const upright = new THREE.BoxGeometry(0.045, 0.20, 0.04);
+      upright.translate(side * 0.148, -0.004, 0);
+      parts.push(upright);
+
+      /* The grips themselves, thicker and canted out. */
+      const grip = new THREE.BoxGeometry(0.075, 0.215, 0.075);
+      grip.translate(side * 0.198, -0.012, 0.012);
       parts.push(grip);
+
+      /* Shift paddle behind the wheel. */
+      const paddle = new THREE.BoxGeometry(0.05, 0.085, 0.016);
+      paddle.translate(side * 0.13, -0.02, -0.045);
+      parts.push(paddle);
     }
+
     const merged = mergeGeometries(parts, false);
     parts.forEach((p) => p.dispose());
 
@@ -318,10 +359,10 @@ export class PlayerCockpit {
     /* The display, bright enough to read as a screen without a light
        of its own — emissive rather than lit, because it is one. */
     const screen = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.16, 0.07),
+      new THREE.PlaneGeometry(0.22, 0.105),
       new THREE.MeshBasicMaterial({ color: 0x0a1a14 })
     );
-    screen.position.set(0, 0.005, 0.019);
+    screen.position.set(0, -0.004, 0.021);
     screen.frustumCulled = false;
     this.wheel.add(screen);
 

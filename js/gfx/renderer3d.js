@@ -29,6 +29,17 @@ import { CarModel } from './carmodel.js';
 const FOV_LANDSCAPE = 68;
 const FOV_PORTRAIT = 82;
 
+/* The player's livery. */
+const PLAYER_COLOR = 0xf0620f;
+
+/* Where the driver's eye sits inside the car model, in metres from the
+   model's own origin (centred on the wheelbase, sitting on the road).
+   Forward is -Z. These three numbers decide the entire framing of the
+   game: too far back and the airbox fills the screen, too far forward
+   and you are sitting on the nose. */
+const EYE_Y = 0.92;
+const EYE_Z = 0.15;
+
 export class Renderer3D {
   constructor(canvas) {
     this.canvas = canvas;
@@ -91,9 +102,14 @@ export class Renderer3D {
     this.carModel.load('assets/car.glb',
       (m) => {
         if (this.aiCars) this.aiCars.useModel(m);
+        /* A track built before the model arrived has a blocked-out
+           player car in it; rebuild that one piece rather than the
+           whole circuit. */
+        if (this.ready && !this.playerCar) this._buildPlayerCar();
         console.info('[gfx] car model:', Math.round(m.triangles), 'triangles');
       },
-      (err) => console.warn('[gfx] car model unavailable, using the blocked-out car:', err));
+      (err) => console.warn('[gfx] car model unavailable, using the blocked-out car:', err),
+      this.renderer);
 
     this.enabled = false;
     this.ready = false;
@@ -169,6 +185,7 @@ export class Renderer3D {
     this.environment = new EnvironmentManager(this.trackGroup, this.theme, this.trackId);
     this.aiCars = new AICarRenderer(this.trackGroup);
     if (this.carModel && this.carModel.ready) this.aiCars.useModel(this.carModel);
+    this._buildPlayerCar();
     this.lighting.applyTheme(this.theme, this.trackId);
 
     /* Ground under everything. The window never reaches far, so this
@@ -202,6 +219,34 @@ export class Renderer3D {
     this.ready = true;
   }
 
+  /**
+   * The player's own car, as the same mesh the rivals use.
+   *
+   * The trick is that the camera goes *inside* it. Front-face culling
+   * then does the work a modelled interior would: the bodywork around
+   * and behind the driver faces away and disappears, while the nose
+   * ahead, the front wheels and the mirrors all face back toward the
+   * eye and stay. What is left is a cockpit view, out of a model that
+   * has no cockpit interior in it at all.
+   *
+   * It also means the player drives the same car as everyone else on
+   * the grid, which the blocked-out version never managed.
+   */
+  _buildPlayerCar() {
+    if (!this.carModel || !this.carModel.ready) return;
+
+    this.playerCar = new THREE.Mesh(
+      this.carModel.bodyGeometry, this.carModel.material.clone());
+    this.playerCar.material.color = new THREE.Color(PLAYER_COLOR);
+    this.playerCar.frustumCulled = false;
+    this.playerCar.castShadow = true;
+    this.trackGroup.add(this.playerCar);
+
+    /* The blocked-out chassis is redundant now; only the steering
+       wheel survives, because the model has nothing that turns. */
+    if (this.cockpit) this.cockpit.useModel();
+  }
+
   clearTrack() {
     if (!this.trackGroup) return;
     this.world.remove(this.trackGroup);
@@ -212,6 +257,13 @@ export class Renderer3D {
         mats.forEach((m) => m.dispose());
       }
     });
+    if (this.playerCar) {
+      /* The geometry belongs to CarModel and is shared; only this
+         car's own material clone is ours to free. */
+      this.playerCar.material.dispose();
+      this.playerCar.removeFromParent();
+      this.playerCar = null;
+    }
     if (this.road) { this.road.dispose(); this.road = null; }
     if (this.kerbs) { this.kerbs.dispose(); this.kerbs = null; }
     if (this.environment) { this.environment.dispose(); this.environment = null; }
@@ -271,11 +323,26 @@ export class Renderer3D {
       this.speedFx.fitStreaks(this.camera);
     }
 
+    /* With a real car around the camera, the eye sits where the model
+       says the driver's head is rather than at a guessed height. */
+    const eyeY = this.playerCar ? EYE_Y : eye;
+    const eyeZ = this.playerCar ? EYE_Z : 0;
+
     this.camera.position.set(
       lateral + this.speedFx.shakeX,
-      eye + this.speedFx.shakeY + (game.bump || 0) * 0.0022,
-      0
+      eyeY + this.speedFx.shakeY + (game.bump || 0) * 0.0022,
+      eyeZ
     );
+
+    /* The car goes with it. It is the same object the camera is
+       inside, so any drift between the two shows up as the nose
+       sliding away from the driver. */
+    if (this.playerCar) {
+      this.playerCar.position.set(lateral, (game.bump || 0) * 0.0018, 0);
+      /* Lean into the corner with the same roll the camera takes, so
+         the bodywork stays welded to the view. */
+      this.playerCar.rotation.z = this.speedFx.roll * 0.6;
+    }
 
     /* Aim a little way down the road rather than straight ahead: the
        eye leads the car into a corner, and a camera that does not do
@@ -287,7 +354,7 @@ export class Renderer3D {
     }
     const lookX = s.count ? s.px[ahead] * 0.55 + lateral * 0.45 : lateral;
     const lookZ = s.count ? s.pz[ahead] : -22;
-    this._camTarget.set(lookX, eye * 0.86, lookZ);
+    this._camTarget.set(lookX, eyeY * 0.86, lookZ);
     this.camera.lookAt(this._camTarget);
     /* Roll goes on after lookAt, which would otherwise level it. */
     this.camera.rotateZ(this.speedFx.roll);
@@ -323,7 +390,7 @@ export class Renderer3D {
     this.environment.update(s, q.envDetail, seg);
 
     const dt = Math.min(this.perf.frameMs / 1000, 0.05);
-    this.aiCars.update(s, game.cars, dt, q.envDetail);
+    this.aiCars.update(s, game.cars, dt, q.envDetail, q.carLod);
     this.lighting.applyQuality(q);
 
     this.updateCamera(game, dt);

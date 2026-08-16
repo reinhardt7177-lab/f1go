@@ -230,7 +230,7 @@ export class AICarRenderer {
    * @param dt      seconds, for wheel spin
    * @param detail  quality tier's envDetail, for the LOD cut
    */
-  update(spline, cars, dt, detail) {
+  update(spline, cars, dt, detail, carLod) {
     this.spin += dt * 22;
 
     let n = 0;      // cars drawn
@@ -241,6 +241,14 @@ export class AICarRenderer {
        and its shadow carry the read on their own. */
     const detailRange = 130 * Math.max(0.5, detail);
 
+    /* Level of detail for the field itself. A modelled car is twelve
+       thousand triangles, so nine of them is most of a phone's budget
+       spent on rivals that are often specks. Beyond this range they
+       are dropped entirely — at which point they are smaller than the
+       haze they are sitting in. */
+    const lod = carLod === undefined ? 1 : carLod;
+    const drawRange = 340 * lod;
+
     for (let i = 0; i < cars.length && n < MAX_CARS; i++) {
       const car = cars[i];
       if (car.finishedAt !== null) continue;
@@ -249,6 +257,7 @@ export class AICarRenderer {
       if (!pose) continue;                 // outside the window
 
       const dist = Math.hypot(pose.x, pose.z);
+      if (dist > drawRange) continue;
       this._q.setFromAxisAngle(this._up, pose.heading);
 
       /* Body, tinted to the rival's colour. */

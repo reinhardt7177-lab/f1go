@@ -21,9 +21,14 @@
 const MAX_DPR = 1.75;
 
 const TIERS = {
-  high:   { shadowMap: 1024, shadows: true,  drawDistance: 1400, kerbLod: 1.0, envDetail: 1.0 },
-  medium: { shadowMap: 1024, shadows: true,  drawDistance: 1100, kerbLod: 0.7, envDetail: 0.7 },
-  low:    { shadowMap: 512,  shadows: false, drawDistance:  850, kerbLod: 0.5, envDetail: 0.45 }
+  high:   { shadowMap: 1024, shadows: true,  drawDistance: 1400, kerbLod: 1.0,  envDetail: 1.0,  carLod: 1.0 },
+  medium: { shadowMap: 1024, shadows: true,  drawDistance: 1100, kerbLod: 0.7,  envDetail: 0.7,  carLod: 0.75 },
+  /* A phone that has already dropped this far is not going to be
+     rescued by another 5% of resolution: the low tier gives up
+     shadows, half the draw distance and most of the trackside
+     furniture, which together are worth far more than they cost to
+     look at. */
+  low:    { shadowMap: 512,  shadows: false, drawDistance:  800, kerbLod: 0.45, envDetail: 0.4,  carLod: 0.5 }
 };
 
 export class QualityManager {

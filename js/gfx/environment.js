@@ -45,11 +45,13 @@ const makeFenceTexture = () => {
   c.width = c.height = s;
   const ctx = c.getContext('2d');
   ctx.clearRect(0, 0, s, s);
-  ctx.strokeStyle = 'rgba(190,200,210,0.95)';
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = 'rgba(185,195,205,0.75)';
+  ctx.lineWidth = 0.8;
   /* Diagonals both ways: a square grid reads as a window frame, the
-     diamond weave reads as catch fencing. */
-  for (let i = -s; i < s * 2; i += 8) {
+     diamond weave reads as catch fencing. Fine, and mostly holes —
+     drawn coarse it becomes a giant net hanging over the circuit,
+     which is what the first version looked like. */
+  for (let i = -s; i < s * 2; i += 4) {
     ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i + s, s); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(i, s); ctx.lineTo(i + s, 0); ctx.stroke();
   }
@@ -152,11 +154,14 @@ export class EnvironmentManager {
   /* --- catch fencing ---------------------------------------------- */
   _buildFencing() {
     const tex = makeFenceTexture();
-    tex.repeat.set(3, 2);
+    /* Many repeats across a 4 m panel, so the mesh is at real scale
+       instead of chain-link the size of a hand. */
+    tex.repeat.set(14, 8);
     this.fenceMat = new THREE.MeshBasicMaterial({
       map: tex,
       transparent: true,
-      alphaTest: 0.35,
+      opacity: 0.5,
+      alphaTest: 0.18,
       side: THREE.DoubleSide,
       fog: true,
       depthWrite: false
@@ -324,12 +329,16 @@ export class EnvironmentManager {
 
       const ang = (i / count) * Math.PI * 2 + r1 * 0.08;
       const rad = radius * (0.75 + r2 * 0.5);
-      /* Riviera towns climb: the further back, the higher up. */
-      const lift = kind === 'riviera' ? (rad - radius * 0.75) * 0.42 : 0;
-      const h = kind === 'riviera' ? 18 + r3 * 46 : 40 + r3 * 150;
+      /* Riviera towns climb the hillside behind the harbour. The lift
+         is gentle and every block still reaches DOWN to the ground —
+         the first version floated them at their centre height, which
+         left a row of slabs hanging in the sky. */
+      const lift = kind === 'riviera' ? (rad - radius * 0.75) * 0.22 : 0;
+      const h = (kind === 'riviera' ? 18 + r3 * 46 : 40 + r3 * 150) + lift;
       const w = kind === 'riviera' ? 16 + r1 * 22 : 22 + r2 * 26;
 
-      pos.set(Math.cos(ang) * rad, lift + h / 2, Math.sin(ang) * rad);
+      /* Centre at half height so the base sits on y = 0. */
+      pos.set(Math.cos(ang) * rad, h / 2, Math.sin(ang) * rad);
       q.setFromAxisAngle(this._up, -ang);
       scl.set(w, h, w * (0.7 + r2 * 0.6));
       m.compose(pos, q, scl);
@@ -437,9 +446,11 @@ export class EnvironmentManager {
   _layBarriers(spline, detail) {
     const n = spline.count;
     const hw = spline.halfWidth;
-    /* A barrier block is 4 m and a station is 2.13 m, so every second
-       station lays a continuous wall. */
-    const stride = Math.max(2, Math.round(2 / Math.max(0.3, detail)));
+    /* A barrier block is 4 m long and a station is 2.13 m, so a stride
+       of 2 spans 4.26 m and leaves a 26 cm gap at every joint — which
+       from inside the car is a flickering row of slots down the wall.
+       Blocks are laid slightly overlapping instead. */
+    const stride = Math.max(1, Math.round(1.8 / Math.max(0.3, detail)));
     /* Street circuits put the wall right against the kerb; permanent
        ones set it back behind the run-off. */
     const offset = this.walls ? 1.32 : 2.35;
