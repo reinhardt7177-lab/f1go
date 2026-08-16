@@ -58,16 +58,6 @@ var Render = {
     /* No lane markings: a grand prix circuit is one unbroken ribbon
        of tarmac, not a motorway. */
 
-    /* pit apron along the right of the opening straight */
-    if (seg.pit) {
-      Render.polygon(ctx, x1 + w1 + r1, y1, x1 + w1 * 1.66, y1, x2 + w2 * 1.66, y2, x2 + w2 + r2, y2, '#4a4e55');
-      Render.polygon(ctx, x1 + w1 + r1, y1, x1 + w1 + r1 * 1.6, y1, x2 + w2 + r2 * 1.6, y2, x2 + w2 + r2, y2, '#e8ebee');
-      /* pit boxes: dashed dark bays along the outside */
-      if (seg.dark) {
-        Render.polygon(ctx, x1 + w1 * 1.40, y1, x1 + w1 * 1.60, y1, x2 + w2 * 1.60, y2, x2 + w2 * 1.40, y2, 'rgba(0,0,0,0.18)');
-      }
-    }
-
     if (theme.walls) {
       /* One continuous barrier, the way a street circuit reads: a
          light face, a red accent band along the top, and no per-stripe
@@ -85,8 +75,7 @@ var Render = {
       Render.polygon(ctx, lx1, y1, lx1, y1 - h1 * 0.45, lx2, y2 - h2 * 0.45, lx2, y2, 'rgba(0,0,0,0.10)');
       Render.polygon(ctx, lx1, y1 - h1, lx1, y1 - h1 + band1, lx2, y2 - h2 + band2, lx2, y2 - h2, '#d43c3c');
 
-      /* the right wall steps aside where the pit lane runs */
-      if (!seg.pit) {
+      {
         Render.polygon(ctx, rx1, y1, rx1, y1 - h1, rx2, y2 - h2, rx2, y2, wc);
         Render.polygon(ctx, rx1, y1, rx1, y1 - h1 * 0.45, rx2, y2 - h2 * 0.45, rx2, y2, 'rgba(0,0,0,0.10)');
         Render.polygon(ctx, rx1, y1 - h1, rx1, y1 - h1 + band1, rx2, y2 - h2 + band2, rx2, y2 - h2, '#d43c3c');

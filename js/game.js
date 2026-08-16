@@ -271,9 +271,6 @@ var Game = {
     this.bestFlash = 0;
     this.tunnelT = 0;
     this.tyreWear = 0;
-    this.pitting = false;
-    this.pitPhase = null;
-    this.pitTimer = 0;
     this.weightT = 0;
     this.buildMap();
     Audio.unlock();             // the start click is our user gesture
@@ -392,7 +389,6 @@ var Game = {
         /* soft red, medium yellow or hard white sidewalls */
         tyre: Util.randomChoice(['#e10600', '#ffd12e', '#f0f0f0']),
         wear: 0,
-        pitTimer: 0,
         finishedAt: null
       });
     }
@@ -425,7 +421,7 @@ var Game = {
     /* lateral authority: at top speed the car needs well over half a
        second to cross half the road, so it tracks straight instead of
        darting between the kerbs */
-    var dx = dt * 1.6 * speedPercent;
+    var dx = dt * 2.1 * speedPercent;
     var startPosition = this.position;
 
     this.raceTime += dt;
@@ -444,7 +440,12 @@ var Game = {
     /* Progressive turn-in (~0.4s to full lock) and a quicker return
        to centre: a tap nudges the car, holding leans it into lock,
        and letting go straightens it out - weight, not twitch. */
-    var steerRate = target === 0 ? 8 : 5.5;
+    /* The wheel itself is quick. Weight comes from the car below,
+       not from the wheel — two lags in series (a slow wheel feeding a
+       heavy car) do not read as mass, they read as broken controls,
+       because the car answers a quarter of a second after you asked
+       and you have already asked for something else. */
+    var steerRate = target === 0 ? 16 : 13;
     this.steerInput += (target - this.steerInput) * Math.min(1, dt * steerRate);
 
     /* Lateral inertia.
@@ -458,14 +459,9 @@ var Game = {
      * toward it, so there is a moment of load as it takes a set and
      * another as it comes back. Same authority, eight hundred
      * kilograms of delay in front of it. */
-    if (!this.pitting) {
-      var wanted = dx * this.steerInput;
-      this.lateralV = (this.lateralV || 0);
-      this.lateralV += (wanted - this.lateralV) * Math.min(1, dt * 5.2);
-      this.playerX += this.lateralV;
-    } else {
-      this.lateralV = 0;
-    }
+    var wanted = dx * this.steerInput;
+    this.lateralV += (wanted - this.lateralV) * Math.min(1, dt * 9);
+    this.playerX += this.lateralV;
 
     /* --- throttle and brakes ------------------------------------- */
     /* Longer to wind up and longer to stop. A car that reaches top
@@ -492,47 +488,22 @@ var Game = {
     this.weightT += (((brakeHeld ? 1 : 0) - (gasHeld ? 0.6 : 0)) - this.weightT) * Math.min(1, dt * 4);
 
     /* --- tyre wear ------------------------------------------------ */
-    if (!this.pitting) {
+    {
       this.tyreWear = Util.limit(
         this.tyreWear + dt * speedPercent * (1 + Math.abs(playerSeg.curve) * 0.12) / 210, 0, 1);
     }
 
-    /* --- pit lane: pull right onto the apron at start/finish ------ */
-    if (!this.pitting && playerSeg.pit && this.playerX > 1.02) {
-      this.pitting = true;
-      this.pitPhase = 'in';
-      this.pitTimer = 0;
-    }
-    if (this.pitting) {
-      /* guided down the lane; the wheel is out of your hands */
-      this.steerInput += (0 - this.steerInput) * Math.min(1, dt * 8);
-      var limiter = this.maxSpeed * 0.22;
-      if (this.pitPhase === 'in') {
-        this.playerX += (1.42 - this.playerX) * Math.min(1, dt * 3);
-        this.speed = Math.min(this.speed, limiter);
-        this.pitTimer += dt;
-        if (this.pitTimer > 1.0) { this.pitPhase = 'stop'; this.pitTimer = 2.6; }
-      } else if (this.pitPhase === 'stop') {
-        this.speed = 0;
-        this.pitTimer -= dt;
-        if (this.pitTimer <= 0) {
-          this.tyreWear = 0;
-          this.pitPhase = 'out';
-          Audio.beep(660, 0.18, 0.09);
-        }
-      } else {
-        this.speed = Math.min(this.speed, limiter);
-        if (!playerSeg.pit) {
-          this.playerX += (0.85 - this.playerX) * Math.min(1, dt * 2.5);
-          if (this.playerX < 1.0) { this.pitting = false; this.pitPhase = null; }
-        } else {
-          this.playerX += (1.42 - this.playerX) * Math.min(1, dt * 3);
-        }
-      }
-    }
+    /* Pit stops were here and are gone.
+     *
+     * They cost more than they gave. Entering meant drifting right on
+     * a straight, which is also how you end up in a wall at Monaco;
+     * the stop itself took the car out of the player's hands for eight
+     * seconds; and a rival serving one sat on the road looking like an
+     * obstacle. Tyres still wear and still cost grip, so the strategy
+     * is now how hard you lean on them rather than when you stop. */
 
     /* --- cornering forces ---------------------------------------- */
-    if (!this.pitting) {
+    {
       this.playerX -= dx * speedPercent * playerSeg.curve * this.centrifugal * (1 - this.weightT * 0.12);
 
       /* Too fast for the corner and you understeer off the road.
@@ -560,7 +531,7 @@ var Game = {
     }
 
     /* --- leaving the circuit ------------------------------------- */
-    this.offTrack = !this.pitting && Math.abs(this.playerX) > 1;
+    this.offTrack = Math.abs(this.playerX) > 1;
     if (this.offTrack) {
       if (this.speed > this.maxSpeed * this.offRoadLimit) {
         this.speed = Util.accelerate(this.speed, -this.maxSpeed / 1.8, dt);
@@ -574,7 +545,7 @@ var Game = {
     }
 
     /* --- contact with rivals ------------------------------------- */
-    if (!this.pitting) this.checkCarCollisions(playerSeg, dx);
+    this.checkCarCollisions(playerSeg, dx);
 
     this.playerX = Util.limit(this.playerX, -2.4, 2.4);
     this.speed = Util.limit(this.speed, 0, this.maxSpeed);
@@ -599,7 +570,7 @@ var Game = {
 
     /* --- slipstream: sit in the hole in the air ------------------- */
     var ahead = this.carAhead();
-    this.tow = !!(!this.pitting && ahead && ahead.gap < SEGMENT_LENGTH * 30 &&
+    this.tow = !!(ahead && ahead.gap < SEGMENT_LENGTH * 30 &&
                   Math.abs(playerSeg.curve) < 1 && speedPercent > 0.55);
     if (this.tow && this.held(['ArrowUp', 'KeyW'], 'gas')) {
       this.speed = Util.accelerate(this.speed, this.maxSpeed / 18, dt);
@@ -607,7 +578,7 @@ var Game = {
     }
 
     /* --- DRS: open on any straight once you are up to speed ------- */
-    this.drs = !this.pitting && Math.abs(playerSeg.curve) < 0.6 && speedPercent > 0.5;
+    this.drs = Math.abs(playerSeg.curve) < 0.6 && speedPercent > 0.5;
     if (this.drs && this.held(['ArrowUp', 'KeyW'], 'gas')) {
       this.speed = Util.accelerate(this.speed, this.maxSpeed / 12, dt);
       this.speed = Util.limit(this.speed, 0, this.maxSpeed * 1.06);
@@ -620,7 +591,7 @@ var Game = {
     /* No constant bob on clean tarmac. A modern F1 car rides flat,
        and the permanent up-down wobble read as noise, not speed.
        Riding a kerb buzzes the two wheels that are actually on it. */
-    var onKerb = !this.offTrack && !this.pitting && Math.abs(this.playerX) > 0.92;
+    var onKerb = !this.offTrack && Math.abs(this.playerX) > 0.92;
     var shake = this.offTrack ? speedPercent * 8 : onKerb ? speedPercent * 3.5 : 0;
     this.bumpImpulse = (this.bumpImpulse || 0) * 0.88;
     this.bump = Math.sin(this.raceTime * 34) * shake + this.bumpImpulse;
@@ -660,27 +631,10 @@ var Game = {
       var speed = this.maxSpeed * car.pace * cornerFactor * ebb * (1 - car.wear * 0.07);
 
       car.wear = Util.limit(car.wear + dt * car.pace / 230, 0, 1);
-      if (car.pitTimer > 0) {
-        car.pitTimer -= dt;
-        speed = this.maxSpeed * 0.14;
-        /* Out to the pit lane, at the same offset the player uses.
-           At 0.8 a stopped car sits inside the white line — on the
-           racing line, at walking pace, looking for all the world
-           like someone parked a barrier across the road. */
-        car.offset += (1.42 - car.offset) * Math.min(1, dt * 2.5);
-      }
-
       car.wobble += dt * 1.4;
       var line = -Math.sign(seg.curve) * Math.min(0.45, Math.abs(seg.curve) * 0.08);
-      if (car.pitTimer <= 0) {
-        car.offset += ((line + Math.sin(car.wobble) * 0.12) - car.offset) * Math.min(1, dt * 1.5);
-      }
-      /* Racing cars stay between the white lines; a car serving a stop
-         has to be allowed past them, or it parks on the racing line at
-         walking pace and reads as a barricade across the road. */
-      car.offset = car.pitTimer > 0
-        ? Util.limit(car.offset, -0.92, 1.45)
-        : Util.limit(car.offset, -0.92, 0.92);
+      car.offset += ((line + Math.sin(car.wobble) * 0.12) - car.offset) * Math.min(1, dt * 1.5);
+      car.offset = Util.limit(car.offset, -0.92, 0.92);
 
       car.z = Util.increase(car.z, dt * speed, this.trackLength);
       if (car.z < oldZ) {
@@ -688,10 +642,6 @@ var Game = {
         if (car.lap > this.totalLaps) {
           car.finishedAt = this.raceTime;
           this.finishOrder.push(car.name);
-        } else if (car.wear > 0.68) {
-          /* worn: dive into the pit at the lap change */
-          car.pitTimer = 5.5;
-          car.wear = 0;
         }
       }
     }
@@ -943,18 +893,14 @@ var Game = {
     /* tyres, and the call to box when they are done */
     var tyreEl = document.getElementById('tyre-value');
     if (tyreEl) {
-      tyreEl.textContent = this.pitting && this.pitPhase === 'stop'
-        ? 'BOX'
-        : Math.round((1 - this.tyreWear) * 100) + '%';
+      tyreEl.textContent = Math.round((1 - this.tyreWear) * 100) + '%';
       tyreEl.style.color =
         this.tyreWear > 0.7 ? '#ff5252' : this.tyreWear > 0.45 ? '#f5c518' : '';
     }
-    var boxTag = document.getElementById('box-tag');
-    if (boxTag) boxTag.classList.toggle('on', !this.pitting && this.tyreWear > 0.65);
 
     var seg = this.findSegment(this.position + this.playerZ);
     document.getElementById('corner-value').textContent =
-      this.pitting ? (this.pitPhase === 'stop' ? 'PIT STOP' : 'PIT LANE') : (seg.section || '');
+      seg.section || '';
 
     this.drawMap();
 
