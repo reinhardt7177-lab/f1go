@@ -180,17 +180,35 @@ export class SceneRenderer {
     surface.receiveShadow = true;
     this.scene.add(surface);
 
-    // Ground plane far below, so the horizon is not empty space where
-    // the circuit's own mesh runs out. Big enough to reach past the fog
-    // in every direction. Its colour is a lit grass rather than the
+    // Ground plane, so the horizon is not empty space where the
+    // circuit's own mesh runs out. Big enough to reach past the fog in
+    // every direction. Its colour is a lit grass rather than the
     // near-black it was: under a real sky, ground that dark reads as a
     // hole rather than as a field.
+    //
+    // It has to sit under the whole circuit, not under the start line.
+    // A plane at a fixed depth is only below the road while the road is
+    // level, and Spa drops a hundred metres — so for most of a lap the
+    // tarmac was underneath it and the view ahead was a field with a
+    // road buried in it. Finding the lowest vertex of the track and
+    // going below that makes it impossible for the ground to cover the
+    // circuit, whatever the circuit does.
+    //
+    // The proper answer is terrain that follows the track rather than a
+    // plane under it. This is the cheap version of that: correct about
+    // what it must never do, crude about the rest.
+    let lowest = Infinity;
+    for (let i = 1; i < track.positions.length; i += 3) {
+      if (track.positions[i]! < lowest) lowest = track.positions[i]!;
+    }
+    if (!Number.isFinite(lowest)) lowest = 0;
+
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(12000, 12000),
       new THREE.MeshStandardMaterial({ color: 0x53703c, roughness: 1 })
     );
     ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -1.2;
+    ground.position.y = lowest - 1.2;
     ground.receiveShadow = true;
     this.scene.add(ground);
   }
