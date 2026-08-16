@@ -32,13 +32,18 @@ const FOV_PORTRAIT = 82;
 /* The player's livery. */
 const PLAYER_COLOR = 0xf0620f;
 
-/* Where the driver's eye sits inside the car model, in metres from the
-   model's own origin (centred on the wheelbase, sitting on the road).
-   Forward is -Z. These three numbers decide the entire framing of the
-   game: too far back and the airbox fills the screen, too far forward
-   and you are sitting on the nose. */
-const EYE_Y = 0.92;
-const EYE_Z = 0.15;
+/* Where the driver's eye sits inside the car, as fractions of the
+   model's own bounding box rather than absolute metres — the model is
+   normalised to 5.2 m long but its height and proportions are whatever
+   it was generated with, so fixed offsets put the camera in the airbox
+   as readily as in the seat. Measured off the box, these land in the
+   seat for any car-shaped mesh.
+
+   EYE_H: fraction of the car's height. An F1 driver's eyeline is low,
+          a little above the top of the tub.
+   EYE_L: fraction of the car's length, positive = behind centre. */
+const EYE_H = 0.62;
+const EYE_L = 0.04;
 
 export class Renderer3D {
   constructor(canvas) {
@@ -88,6 +93,9 @@ export class Renderer3D {
 
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    /* The player's car is cut open at the driver; without this the
+       clipping plane is silently ignored. */
+    this.renderer.localClippingEnabled = true;
     this.lighting = new LightingManager(this.renderer, this.scene);
     this.lighting.applyTheme(null, null);
     this.speedFx = new SpeedEffects(this.camera);
@@ -235,9 +243,31 @@ export class Renderer3D {
   _buildPlayerCar() {
     if (!this.carModel || !this.carModel.ready) return;
 
+    const size = this.carModel.size;
+    this.eyeY = size.y * EYE_H;
+    this.eyeZ = size.z * EYE_L;
+
     this.playerCar = new THREE.Mesh(
       this.carModel.bodyGeometry, this.carModel.material.clone());
     this.playerCar.material.color = new THREE.Color(PLAYER_COLOR);
+
+    /* Cut the car in half at the driver.
+     *
+     * Relying on back-face culling to hide the bodywork around the
+     * camera does not work: the mesh is not reliably closed or
+     * consistently wound, so from the seat you get the inside of the
+     * engine cover filling the screen. A clipping plane is exact —
+     * everything behind the eye is simply not drawn, leaving the nose,
+     * the front wheels and the mirrors, which is the cockpit view. */
+    /* How far ahead of the eye the car is cut. Small enough to keep
+       the cockpit rim in shot, large enough that the driver's own
+       shoulders are not in the way. */
+    this.eyeCut = 0.15;
+    this.playerClip = new THREE.Plane(new THREE.Vector3(0, 0, -1), this.eyeZ - this.eyeCut);
+    this.playerCar.material.clippingPlanes = [this.playerClip];
+    this.playerCar.material.clipShadows = false;
+    this.playerCar.material.side = THREE.DoubleSide;
+
     this.playerCar.frustumCulled = false;
     this.playerCar.castShadow = true;
     this.trackGroup.add(this.playerCar);
@@ -245,6 +275,29 @@ export class Renderer3D {
     /* The blocked-out chassis is redundant now; only the steering
        wheel survives, because the model has nothing that turns. */
     if (this.cockpit) this.cockpit.useModel();
+  }
+
+  /**
+   * Move the driver's seat, live.
+   *
+   * Three numbers set the entire framing of the game and no amount of
+   * reasoning about them beats looking, so they are adjustable from
+   * the console rather than buried in a constant:
+   *
+   *   GFX.setSeat({ y: 0.62, z: 0.05, cut: 0.15 })
+   *
+   * y and z are metres from the model's origin; cut is how far ahead
+   * of the eye the bodywork is sliced away.
+   */
+  setSeat(opts) {
+    if (!this.playerCar) return null;
+    if (opts) {
+      if (opts.y !== undefined) this.eyeY = opts.y;
+      if (opts.z !== undefined) this.eyeZ = opts.z;
+      if (opts.cut !== undefined) this.eyeCut = opts.cut;
+    }
+    return { y: this.eyeY, z: this.eyeZ, cut: this.eyeCut,
+             carSize: this.carModel.size.toArray() };
   }
 
   clearTrack() {
@@ -325,8 +378,8 @@ export class Renderer3D {
 
     /* With a real car around the camera, the eye sits where the model
        says the driver's head is rather than at a guessed height. */
-    const eyeY = this.playerCar ? EYE_Y : eye;
-    const eyeZ = this.playerCar ? EYE_Z : 0;
+    const eyeY = this.playerCar ? this.eyeY : eye;
+    const eyeZ = this.playerCar ? this.eyeZ : 0;
 
     this.camera.position.set(
       lateral + this.speedFx.shakeX,
@@ -342,6 +395,10 @@ export class Renderer3D {
       /* Lean into the corner with the same roll the camera takes, so
          the bodywork stays welded to the view. */
       this.playerCar.rotation.z = this.speedFx.roll * 0.6;
+      /* Clipping planes are evaluated in world space, so the cut has
+         to travel with the car rather than staying put at the origin
+         while the car slides sideways out from under it. */
+      this.playerClip.constant = this.eyeZ - this.eyeCut;
     }
 
     /* Aim a little way down the road rather than straight ahead: the
