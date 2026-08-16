@@ -1,157 +1,124 @@
 # f1go
 
-A first-person cockpit F1 racer that runs in the browser. No build step, no
-dependencies, no image or audio assets — every pixel is drawn procedurally
-onto a single `<canvas>`.
+A Formula 1 simulator that runs in the browser: a rigid chassis on four
+raycast wheels, a Pacejka tyre model with temperature and wear,
+ground-effect aerodynamics that depend on ride height, a full
+drivetrain, and lap timing derived from the car's position along the
+centreline spline.
 
-Ten circuits, nine AI rivals, a persistent championship with F1 points,
-lap timing, DRS, slipstream, tyre wear with pit stops, a live track map,
-persistent lap records, and a halo you look through.
-
-## Running it
+Race nine rivals over Spa-Francorchamps or Monza, with F1 points
+carried across a season.
 
 ```
-git clone https://github.com/reinhardt7177-lab/f1go.git
-cd f1go
-python3 -m http.server 8000
+cd f1sim
+npm install
+npm run dev
 ```
 
-Then open <http://localhost:8000>.
-
-Opening `index.html` straight off disk works too — the scripts are classic
-`<script src>` tags rather than ES modules, so there is no CORS problem with
-`file://`. It also deploys as-is to GitHub Pages: push the branch, then set
-Pages to serve from the repository root.
+Then open <http://localhost:5173>.
 
 ## Controls
 
-| Action   | Keyboard                    | Touch                       |
-| -------- | --------------------------- | --------------------------- |
-| Throttle | `↑` / `W`                   | bottom half of right screen |
-| Brake    | `↓` / `S` / `Space`         | top half of right screen    |
-| Steer    | `←` `→` / `A` `D`           | left screen, tap a side     |
-| Restart  | `R`                         | —                           |
+| Action        | Keyboard              | Touch                        |
+| ------------- | --------------------- | ---------------------------- |
+| Throttle      | `↑` / `W`             | right side, lower half       |
+| Brake         | `↓` / `S`             | right side, upper half       |
+| Steer         | `←` `→` / `A` `D`     | left side                    |
+| Gears         | `Q` `E`               | automatic                    |
+| Straight-line | `F`                   | AERO                         |
+| Overtake mode | `Shift`               | BOOST                        |
+| Camera        | `C`                   | on-screen                    |
+| Pit           | `P`                   | PIT                          |
+| Recover       | `R`                   | RESET                        |
 
-DRS opens automatically when you are within about a second of the car ahead
-and the road is straight; the wheel display and the HUD tag both light up.
+`RESET` puts the car back on the racing line where it stands. A rigid
+body can finish up on its roof or a long way off the map, and the
+simulation is not wrong about either — but a session should not end
+there.
 
-## How it works
+## What is simulated
 
-The renderer is pseudo-3D, in the tradition of *Pole Position* and *OutRun*
-rather than a polygon engine. A circuit is a flat list of segments, each
-carrying a curve and a world height, and the road is drawn as a stack of
-trapezoids projected from the driver's eye point:
+The car is a rigid body with four raycast wheels. Each wheel carries a
+suspension spring and damper, and a tyre with its own slip angle, slip
+ratio, load sensitivity, tread temperature and wear. Longitudinal and
+lateral forces come from a Pacejka fit combined through a friction
+ellipse, so a locked wheel really does stop steering.
 
-```
-scale   = cameraDepth / distanceToSegment
-screenX = centre  + scale * relativeX * halfWidth
-screenY = horizon - scale * relativeY * halfHeight
-screenW = scale * roadWidth * halfWidth
-```
+Aerodynamics are ride-height dependent: the floor makes most of the
+downforce, gains it as the car settles, and stalls if it settles too
+far. Drag scales with the same wing settings that produce the
+downforce, which is what makes the Monza and Monaco trims genuinely
+different cars rather than a slider.
 
-Segments are painted front to back so each one clips the scenery behind it,
-then cars and trackside objects are painted back to front inside those clip
-bounds. Cornering is faked honestly: the accumulated curve shifts the road
-sideways under a fixed camera, and centrifugal force pushes the car towards
-the outside of the bend in proportion to speed.
-
-Because the world is a 1D ribbon, you cannot see across the infield and there
-is no free camera — which costs nothing here, since the view never leaves the
-cockpit.
-
-## Layout
-
-| File            | What it holds                                                            |
-| --------------- | ------------------------------------------------------------------------ |
-| `index.html`    | canvas, HUD, menu and results markup, all styling                        |
-| `js/util.js`    | maths helpers and the projection above                                   |
-| `js/tracks.js`  | the segment builder, circuit definitions, colour themes                  |
-| `js/render.js`  | road painter, procedural scenery, rival cars, the cockpit                |
-| `js/game.js`    | physics, AI, timing, input, audio, main loop                             |
-
-Physics run on a fixed 1/60 s timestep independent of the display refresh
-rate, so a 144 Hz monitor drives exactly the same car as a 60 Hz one.
-
-The engine note is synthesised with two oscillators through a low-pass filter
-whose cutoff tracks speed — that is the entire audio pipeline.
+`tests/` holds 154 tests over the tyre model, the thermal model, the
+2026 power unit rules, the circuit geometry, the racing line and the
+field.
 
 ## Circuits
 
-`monaco`, `silverstone`, `suzuka`, `monza`, `spa`, `interlagos`, `bahrain`,
-`singapore`, `cota` and `redbullring`. Corner sequences, directions and names
-follow the real layouts turn by turn; radii and lap lengths are hand-tuned
-approximations tuned for how they drive, not survey data. The ribbon is kept
-level and the sky is a plain gradient, so nothing on screen competes with the
-circuit itself.
+Spa-Francorchamps and Monza, plus a flat proving ground used by the
+vehicle-dynamics tests, where a measurement of braking distance means
+something because the surface is uniform.
 
-Adding one means adding a builder to `js/tracks.js` and a card to the menu:
+A circuit is a list of sections with a real length, radius, gradient,
+banking and half-width. `tests/circuit.test.ts` requires the lap to
+close in both position and heading, because a layout that does not
+close has a kink in its tangent at the timing line, and a car crossing
+that at speed leaves the circuit.
 
-```js
-function buildInterlagos() {
-  var b = new TrackBuilder(THEMES.silverstone);
-  b.straight('START / FINISH', LEN.MEDIUM);
-  b.at('T1 SENNA S', LEN.SHORT, LEN.SHORT, LEN.SHORT, -CRV.HARD);
-  b.esses('T3 CURVA DO SOL', LEN.TINY, CRV.MEDIUM);
-  // ...
-  return b.finish();
-}
+Two tools help author one:
+
+```
+npx tsx tools/check-layout.ts [id...]     # is it driveable?
+npx tsx tools/fit-layout.ts <id> <metres> # solve it so it closes
 ```
 
-`at(name, enter, hold, leave, curve, height)` builds one named corner, easing
-in and out of the given curve. Positive curves bend right, negative left.
-Positive heights climb. The name is what appears on the HUD as you drive
-through it.
+The fitter optimises for closure *and* against the road crossing over
+itself, which the first version of Spa did — leaving one sheet of
+tarmac lying two metres above another.
+
+## The field
+
+Rivals run along the racing line at a fraction of the speed profile
+rather than as nine more rigid bodies. The profile already knows what
+every corner is worth — it is the one the autopilot drives to — so a
+rival is driving the same solution slightly less well, not following a
+script laid beside it. They do not collide: they are traffic to judge
+and pass.
+
+## History
+
+This repository used to hold two games: an arcade racer at the root
+and the simulator under `f1sim/`. The arcade modelled the car as a
+point on a one-dimensional ribbon — a distance and a lateral offset —
+which made every handling question a matter of tuning constants that
+stood in for physics rather than physics. Keeping both meant authoring
+every circuit and building every feature twice.
+
+It was removed once the simulator gained the one thing it was missing:
+opponents. Its championship, its best-lap records and its car model
+live on here, and it remains in the history if any of it is wanted
+back.
 
 ## Note on names
 
-"F1" and "Formula 1" are trademarks of Formula One Licensing BV. This project
-uses no team names, driver names, liveries or car models — the rivals are
-invented and the cars are generic open-wheelers. Circuit and corner names are
-used descriptively, as place names. Keep it that way if you fork it.
-
-## f1sim — the simulation track
-
-`f1sim/` is a separate, unrelated codebase in the same repository: a
-vehicle-dynamics simulation built with TypeScript, three.js and the
-Rapier physics engine, running on Spa-Francorchamps.
-
-It shares no code with the arcade racer above. Where this game fakes a
-road as a one-dimensional ribbon, that one models a rigid chassis on four
-raycast wheels — a Pacejka tyre model with temperature and wear,
-ground-effect aerodynamics that depend on ride height, per-surface grip,
-a full drivetrain, and lap and sector timing derived entirely from the
-car's position along the centreline spline.
-
-See [f1sim/README.md](f1sim/README.md) to run it, and
-[f1sim/ARCHITECTURE.md](f1sim/ARCHITECTURE.md) for the design and the
-road from here to circuits, AI and multiplayer.
+"F1" and "Formula 1" are trademarks of Formula One Licensing BV. This
+project uses no team names, driver names, liveries or car models — the
+rivals are invented and the car is a generic open-wheeler. Circuit and
+corner names are used descriptively, as place names. Keep it that way
+if you fork it.
 
 ## Deploying
 
-`vercel.json` builds both projects into one static site:
+`vercel.json` builds the site with `tools/build-site.js`. Import the
+repository at [vercel.com/new](https://vercel.com/new); the build
+command, install command and output directory all come from
+`vercel.json`, so there is nothing to fill in.
 
-```
-/       the arcade racer
-/sim/   f1sim
-```
-
-To put it online, import this repository at
-[vercel.com/new](https://vercel.com/new). The build command, install
-command and output directory all come from `vercel.json`, so there is
-nothing to fill in on the import screen.
-
-There is one thing the import screen will not ask you, though, and it is
-the one that matters: **which branch**. It has no branch selector and
-silently takes the repository's default branch. If the work lives on
-another branch, the import builds a commit that has no `vercel.json`, no
-`index.html` and nothing to serve — which succeeds, reports **Ready**,
-and then answers every request with a 404. A green deployment is not
-evidence that it deployed anything.
-
-So after importing, go to **Settings → Git → Production Branch** and set
-it to the branch you actually want. That only redirects future builds;
-to publish what is already there, find that branch's deployment under
-**Deployments** and **Promote to Production**, or push a commit to it.
+The import screen will not ask you which branch, and silently takes the
+repository's default. If the work is on another branch the build
+succeeds, reports **Ready**, and serves 404s. Set **Settings → Git →
+Production Branch** afterwards.
 
 Any static host works the same way:
 
