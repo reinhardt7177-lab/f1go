@@ -149,6 +149,27 @@
 
   #last-value.record-flash { color: #b26bff; }
 
+  /* Start lights. In the DOM rather than painted on a canvas, because
+     there are two renderers now and the lights belong to neither —
+     drawn into the 2D canvas they simply vanished in 3D. */
+  #lights {
+    position: absolute; top: 22%; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 14px;
+    background: rgba(8, 10, 14, 0.85);
+    border: 1px solid var(--line);
+    padding: 14px 20px; border-radius: 999px;
+  }
+  #lights .light {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: rgba(255, 255, 255, 0.10);
+  }
+  #lights .light.on { background: var(--red); box-shadow: 0 0 18px rgba(226, 0, 15, 0.75); }
+
+  @media (max-width: 720px) {
+    #lights { gap: 9px; padding: 10px 14px; }
+    #lights .light { width: 17px; height: 17px; }
+  }
+
   /* ---------------- Menu & results ---------------- */
   /* Scrollable overlay with safe centring: the auto margins on the
      first and last children centre the content when it fits, and give
@@ -291,6 +312,11 @@
 <!-- ------------------------------ HUD ------------------------------ -->
 <div id="hud" class="hidden">
   <div id="rev-bar"><div id="rev-fill"></div></div>
+
+  <div id="lights" class="hidden">
+    <div class="light"></div><div class="light"></div><div class="light"></div>
+    <div class="light"></div><div class="light"></div>
+  </div>
 
   <!-- Corner, circuit and flags share one centred column so they move
        together when they have to get out of the side boxes' way. -->

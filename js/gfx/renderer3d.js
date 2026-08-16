@@ -538,7 +538,12 @@ if (canvas) {
       this.updateHud(this.speed / this.maxSpeed);
     };
 
-    if (params.has('gfx')) gfx.enable(params.get('gfx') !== '0');
+    /* 3D is the game now. ?gfx=0 falls back to the 2D renderer, which
+       is kept complete rather than deleted: it needs no WebGL, no
+       model download and no shader compile, so it is both the answer
+       for a device this one cannot run on and a way to check whether a
+       bug belongs to the renderer or to the game underneath it. */
+    gfx.enable(params.get('gfx') !== '0');
     if (params.has('perf')) gfx.perf.showOverlay(params.get('perf') !== '0');
   }
 }

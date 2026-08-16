@@ -11,7 +11,11 @@ var Game = {
   drawDistance: 260,
   fieldOfView: 105,
   cameraHeight: 950,          // eye level in the cockpit
-  centrifugal: 0.25,          // how hard corners push you wide
+  /* How hard corners push you wide. This is the number that decides
+     whether the game is a game: too low and a corner cannot carry you
+     off the road, so steering becomes optional and holding the
+     throttle drives a clean lap by itself. */
+  centrifugal: 0.62,
   offRoadLimit: 0.24,         // fraction of top speed you keep off track
 
   /* --- runtime state --------------------------------------------- */
@@ -501,13 +505,27 @@ var Game = {
     if (!this.pitting) {
       this.playerX -= dx * speedPercent * playerSeg.curve * this.centrifugal * (1 - this.weightT * 0.12);
 
-      /* too fast for the corner and you understeer off the road;
-         worn tyres bring that point forward, trail-braking delays it */
+      /* Too fast for the corner and you understeer off the road.
+       *
+       * This used to take most of its penalty out of the car's speed,
+       * which meant the game braked for the player: carrying too much
+       * speed simply slowed you to whatever the corner allowed, and
+       * since the sideways push scales with speed, slowing down also
+       * killed the very force that should have carried you wide. The
+       * loop settled at a safe speed on its own and the corner drove
+       * itself.
+       *
+       * Now the cost is the corner, not the speed. Overdo it and the
+       * car washes out toward the outside of the bend; recovering
+       * means lifting and steering, which is what the player is there
+       * to do. The speed penalty is kept small — that is tyre scrub,
+       * not a brake. */
       var effGrip = this.grip * (1 - this.tyreWear * 0.35) * (1 + this.weightT * 0.10);
       var corneringLimit = effGrip * 1.9 / (Math.abs(playerSeg.curve) + 1.15);
       if (speedPercent > corneringLimit && Math.abs(playerSeg.curve) > 1) {
-        this.speed = Util.accelerate(this.speed, -this.maxSpeed / 2.2, dt);
-        this.playerX += dx * playerSeg.curve * 0.25;
+        var over = Math.min(1.6, (speedPercent - corneringLimit) / corneringLimit);
+        this.speed = Util.accelerate(this.speed, -this.maxSpeed / 9, dt);
+        this.playerX += dx * playerSeg.curve * 0.55 * (0.4 + over);
       }
     }
 
@@ -836,33 +854,32 @@ var Game = {
     });
 
     Render.vignette(ctx, width, height);
-
-    if (this.state === 'countdown') this.renderCountdown(ctx, width, height);
     this.updateHud(speedPercent);
   },
 
-  renderCountdown: function (ctx, width, height) {
-    var lights = Util.limit(Math.ceil(5 - (this.countdown - 0.2)), 0, 5);
-    var out = this.countdown <= 0.2;
-    var r = height * 0.035;
-    var gap = r * 2.6;
-    var x0 = width / 2 - gap * 2;
-    var y = height * 0.26;
+  /* The gantry lights, in the DOM so both renderers get them. Painted
+     into the 2D canvas, as they were, they disappeared the moment the
+     3D renderer took over the picture. */
+  updateLights: function () {
+    var box = document.getElementById('lights');
+    if (!box) return;
 
-    ctx.save();
-    ctx.fillStyle = 'rgba(8,10,14,0.85)';
-    Render.roundRect(ctx, x0 - r * 1.8, y - r * 1.8, gap * 4 + r * 3.6, r * 3.6, r * 0.5);
-    ctx.fill();
-    for (var i = 0; i < 5; i++) {
-      ctx.fillStyle = !out && i < lights ? '#e2000f' : 'rgba(255,255,255,0.10)';
-      ctx.beginPath();
-      ctx.arc(x0 + i * gap, y, r, 0, Math.PI * 2);
-      ctx.fill();
+    var racing = this.state === 'countdown';
+    box.classList.toggle('hidden', !racing);
+    if (!racing) return;
+
+    /* Five reds come on a second apart, then all out — and it is
+       lights out that starts the race, not the last one coming on. */
+    var lit = Util.limit(Math.ceil(5 - (this.countdown - 0.2)), 0, 5);
+    var out = this.countdown <= 0.2;
+    var dots = box.children;
+    for (var i = 0; i < dots.length; i++) {
+      dots[i].classList.toggle('on', !out && i < lit);
     }
-    ctx.restore();
   },
 
   updateHud: function (speedPercent) {
+    this.updateLights();
     var kmh = Math.round(speedPercent * 340);
     document.getElementById('speed-value').textContent = kmh;
     document.getElementById('gear-value').textContent = this.gear;

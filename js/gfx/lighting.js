@@ -127,11 +127,17 @@ export class LightingManager {
        dark in it has no shape in it either. Roughly 4:1 sun to sky is
        what a clear day actually measures. */
     if (night) {
-      this.sun.color.set(0xc6d4ff);
-      this.sun.intensity = 0.9;
-      this.hemi.color.set(0x2c3550);
-      this.hemi.groundColor.set(0x14171c);
-      this.hemi.intensity = 0.40;
+      /* A night grand prix is lit to television levels — the circuit
+         is brighter than most daylight races and only the sky is
+         dark. Treating "night" as "turn everything down" left the road
+         nearly black, which is neither realistic nor drivable. The
+         floodlights are faked as a strong warm key with a generous
+         fill, and the sky is left to carry the darkness on its own. */
+      this.sun.color.set(0xfff0d0);
+      this.sun.intensity = 2.4;
+      this.hemi.color.set(0x8fa0c8);
+      this.hemi.groundColor.set(0x3a4050);
+      this.hemi.intensity = 1.15;
     } else if (trackId === 'bahrain') {
       this.sun.color.set(0xffe4b8);
       this.sun.intensity = 3.6;
