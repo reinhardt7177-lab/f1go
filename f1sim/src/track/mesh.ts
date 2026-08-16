@@ -26,6 +26,15 @@ export interface TrackGeometry {
   triangleCount: number;
 }
 
+/** Paint, and tarmac that has been rubbered in by a season of cars. */
+const PAINT: [number, number, number] = [0.86, 0.87, 0.88];
+const GROOVE: [number, number, number] = [0.145, 0.152, 0.168];
+
+/** The pale half of a kerb. The red half comes from SURFACE_COLOR. */
+const KERB_PALE: [number, number, number] = [0.83, 0.83, 0.84];
+/** Metres of kerb per stripe. */
+const KERB_STRIPE = 3;
+
 const SURFACE_COLOR: Record<SurfaceKind, [number, number, number]> = {
   tarmac: [0.19, 0.2, 0.22],
   kerb: [0.78, 0.16, 0.16],
@@ -38,6 +47,11 @@ interface Station {
   t: number;
   surface: SurfaceKind;
   drop: number;
+  /** Overrides the surface's colour without changing what it grips
+      like. A white line is paint on tarmac, and the rubbered-in groove
+      is tarmac that has been driven on — neither is a new surface as
+      far as the car is concerned. */
+  tint?: [number, number, number];
 }
 
 /**
@@ -87,6 +101,15 @@ const lateralStations = (circuit: Circuit, s: number, curvature = 0): Station[] 
 
   // `drop` lowers the outer surfaces slightly so the road edge reads as
   // an edge rather than a colour change.
+  /* The painted line just inside the kerb, and the rubbered-in groove
+     down the middle, are what make tarmac read as a racing circuit
+     rather than a grey road. Both are lateral bands: the line is
+     `paint`, the groove is tarmac darkened where the cars run.
+
+     `paint` is only a colour — the physics still sees tarmac under it,
+     which is right, because a white line is paint on tarmac. */
+  const line = 0.12;
+
   const stations: Station[] = [
     { t: -(w + k + r + 14), surface: 'grass', drop: 0.35 },
     { t: -(w + k + r), surface: 'grass', drop: 0.12 },
@@ -94,9 +117,16 @@ const lateralStations = (circuit: Circuit, s: number, curvature = 0): Station[] 
     { t: -(w + k), surface: 'runoff', drop: 0.04 },
     { t: -(w + k) + 0.01, surface: 'kerb', drop: 0.03 },
     { t: -w, surface: 'kerb', drop: 0 },
-    { t: -w + 0.01, surface: 'tarmac', drop: 0 },
-    { t: 0, surface: 'tarmac', drop: 0 },
-    { t: w - 0.01, surface: 'tarmac', drop: 0 },
+    { t: -w + 0.01, surface: 'tarmac', drop: 0, tint: PAINT },
+    { t: -w + line, surface: 'tarmac', drop: 0, tint: PAINT },
+    { t: -w + line + 0.01, surface: 'tarmac', drop: 0 },
+    { t: -w * 0.42, surface: 'tarmac', drop: 0 },
+    { t: -w * 0.34, surface: 'tarmac', drop: 0, tint: GROOVE },
+    { t: w * 0.34, surface: 'tarmac', drop: 0, tint: GROOVE },
+    { t: w * 0.42, surface: 'tarmac', drop: 0 },
+    { t: w - line - 0.01, surface: 'tarmac', drop: 0 },
+    { t: w - line, surface: 'tarmac', drop: 0, tint: PAINT },
+    { t: w - 0.01, surface: 'tarmac', drop: 0, tint: PAINT },
     { t: w, surface: 'kerb', drop: 0 },
     { t: w + k - 0.01, surface: 'kerb', drop: 0.03 },
     { t: w + k, surface: 'runoff', drop: 0.04 },
@@ -148,7 +178,14 @@ export const buildTrackGeometry = (circuit: Circuit, stationSpacing = 4): TrackG
       normals[vi * 3 + 1] = up.y;
       normals[vi * 3 + 2] = up.z;
 
-      const c = SURFACE_COLOR[station.surface];
+      /* Kerbs alternate along their length. A kerb painted one flat
+         colour is the single clearest tell that a road is not a race
+         track — the stripes are how the eye reads where the limit is
+         and how fast it is going over it. */
+      let c = station.tint ?? SURFACE_COLOR[station.surface];
+      if (station.surface === 'kerb' && Math.floor(s / KERB_STRIPE) % 2 === 1) {
+        c = KERB_PALE;
+      }
       colors[vi * 3] = c[0];
       colors[vi * 3 + 1] = c[1];
       colors[vi * 3 + 2] = c[2];

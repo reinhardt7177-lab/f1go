@@ -90,6 +90,13 @@ const boot = async (): Promise<void> => {
   const speedProfile = new SpeedProfile(racingLine, params);
   const driver = new Driver(racingLine, speedProfile, params);
 
+  /* The car model loads in the background. The blocked-out car is a
+     complete fallback, so nothing waits on this and a missing file
+     costs a console line rather than a session. */
+  void renderer
+    .useCarModel('assets/car.glb')
+    .catch((e) => console.warn('[render] car model unavailable:', e));
+
   /* The rest of the grid. Sharing the racing line and speed profile the
      autopilot uses means a rival is driving the same solution, less
      well, rather than following a script laid alongside it. */

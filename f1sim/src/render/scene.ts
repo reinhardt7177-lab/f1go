@@ -8,6 +8,7 @@ import { quatSlerp, v3lerp, vec3 } from '../core/math';
 import type { Quat, Vec3 } from '../core/math';
 import type { VehicleState } from '../sim/types';
 import type { TrackGeometry } from '../track/mesh';
+import { loadCarModel } from './carmodel';
 import { Cockpit, EYE } from './cockpit';
 
 /**
@@ -198,6 +199,22 @@ export class SceneRenderer {
    * point of stage one is the physics, and a placeholder that is
    * obviously a placeholder is better than one pretending to be art.
    */
+  /**
+   * Replace the blocked-out body with a loaded model.
+   *
+   * Only the body goes: the wheels are positioned every frame from the
+   * simulation's own wheel centres, so they have to stay the objects
+   * the renderer already moves. A model whose wheels are welded to its
+   * body would have them sliding through corners instead of following
+   * the suspension.
+   */
+  async useCarModel(url: string): Promise<void> {
+    const car = await loadCarModel(url);
+    for (const child of [...this.bodyGroup.children]) this.bodyGroup.remove(child);
+    this.bodyGroup.add(car.object);
+    console.info('[render] car model:', Math.round(car.triangles), 'triangles');
+  }
+
   private buildCar(): void {
     const bodyMat = new THREE.MeshStandardMaterial({ color: 0xd0d4d8, roughness: 0.45, metalness: 0.15 });
     const accentMat = new THREE.MeshStandardMaterial({ color: 0xe2000f, roughness: 0.4 });
