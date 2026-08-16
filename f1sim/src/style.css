@@ -899,6 +899,11 @@ body {
 #start-card.hidden,
 #rotate-prompt.hidden { display: none; }
 
+/* A general one, because the absence of it was a real bug: a panel
+   written elsewhere used `hidden` expecting it to hide, and instead
+   covered the game in an opaque sheet from the moment it loaded. */
+.hidden { display: none !important; }
+
 #start-card h1 {
   font-size: 42px;
   font-weight: 800;
@@ -1018,6 +1023,17 @@ body {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
+
+/* This stylesheet has no global `.hidden` — only `#rotate-prompt.hidden`
+   — and the results panel was written assuming there was one. It
+   therefore sat over the whole game from the moment the page loaded:
+   a full-screen 94% black sheet, through which the start card was just
+   about legible and the circuit behind it was not. The game looked
+   broken because it was, in one line of CSS.
+
+   Given the surprise, this hides itself rather than trusting the class
+   to mean anything. */
+#results.hidden { display: none !important; }
 
 #results {
   position: fixed;
