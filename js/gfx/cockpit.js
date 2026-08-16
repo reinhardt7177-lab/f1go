@@ -123,11 +123,15 @@ export class PlayerCockpit {
        filmic tone mapping it washes out to grey unless the albedo is
        pulled well down, so the weave is darkened rather than the
        lighting compromised for one material's sake. */
+    /* Now that the steering wheel is the only thing wearing this, it
+       can go back to what carbon actually looks like. The lift was
+       there to keep a whole blocked-out chassis from reading as a
+       silhouette; a wheel on its own just wants to be dark. */
     this.carbonMat = new THREE.MeshStandardMaterial({
       map: carbon,
-      color: 0x9aa1ab,
-      roughness: 0.55,
-      metalness: 0.15
+      color: 0x4c525c,
+      roughness: 0.5,
+      metalness: 0.2
     });
     /* The livery: a clear-coated paint rather than a flat colour.
        Clearcoat is what makes bodywork look wet-sprayed instead of

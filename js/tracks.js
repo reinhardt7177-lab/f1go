@@ -180,39 +180,6 @@ var THEMES = {
     wallColor: ['#dddddd', '#c8c8c8'],
     fogDensity: 5
   },
-  spa: {
-    sky: ['#46586c', '#7d92a5', '#c8d3da'],
-    haze: '#c8d3da',
-    grass: ['#37633a', '#2e5731'],
-    road: ['#3a3d43', '#36393f'],
-    rumble: ['#c62828', '#f4f4f4'],
-    lane: '#f0f0f0',
-    walls: false,
-    wallColor: ['#dddddd', '#c8c8c8'],
-    fogDensity: 6                      // the Ardennes murk
-  },
-  interlagos: {
-    sky: ['#1e4a7a', '#5a93c6', '#cfe2ee'],
-    haze: '#cfe2ee',
-    grass: ['#44793d', '#3a6c33'],
-    road: ['#3c3f45', '#383b41'],
-    rumble: ['#f2b52a', '#1a9c4b'],    // verde e amarelo
-    lane: '#f0f0f0',
-    walls: false,
-    wallColor: ['#dddddd', '#c8c8c8'],
-    fogDensity: 5
-  },
-  bahrain: {
-    sky: ['#3d5a86', '#93a7bd', '#e8ddc4'],
-    haze: '#e8ddc4',
-    grass: ['#b3986a', '#a98e60'],     // desert either side
-    road: ['#3a3d43', '#36393f'],
-    rumble: ['#c62828', '#f4f4f4'],
-    lane: '#f0f0f0',
-    walls: false,
-    wallColor: ['#dddddd', '#c8c8c8'],
-    fogDensity: 4
-  },
   singapore: {
     sky: ['#070b18', '#141c3a', '#31386a'],
     haze: '#565080',
@@ -224,28 +191,6 @@ var THEMES = {
     wallColor: ['#c9ced6', '#c9ced6'],
     fogDensity: 4
   },
-  cota: {
-    sky: ['#2c5382', '#7ba3c9', '#e2e3d5'],
-    haze: '#e2e3d5',
-    grass: ['#5c7c42', '#527038'],     // sun-dried Texas green
-    road: ['#3d4046', '#393c42'],
-    rumble: ['#c62828', '#f4f4f4'],
-    lane: '#f0f0f0',
-    walls: false,
-    wallColor: ['#dddddd', '#c8c8c8'],
-    fogDensity: 5
-  },
-  redbullring: {
-    sky: ['#2b5a8c', '#77a6cf', '#dfeaf0'],
-    haze: '#dfeaf0',
-    grass: ['#3f7c46', '#356f3b'],     // alpine meadow
-    road: ['#3e4147', '#3a3d43'],
-    rumble: ['#1a56b0', '#f4f4f4'],
-    lane: '#f0f0f0',
-    walls: false,
-    wallColor: ['#dddddd', '#c8c8c8'],
-    fogDensity: 5
-  }
 };
 
 /* ------------------------------------------------------------------
@@ -385,95 +330,6 @@ function buildMonza() {
 }
 
 /* ------------------------------------------------------------------
-   Spa-Francorchamps - La Source hairpin, the Eau Rouge/Raidillon
-   flick, the Kemmel straight, double-left Pouhon, flat-out
-   Blanchimont and the Bus Stop chicane.
-   ------------------------------------------------------------------ */
-function buildSpa() {
-  var b = new TrackBuilder(THEMES.spa);
-
-  b.straight('START / FINISH', LEN.SHORT);
-  b.at('T1 LA SOURCE', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.HAIRPIN);
-  b.straight('DOWNHILL RUN', LEN.MEDIUM);
-  b.at('T2 EAU ROUGE', LEN.TINY, LEN.TINY, LEN.TINY, -CRV.EASY);
-  b.at('T3 RAIDILLON', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.EASY);
-  b.straight('KEMMEL STRAIGHT', LEN.LONG);
-  b.at('T5 LES COMBES', LEN.TINY, LEN.TINY, LEN.TINY, CRV.TIGHT);
-  b.at('T6 LES COMBES', LEN.TINY, LEN.TINY, LEN.TINY, -CRV.HARD);
-  b.at('T7 MALMEDY', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.MEDIUM);
-  b.at('T8 RIVAGE', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.TIGHT);
-  b.at('T9', LEN.SHORT, LEN.SHORT, LEN.SHORT, -CRV.MEDIUM);
-  b.at('T10 POUHON', LEN.SHORT, LEN.MEDIUM, LEN.SHORT, -CRV.MEDIUM);
-  b.at('T12 FAGNES', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.MEDIUM);
-  b.at('T13', LEN.TINY, LEN.SHORT, LEN.TINY, -CRV.MEDIUM);
-  b.at('T14 STAVELOT', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.MEDIUM);
-  b.straight('RUN TO BLANCHIMONT', LEN.MEDIUM);
-  b.at('T17 BLANCHIMONT', LEN.SHORT, LEN.MEDIUM, LEN.SHORT, -CRV.KINK);
-  b.at('T18 BUS STOP', LEN.TINY, LEN.TINY, LEN.TINY, CRV.TIGHT);
-  b.at('T19 BUS STOP', LEN.TINY, LEN.TINY, LEN.TINY, -CRV.TIGHT);
-  b.straight('START / FINISH', LEN.MEDIUM);
-
-  b.scatter(['billboard'], 26, 1.6, 2.6);
-  b.grandstands(10, 60, -1);
-  return b.finish();
-}
-
-/* ------------------------------------------------------------------
-   Interlagos - anticlockwise: the Senna S, Curva do Sol, Reta
-   Oposta, then the twisty infield down to Juncao and the long
-   climb past the pits.
-   ------------------------------------------------------------------ */
-function buildInterlagos() {
-  var b = new TrackBuilder(THEMES.interlagos);
-
-  b.straight('START / FINISH', LEN.MEDIUM);
-  b.at('T1 SENNA S', LEN.TINY, LEN.SHORT, LEN.TINY, -CRV.TIGHT);
-  b.at('T2 SENNA S', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.HARD);
-  b.at('T3 CURVA DO SOL', LEN.SHORT, LEN.MEDIUM, LEN.SHORT, -CRV.MEDIUM);
-  b.straight('RETA OPOSTA', LEN.LONG);
-  b.at('T4 DESCIDA DO LAGO', LEN.SHORT, LEN.SHORT, LEN.SHORT, -CRV.HARD);
-  b.at('T5', LEN.SHORT, LEN.SHORT, LEN.SHORT, -CRV.EASY);
-  b.at('T6 FERRADURA', LEN.SHORT, LEN.MEDIUM, LEN.SHORT, CRV.MEDIUM);
-  b.at('T7 LARANJINHA', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.HARD);
-  b.at('T8 PINHEIRINHO', LEN.TINY, LEN.SHORT, LEN.TINY, -CRV.TIGHT);
-  b.at('T9 BICO DE PATO', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.TIGHT);
-  b.at('T10 MERGULHO', LEN.SHORT, LEN.SHORT, LEN.SHORT, -CRV.MEDIUM);
-  b.at('T11 JUNCAO', LEN.TINY, LEN.SHORT, LEN.TINY, -CRV.HARD);
-  b.at('SUBIDA DOS BOXES', LEN.MEDIUM, LEN.LONG, LEN.MEDIUM, -CRV.KINK);
-  b.straight('START / FINISH', LEN.SHORT);
-
-  b.scatter(['billboard'], 24, 1.6, 2.6);
-  b.grandstands(15, 70, 1);
-  return b.finish();
-}
-
-/* ------------------------------------------------------------------
-   Bahrain - heavy stops, desert either side, four straights.
-   ------------------------------------------------------------------ */
-function buildBahrain() {
-  var b = new TrackBuilder(THEMES.bahrain);
-
-  b.straight('START / FINISH', LEN.LONG);
-  b.at('T1', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.TIGHT);
-  b.at('T2', LEN.TINY, LEN.SHORT, LEN.TINY, -CRV.MEDIUM);
-  b.at('T3', LEN.SHORT, LEN.SHORT, LEN.SHORT, CRV.EASY);
-  b.straight('RUN TO T4', LEN.MEDIUM);
-  b.at('T4', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.TIGHT);
-  b.esses('T5-6 ESSES', LEN.TINY, -CRV.MEDIUM);
-  b.at('T8', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.HARD);
-  b.at('T9-10', LEN.TINY, LEN.SHORT, LEN.SHORT, -CRV.HARD);
-  b.straight('BACK STRAIGHT', LEN.LONG);
-  b.at('T11', LEN.SHORT, LEN.SHORT, LEN.SHORT, -CRV.MEDIUM);
-  b.at('T13', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.HARD);
-  b.at('T14', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.MEDIUM);
-  b.straight('START / FINISH', LEN.SHORT);
-
-  b.scatter(['billboard'], 24, 1.6, 2.6);
-  b.grandstands(20, 75, -1);
-  return b.finish();
-}
-
-/* ------------------------------------------------------------------
    Singapore - a night street circuit: ninety-degree corners between
    the walls, and a hairpin under the grandstand lights.
    ------------------------------------------------------------------ */
@@ -500,61 +356,6 @@ function buildSingapore() {
   b.straight('START / FINISH', LEN.SHORT);
 
   b.grandstands(20, 70, -1);
-  return b.finish();
-}
-
-/* ------------------------------------------------------------------
-   Circuit of the Americas - anticlockwise: the T1 hairpin, an
-   esses run in the Silverstone mould, the long back straight and
-   the stadium section.
-   ------------------------------------------------------------------ */
-function buildCota() {
-  var b = new TrackBuilder(THEMES.cota);
-
-  b.straight('START / FINISH', LEN.MEDIUM);
-  b.at('T1 THE HILL', LEN.TINY, LEN.SHORT, LEN.TINY, -CRV.HAIRPIN);
-  b.at('T2', LEN.SHORT, LEN.SHORT, LEN.SHORT, -CRV.KINK);
-  b.esses('T3-4 ESSES', LEN.TINY, CRV.MEDIUM);
-  b.esses('T5-6 ESSES', LEN.TINY, CRV.MEDIUM);
-  b.at('T7', LEN.TINY, LEN.SHORT, LEN.TINY, -CRV.MEDIUM);
-  b.at('T8', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.MEDIUM);
-  b.at('T9', LEN.TINY, LEN.SHORT, LEN.TINY, -CRV.MEDIUM);
-  b.at('T11 HAIRPIN', LEN.TINY, LEN.SHORT, LEN.TINY, -CRV.HAIRPIN);
-  b.straight('BACK STRAIGHT', LEN.HUGE);
-  b.at('T12', LEN.TINY, LEN.SHORT, LEN.TINY, -CRV.TIGHT);
-  b.at('T13', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.HARD);
-  b.at('T14', LEN.TINY, LEN.SHORT, LEN.TINY, -CRV.HARD);
-  b.at('T15', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.TIGHT);
-  b.at('T16-18 TRIPLE', LEN.SHORT, LEN.MEDIUM, LEN.SHORT, CRV.EASY);
-  b.at('T19', LEN.TINY, LEN.SHORT, LEN.TINY, -CRV.HARD);
-  b.at('T20', LEN.TINY, LEN.SHORT, LEN.TINY, -CRV.TIGHT);
-  b.straight('START / FINISH', LEN.SHORT);
-
-  b.scatter(['billboard'], 26, 1.6, 2.6);
-  b.grandstands(15, 65, 1);
-  return b.finish();
-}
-
-/* ------------------------------------------------------------------
-   Red Bull Ring - three big straights, ten corners, no hiding.
-   ------------------------------------------------------------------ */
-function buildRedBullRing() {
-  var b = new TrackBuilder(THEMES.redbullring);
-
-  b.straight('START / FINISH', LEN.MEDIUM);
-  b.at('T1', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.TIGHT);
-  b.straight('UPHILL DRAG', LEN.LONG);
-  b.at('T3', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.TIGHT);
-  b.straight('SCHLOSSGOLD RUN', LEN.LONG);
-  b.at('T4', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.HARD);
-  b.at('T6', LEN.SHORT, LEN.SHORT, LEN.SHORT, -CRV.EASY);
-  b.at('T7', LEN.TINY, LEN.SHORT, LEN.TINY, -CRV.MEDIUM);
-  b.at('T9', LEN.SHORT, LEN.SHORT, LEN.SHORT, CRV.MEDIUM);
-  b.at('T10', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.HARD);
-  b.straight('START / FINISH', LEN.SHORT);
-
-  b.scatter(['billboard'], 22, 1.6, 2.6);
-  b.grandstands(12, 60, -1);
   return b.finish();
 }
 
@@ -591,30 +392,6 @@ var TRACKS = {
     grip: 1.02,
     build: buildMonza
   },
-  spa: {
-    id: 'spa',
-    name: 'SPA',
-    subtitle: 'Spa-Francorchamps',
-    blurb: 'Eau Rouge, Pouhon, Blanchimont. The great old rollercoaster.',
-    grip: 1.03,
-    build: buildSpa
-  },
-  interlagos: {
-    id: 'interlagos',
-    name: 'INTERLAGOS',
-    subtitle: 'Autodromo Jose Carlos Pace',
-    blurb: 'Anticlockwise. The Senna S opens it, Juncao decides it.',
-    grip: 1.0,
-    build: buildInterlagos
-  },
-  bahrain: {
-    id: 'bahrain',
-    name: 'BAHRAIN',
-    subtitle: 'Bahrain International Circuit',
-    blurb: 'Four straights, heavy stops, desert on every exit.',
-    grip: 1.0,
-    build: buildBahrain
-  },
   singapore: {
     id: 'singapore',
     name: 'SINGAPORE',
@@ -623,20 +400,4 @@ var TRACKS = {
     grip: 0.94,
     build: buildSingapore
   },
-  cota: {
-    id: 'cota',
-    name: 'COTA',
-    subtitle: 'Circuit of the Americas',
-    blurb: 'Up the hill into T1, esses like Silverstone, a stadium to finish.',
-    grip: 1.02,
-    build: buildCota
-  },
-  redbullring: {
-    id: 'redbullring',
-    name: 'RED BULL RING',
-    subtitle: 'Spielberg, Styria',
-    blurb: 'Three big straights, ten corners, nowhere to hide.',
-    grip: 1.04,
-    build: buildRedBullRing
-  }
 };

@@ -422,9 +422,14 @@ var Game = {
     this.blink += dt * 8;
 
     /* --- steering ------------------------------------------------ */
+    /* Summed, not assigned. Written as two independent `if`s the
+       second one simply overwrote the first, so holding both
+       directions steered hard right instead of running straight —
+       which also made rolling from one lock to the other jump through
+       the middle rather than pass through it. */
     var target = 0;
-    if (this.held(['ArrowLeft', 'KeyA'], 'left')) target = -1;
-    if (this.held(['ArrowRight', 'KeyD'], 'right')) target = 1;
+    if (this.held(['ArrowLeft', 'KeyA'], 'left')) target -= 1;
+    if (this.held(['ArrowRight', 'KeyD'], 'right')) target += 1;
     /* Progressive turn-in (~0.4s to full lock) and a quicker return
        to centre: a tap nudges the car, holding leans it into lock,
        and letting go straightens it out - weight, not twitch. */

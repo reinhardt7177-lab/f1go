@@ -305,22 +305,26 @@ export class CarModel {
       if (bins.get(z) > humpY) { humpY = bins.get(z); humpZ = z; }
     }
 
-    /* So the camera goes AHEAD of that hump instead of behind it —
-       the same place a broadcast nose camera sits. Everything from
-       here forward is nose, falling away, and everything behind is
-       out of the frustum for free. */
-    const camZ = humpZ - 0.55;
-
+    /* The camera goes OVER the car, not into it: at the cockpit's own
+       station, but lifted just clear of the tallest bodywork.
+     *
+     * This is the roll-hoop camera every broadcast uses, and it is the
+     * one position that works on a model with no interior. Sitting in
+     * the seat buries the lens in solid bodywork. Pushing far enough
+     * forward to escape that leaves the car out of shot entirely,
+     * which reads as a floating camera rather than a cockpit. From
+     * just above, the nose and both front wheels stay in frame and
+     * nothing is ever between the lens and the road. */
     let ahead = 0;
     for (const z of zs) {
-      if (z < camZ - 1.6 || z >= camZ) continue;
+      if (z < dipZ - 1.8 || z >= dipZ) continue;
       ahead = Math.max(ahead, bins.get(z));
     }
 
     return {
-      y: ahead + 0.18,
-      z: camZ,
-      airboxZ, dipZ, dipY, humpZ, humpY, aheadY: ahead
+      y: Math.max(airboxY, humpY) + 0.02,
+      z: dipZ,
+      airboxZ, airboxY, dipZ, dipY, humpZ, humpY, aheadY: ahead
     };
   }
 
