@@ -254,9 +254,12 @@ export class Renderer3D {
   _buildPlayerCar() {
     if (!this.carModel || !this.carModel.ready) return;
 
-    const size = this.carModel.size;
-    this.eyeY = size.y * EYE_H;
-    this.eyeZ = size.z * EYE_L;
+    /* Read the seat off the model's own shape rather than guessing it
+       from the bounding box. */
+    const seat = this.carModel.findSeat();
+    this.eyeY = seat.y;
+    this.eyeZ = seat.z;
+    this.seatInfo = seat;
 
     this.playerCar = new THREE.Mesh(
       this.carModel.bodyGeometry, this.carModel.material.clone());
@@ -294,9 +297,13 @@ export class Renderer3D {
       if (opts.wheel !== undefined && this.cockpit) {
         this.cockpit.wheel.scale.setScalar(opts.wheel);
       }
+      /* Last resort: hide the car entirely and drive a bare camera.
+         A clean road beats bodywork that is in the wrong place. */
+      if (opts.hideCar !== undefined) this.playerCar.visible = !opts.hideCar;
     }
     return { y: this.eyeY, z: this.eyeZ,
              wheel: this.cockpit ? this.cockpit.wheel.scale.x : null,
+             detected: this.seatInfo,
              carSize: this.carModel.size.toArray() };
   }
 

@@ -81,6 +81,46 @@ export class CarModel {
     }, undefined, (err) => { if (onError) onError(err); });
   }
 
+  /**
+   * Returns +1 if the car's tall end (airbox, rear wing) sits toward
+   * +Z after the yaw fix, -1 if it sits toward -Z.
+   */
+  _findRear(root, yawFix) {
+    const v = new THREE.Vector3();
+    let maxY = -Infinity;
+    const samples = [];
+
+    root.traverse((o) => {
+      if (!o.isMesh || !o.geometry || !o.geometry.attributes.position) return;
+      const pos = o.geometry.attributes.position;
+      /* Every 7th vertex is plenty to find where the tall end is, and
+         keeps this cheap on a dense model. */
+      for (let i = 0; i < pos.count; i += 7) {
+        v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+        if (yawFix) v.set(v.z, v.y, -v.x);     // same 90° turn as the bake
+        samples.push(v.y, v.z);
+        if (v.y > maxY) maxY = v.y;
+      }
+    });
+
+    if (!samples.length) return 1;
+
+    /* Average the Z of everything in the top fifth of the car's
+       height — that is the airbox and the rear wing together. */
+    let base = Infinity;
+    for (let i = 0; i < samples.length; i += 2) base = Math.min(base, samples[i]);
+    const threshold = base + (maxY - base) * 0.8;
+
+    let sumZ = 0;
+    let n = 0;
+    for (let i = 0; i < samples.length; i += 2) {
+      if (samples[i] >= threshold) { sumZ += samples[i + 1]; n++; }
+    }
+    if (!n) return 1;
+    this.rearZ = sumZ / n;
+    return this.rearZ >= 0 ? 1 : -1;
+  }
+
   _absorb(root) {
     root.updateMatrixWorld(true);
 
@@ -91,9 +131,23 @@ export class CarModel {
 
     /* The longest horizontal axis is the car's length; if that is X
        rather than Z the model faces sideways and has to be turned. */
-    const yawFix = size.x > size.z ? Math.PI / 2 : 0;
+    let yawFix = size.x > size.z ? Math.PI / 2 : 0;
     const length = Math.max(size.x, size.z);
     const scale = TARGET_LENGTH / (length || 1);
+
+    /* Which end is the nose?
+     *
+     * A model can be built facing either way and nothing in the file
+     * says which. Getting it backwards is not subtle but it is easy to
+     * misread: driving along looking at your own rear wing reads as
+     * being *inside* the car, and two rounds were spent trying to fix
+     * a camera that was in the right place all along.
+     *
+     * A racing car's tallest structure — airbox and rear wing — is at
+     * the back, and its lowest, narrowest end is the nose. So the mean
+     * position of the highest vertices points at the rear. */
+    const rearSign = this._findRear(root, yawFix);
+    if (rearSign < 0) yawFix += Math.PI;   // rear was at -Z; turn it round
 
     const centre = new THREE.Vector3();
     box.getCenter(centre);
@@ -191,6 +245,83 @@ export class CarModel {
     this.triangles = this.bodyGeometry.index
       ? this.bodyGeometry.index.count / 3
       : this.bodyGeometry.attributes.position.count / 3;
+  }
+
+  /**
+   * Find where the driver sits, by reading the car's own roofline.
+   *
+   * Guessing this from fractions of the bounding box does not work —
+   * three rounds were lost to a camera parked in the engine bay. The
+   * shape says exactly where the seat is if you look at it: sample the
+   * top surface near the centreline along the length, and a racing car
+   * gives you a tall airbox, a dip in front of it where the cockpit
+   * opening is, and a long fall away to the nose.
+   *
+   * The eye then goes at that dip, raised clear of whatever structure
+   * stands between it and the road ahead — the cockpit surround, which
+   * on a solid model would otherwise block the view the way a real
+   * halo does not.
+   */
+  findSeat() {
+    const pos = this.bodyGeometry.attributes.position;
+    const bins = new Map();
+    const step = 0.25;
+
+    for (let i = 0; i < pos.count; i++) {
+      if (Math.abs(pos.getX(i)) > 0.3) continue;      // centreline only
+      const z = Math.round(pos.getZ(i) / step) * step;
+      const y = pos.getY(i);
+      if (!bins.has(z) || y > bins.get(z)) bins.set(z, y);
+    }
+
+    const zs = Array.from(bins.keys()).sort((a, b) => a - b);
+    if (zs.length < 5) return { y: this.size.y * 0.6, z: 0 };
+
+    /* The airbox is the tallest point. */
+    let airboxZ = 0;
+    let airboxY = -Infinity;
+    for (const z of zs) {
+      if (bins.get(z) > airboxY) { airboxY = bins.get(z); airboxZ = z; }
+    }
+
+    /* Walk forward from it to the first clear dip — the opening. */
+    let dipZ = airboxZ;
+    let dipY = airboxY;
+    for (const z of zs) {
+      if (z >= airboxZ) continue;
+      if (z < airboxZ - 1.6) continue;               // do not run off down the nose
+      if (bins.get(z) < dipY) { dipY = bins.get(z); dipZ = z; }
+    }
+
+    /* Then the hump in front of the opening — the cockpit surround.
+       This is the piece that ruins a seated camera: on a solid model
+       it is a wall of bodywork right at the lens, and no amount of
+       raising or lowering the eye gets past it, because there is no
+       hole in it to look through. */
+    let humpZ = dipZ;
+    let humpY = dipY;
+    for (const z of zs) {
+      if (z >= dipZ || z < dipZ - 1.2) continue;
+      if (bins.get(z) > humpY) { humpY = bins.get(z); humpZ = z; }
+    }
+
+    /* So the camera goes AHEAD of that hump instead of behind it —
+       the same place a broadcast nose camera sits. Everything from
+       here forward is nose, falling away, and everything behind is
+       out of the frustum for free. */
+    const camZ = humpZ - 0.55;
+
+    let ahead = 0;
+    for (const z of zs) {
+      if (z < camZ - 1.6 || z >= camZ) continue;
+      ahead = Math.max(ahead, bins.get(z));
+    }
+
+    return {
+      y: ahead + 0.18,
+      z: camZ,
+      airboxZ, dipZ, dipY, humpZ, humpY, aheadY: ahead
+    };
   }
 
   dispose() {
