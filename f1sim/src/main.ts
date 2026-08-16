@@ -18,6 +18,10 @@ import { RacingLine } from './ai/racingline';
 import { SpeedProfile } from './ai/speedprofile';
 import { SESSION_PRESETS, Session } from './race/session';
 import type { SessionKind } from './race/session';
+import { Field } from './race/field';
+import { recordLap, score, standings } from './race/championship';
+import { ResultsPanel } from './ui/results';
+import { PositionPanel } from './ui/position';
 import { Hud } from './ui/hud';
 import { SessionPanel } from './ui/session';
 import { SetupStatusPanel } from './ui/setup-status';
@@ -72,6 +76,7 @@ const boot = async (): Promise<void> => {
   const sessionPanel = new SessionPanel(left);
   const telemetry = new TelemetryPanel(left);
   const timing = new TimingPanel(left, world.circuit);
+  const positionPanel = new PositionPanel(left);
 
   // Driver aids shape the controls before they reach the car; the
   // vehicle model never knows they exist.
@@ -84,6 +89,13 @@ const boot = async (): Promise<void> => {
   const racingLine = new RacingLine(world.circuit);
   const speedProfile = new SpeedProfile(racingLine, params);
   const driver = new Driver(racingLine, speedProfile, params);
+
+  /* The rest of the grid. Sharing the racing line and speed profile the
+     autopilot uses means a rival is driving the same solution, less
+     well, rather than following a script laid alongside it. */
+  const field = new Field(racingLine, speedProfile, world.circuit.length);
+  const results = new ResultsPanel(document.body);
+  let scored = false;
 
   // Right-hand column: live setup state above the controls that shape it.
   const right = document.createElement('div');
@@ -310,9 +322,30 @@ const boot = async (): Promise<void> => {
         driver.reset();
       }
 
+      /* The field runs whether or not this session scores it: traffic
+         to judge in practice, opponents in a race. */
+      field.update(dt, session.elapsed, session.config.laps ?? null);
+
       if (world.lapJustCompleted) {
         timing.setBest(world.timer.bestLap?.time ?? null);
         timing.record(world.lapJustCompleted);
+        /* Best laps are kept per circuit, in the same store the arcade
+           game used, so a personal best survives which half you set it
+           in. */
+        recordLap(circuitId, world.lapJustCompleted.time);
+      }
+
+      /* Score once, at the flag. The phase stays 'finished' for the
+         rest of the session, so without the guard the table would gain
+         a set of points every tick. */
+      if (!scored && session.phase === 'finished' && session.config.laps !== undefined) {
+        scored = true;
+        const order = field.classification(
+          Math.max(1, world.timer.lap),
+          world.distance,
+          session.elapsed
+        );
+        results.show(order, score(order), standings());
       }
 
       renderer.pushState(world.car.getState(), world.car.wheelCentres());
@@ -328,6 +361,12 @@ const boot = async (): Promise<void> => {
       const battery = world.car.drivetrain.ersStore / params.drivetrain.ersCapacity;
       hud.update(snapshot, params.drivetrain.redlineRpm, battery);
       timing.update(world.timer, world.currentSection(), world.onTrack);
+      positionPanel.update(
+        field.positionOf(Math.max(1, world.timer.lap), world.distance, null),
+        field.rivals.length + 1,
+        field.gapAhead(Math.max(1, world.timer.lap), world.distance),
+        world.car.getState().speed
+      );
       sessionPanel.update(session, world.timer);
       setupStatus.update(
         world.car.getState(),

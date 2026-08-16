@@ -998,3 +998,57 @@ body {
   }
   #touch-buttons button { width: 62px; height: 44px; }
 }
+
+/* ------------------------------------------------------------------
+   Position, and the flag.
+   ------------------------------------------------------------------ */
+.panel.position .place {
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.panel.position .place small {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.panel.position .gap {
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+#results {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 24px;
+  overflow-y: auto;
+  background: rgba(6, 8, 11, 0.94);
+  text-align: center;
+}
+#results .headline { font-size: 13px; letter-spacing: 0.3em; color: var(--muted); }
+#results .place { font-size: 68px; font-weight: 800; line-height: 1.05; }
+#results .earned { font-size: 15px; font-weight: 700; color: #b26bff; letter-spacing: 0.18em; }
+#results .cols { display: flex; gap: 30px; margin-top: 18px; flex-wrap: wrap; justify-content: center; }
+#results .col { min-width: 210px; }
+#results .cap { font-size: 10px; letter-spacing: 0.18em; color: var(--muted); margin-bottom: 8px; }
+#results .row {
+  display: flex; justify-content: space-between; gap: 16px;
+  font-size: 13px; padding: 3px 9px; border-radius: 5px;
+  color: #b6bfc9; font-variant-numeric: tabular-nums;
+}
+#results .row.me { background: rgba(226, 0, 15, 0.18); color: var(--text); font-weight: 700; }
+#results .actions { display: flex; gap: 10px; margin-top: 22px; }
+#results button {
+  font-family: inherit; font-size: 12px; font-weight: 700; letter-spacing: 0.14em;
+  padding: 12px 26px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--line); background: rgba(14, 18, 23, 0.9); color: var(--text);
+}
+#results #results-again { background: var(--red, #e2000f); border-color: transparent; color: #fff; }
