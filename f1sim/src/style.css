@@ -754,10 +754,24 @@ body {
 /* Aero, boost and pit stand in for keys a desktop already has, so they
    only appear where there is no keyboard. The camera is not one of
    those: switching between the cockpit and the chase view is worth a
-   visible control everywhere, not a key you have to be told about. */
+   visible control everywhere, not a key you have to be told about.
+
+   Reset is the same case as the camera, and more so. Ending up on your
+   roof is not an edge case in a rigid-body simulation, and a player who
+   does not already know about the R key has no way out of it — so the
+   way out is on screen, on every device. */
 #btn-aero,
 #btn-overtake,
 #btn-pit { display: none; }
+
+#btn-reset {
+  border-color: rgba(226, 0, 15, 0.5);
+  color: #ff8a8a;
+}
+#btn-reset:active {
+  background: rgba(226, 0, 15, 0.85);
+  color: #fff;
+}
 
 #touch-buttons button {
   width: 74px;

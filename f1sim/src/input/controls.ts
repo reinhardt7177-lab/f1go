@@ -114,6 +114,16 @@ export class InputManager {
   }
 
   /**
+   * Ask for a recovery from somewhere other than the keyboard — the
+   * on-screen button. Raising the same edge the R key raises keeps a
+   * single path into `world.respawn()`, so touch and keyboard cannot
+   * drift apart in what recovery means.
+   */
+  requestReset(): void {
+    this.resetEdge = true;
+  }
+
+  /**
    * Fold the current hardware state into `controls`. Called once per
    * simulation tick so that ramps are frame-rate independent.
    */

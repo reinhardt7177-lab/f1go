@@ -232,6 +232,21 @@ const boot = async (): Promise<void> => {
     session.requestPit(world.car.getState().speed);
   });
 
+  /* Recovery, on screen.
+   *
+   * A rigid body on four raycast wheels can end up on its roof, wedged
+   * against a barrier, or several hundred metres off the map — none of
+   * which the simulation is wrong about, and all of which end the
+   * session unless there is a way back. The keyboard has had R all
+   * along; a phone had nothing, and neither had any way of knowing a
+   * recovery existed. It routes through the same edge the key does, so
+   * there is one recovery path rather than two. */
+  document.getElementById('btn-reset')!.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    input.requestReset();
+  });
+
   const loop = new FixedLoop(120);
 
   loop.start({
