@@ -308,13 +308,13 @@ export class PlayerCockpit {
   /* --- steering wheel --------------------------------------------- */
   _buildWheel() {
     this.wheel = new THREE.Group();
-    /* Sat up into the lower third of the frame and enlarged. Placed
-       "realistically" — down by the driver's lap — it falls out of a
-       68° view almost entirely, and a cockpit whose wheel you cannot
-       see reads as a drone shot. Every racing game cheats this. */
-    this.wheel.position.set(0, -1.12 + 0.80, -0.46);
-    this.wheel.rotation.x = -0.40;          // laid back toward the driver
-    this.wheel.scale.setScalar(1.7);
+    /* Camera-relative, and deliberately just clipping the bottom edge
+       of the frame: enough that the rim and the shift lights read,
+       not so much that it becomes a dashboard across the picture. The
+       previous size filled a third of the screen with grey. */
+    this.wheel.position.set(0, -0.30, -0.44);
+    this.wheel.rotation.x = -0.34;          // laid back toward the driver
+    this.wheel.scale.setScalar(0.95);
     this.group.add(this.wheel);
 
     const parts = [];

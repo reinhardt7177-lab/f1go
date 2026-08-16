@@ -39,11 +39,22 @@ const PLAYER_COLOR = 0xf0620f;
    as readily as in the seat. Measured off the box, these land in the
    seat for any car-shaped mesh.
 
-   EYE_H: fraction of the car's height. An F1 driver's eyeline is low,
-          a little above the top of the tub.
-   EYE_L: fraction of the car's length, positive = behind centre. */
-const EYE_H = 0.62;
-const EYE_L = 0.04;
+   The camera sits just AHEAD of the cockpit rather than in the seat,
+   which is where broadcast puts its onboard camera too. Two attempts
+   at sitting further back both failed for the same underlying reason:
+   the model is a solid shell with no interior. Inside it you see the
+   back of the bodywork, and slicing it open with a clipping plane
+   only reveals the hollow — a crumpled mass of inside surfaces.
+
+   From just ahead of the tub the problem disappears without any
+   trickery: everything behind the lens is outside the frustum and
+   costs nothing, while the nose, front wheels and front wing are all
+   in front and draw normally.
+
+   EYE_H: fraction of the car's height.
+   EYE_L: fraction of the car's length; NEGATIVE is forward. */
+const EYE_H = 0.56;
+const EYE_L = -0.13;
 
 export class Renderer3D {
   constructor(canvas) {
@@ -251,23 +262,9 @@ export class Renderer3D {
       this.carModel.bodyGeometry, this.carModel.material.clone());
     this.playerCar.material.color = new THREE.Color(PLAYER_COLOR);
 
-    /* Cut the car in half at the driver.
-     *
-     * Relying on back-face culling to hide the bodywork around the
-     * camera does not work: the mesh is not reliably closed or
-     * consistently wound, so from the seat you get the inside of the
-     * engine cover filling the screen. A clipping plane is exact —
-     * everything behind the eye is simply not drawn, leaving the nose,
-     * the front wheels and the mirrors, which is the cockpit view. */
-    /* How far ahead of the eye the car is cut. Small enough to keep
-       the cockpit rim in shot, large enough that the driver's own
-       shoulders are not in the way. */
-    this.eyeCut = 0.15;
-    this.playerClip = new THREE.Plane(new THREE.Vector3(0, 0, -1), this.eyeZ - this.eyeCut);
-    this.playerCar.material.clippingPlanes = [this.playerClip];
-    this.playerCar.material.clipShadows = false;
-    this.playerCar.material.side = THREE.DoubleSide;
-
+    /* No clipping. The frustum does the hiding, and it does it for
+       free — anything behind the lens is simply never submitted. */
+    this.playerCar.material.side = THREE.FrontSide;
     this.playerCar.frustumCulled = false;
     this.playerCar.castShadow = true;
     this.trackGroup.add(this.playerCar);
@@ -294,9 +291,12 @@ export class Renderer3D {
     if (opts) {
       if (opts.y !== undefined) this.eyeY = opts.y;
       if (opts.z !== undefined) this.eyeZ = opts.z;
-      if (opts.cut !== undefined) this.eyeCut = opts.cut;
+      if (opts.wheel !== undefined && this.cockpit) {
+        this.cockpit.wheel.scale.setScalar(opts.wheel);
+      }
     }
-    return { y: this.eyeY, z: this.eyeZ, cut: this.eyeCut,
+    return { y: this.eyeY, z: this.eyeZ,
+             wheel: this.cockpit ? this.cockpit.wheel.scale.x : null,
              carSize: this.carModel.size.toArray() };
   }
 
@@ -395,10 +395,6 @@ export class Renderer3D {
       /* Lean into the corner with the same roll the camera takes, so
          the bodywork stays welded to the view. */
       this.playerCar.rotation.z = this.speedFx.roll * 0.6;
-      /* Clipping planes are evaluated in world space, so the cut has
-         to travel with the car rather than staying put at the origin
-         while the car slides sideways out from under it. */
-      this.playerClip.constant = this.eyeZ - this.eyeCut;
     }
 
     /* Aim a little way down the road rather than straight ahead: the
