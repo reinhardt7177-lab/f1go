@@ -18,6 +18,10 @@ export interface DrivetrainParams {
   redlineTorqueFraction: number;
 
   gearRatios: number[];
+  /** Reverse ratio. Negative, because it turns the wheels the other way. */
+  reverseRatio: number;
+  /** Reverse is limited well below the redline, so it stays a manoeuvre. */
+  reverseRpmLimit: number;
   finalDrive: number;
   /** Mechanical efficiency of the whole driveline. */
   efficiency: number;
@@ -67,6 +71,15 @@ export const defaultDrivetrainParams = (): DrivetrainParams => ({
   // available. A first pass here was geared for 438 and the car simply
   // could not pull it.
   gearRatios: [3.4, 2.6, 2.1, 1.78, 1.54, 1.36, 1.2, 1.02],
+
+  // Reverse, geared shorter than first and deliberately limited. The
+  // regulations require a car to be able to reverse under its own
+  // power; nobody pretends it is for going anywhere. Capping it means
+  // a spin ends with a slow shuffle back onto the circuit rather than a
+  // second attempt at the barrier, backwards.
+  reverseRatio: -3.9,
+  reverseRpmLimit: 6500,
+
   finalDrive: 5.35,
   efficiency: 0.95,
 
@@ -135,8 +148,27 @@ export const initialDrivetrainState = (p: DrivetrainParams): DrivetrainState => 
   overtakeLatched: false
 });
 
+/** Gear 0 is reverse; 1 upwards are the forward ratios. */
+export const REVERSE = 0;
+
+/** What the driver sees on the dash. Nobody displays reverse as "0". */
+export const gearLabel = (gear: number): string => (gear === REVERSE ? 'R' : String(gear));
+
 export const gearRatio = (p: DrivetrainParams, gear: number): number =>
-  (p.gearRatios[clamp(gear, 1, p.gearRatios.length) - 1] ?? 1) * p.finalDrive;
+  gear === REVERSE
+    ? p.reverseRatio * p.finalDrive
+    : (p.gearRatios[clamp(gear, 1, p.gearRatios.length) - 1] ?? 1) * p.finalDrive;
+
+/**
+ * Selecting reverse at speed would be a gearbox rebuild, so the shift
+ * into and out of it only happens at walking pace. This is also what
+ * stops a downshift chain running off the bottom of the box and into
+ * reverse at the end of a straight.
+ *
+ * Measured on the driven wheels, in rad/s: 5.6 is about 2 m/s on a
+ * 360 mm tyre, which is a car that has essentially stopped.
+ */
+const SELECT_REVERSE_BELOW = 5.6;
 
 /**
  * Advance the drivetrain one tick and report the torque to deliver to
@@ -155,22 +187,28 @@ export const stepDrivetrain = (
   overtakeRequested: boolean,
   drivenOmega: [number, number]
 ): [number, number] => {
+  const avgOmega = (drivenOmega[0] + drivenOmega[1]) / 2;
+  const crawling = Math.abs(avgOmega) < SELECT_REVERSE_BELOW;
+
   // --- gear selection -------------------------------------------------
   if (s.shiftTimer > 0) s.shiftTimer = Math.max(0, s.shiftTimer - dt);
-  else if (shiftUp && s.gear < p.gearRatios.length) {
+  else if (shiftUp && (s.gear === REVERSE ? crawling : s.gear < p.gearRatios.length)) {
     s.gear++;
     s.shiftTimer = p.shiftTime;
-  } else if (shiftDown && s.gear > 1) {
+  } else if (shiftDown && s.gear > REVERSE && (s.gear > 1 || crawling)) {
     s.gear--;
     s.shiftTimer = p.shiftTime;
   }
 
   const ratio = gearRatio(p, s.gear);
+  const reversing = s.gear === REVERSE;
 
   // --- engine speed follows the driven wheels -------------------------
-  const avgOmega = (drivenOmega[0] + drivenOmega[1]) / 2;
-  const rawRpm = (Math.abs(avgOmega) * ratio * 60) / (2 * Math.PI);
-  s.rpm = clamp(rawRpm, p.idleRpm, p.redlineRpm);
+  // Through the magnitude of the ratio: reverse turns the wheels the
+  // other way, but the engine has no idea and still only spins one way.
+  const rawRpm = (Math.abs(avgOmega) * Math.abs(ratio) * 60) / (2 * Math.PI);
+  const limit = reversing ? p.reverseRpmLimit : p.redlineRpm;
+  s.rpm = clamp(rawRpm, p.idleRpm, limit);
 
   // Torque is cut while the gearbox is mid-shift.
   const shifting = s.shiftTimer > 0;
@@ -207,8 +245,9 @@ export const stepDrivetrain = (
     crankTorque -= p.engineBrakingTorque * (s.rpm / p.redlineRpm);
   }
 
-  // Hitting the limiter stops it pulling any harder.
-  if (rawRpm >= p.redlineRpm) crankTorque = Math.min(crankTorque, 0);
+  // Hitting the limiter stops it pulling any harder. In reverse the
+  // limiter is much lower, which is what keeps it a manoeuvre.
+  if (rawRpm >= limit) crankTorque = Math.min(crankTorque, 0);
 
   const wheelTorque = crankTorque * ratio * p.efficiency;
 

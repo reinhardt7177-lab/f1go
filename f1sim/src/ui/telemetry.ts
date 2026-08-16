@@ -7,6 +7,7 @@
  */
 import { DEG, KMH, clamp } from '../core/math';
 import type { VehicleState } from '../sim/types';
+import { gearLabel } from '../sim/drivetrain';
 
 const WHEEL_LABELS = ['FL', 'FR', 'RL', 'RR'];
 
@@ -114,7 +115,7 @@ export class TelemetryPanel {
 
   update(s: VehicleState, redlineRpm: number, ersFraction: number): void {
     this.set('speed', Math.round(Math.abs(s.speed) * KMH).toString());
-    this.set('gear', s.gear.toString());
+    this.set('gear', gearLabel(s.gear));
     this.set('rpm', Math.round(s.engineRpm).toLocaleString());
     this.set('downforce', `${Math.round(s.downforce)} N`);
     this.set('drag', `${Math.round(s.drag)} N`);

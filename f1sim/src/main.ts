@@ -46,7 +46,7 @@ const boot = async (): Promise<void> => {
   // a static site has.
   const query = new URLSearchParams(location.search);
   const askedCircuit = query.get('circuit');
-  const circuitId = askedCircuit && askedCircuit in CIRCUIT_SPECS ? askedCircuit : 'spa';
+  const circuitId = askedCircuit && askedCircuit in CIRCUIT_SPECS ? askedCircuit : 'oval';
   const world = new SimWorld(params, { circuitId });
   const renderer = new SceneRenderer(canvas, world.geometry);
   // The touch layer listens on the canvas so drags never fight the

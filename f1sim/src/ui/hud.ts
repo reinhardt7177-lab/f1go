@@ -9,6 +9,7 @@
  */
 import { KMH, clamp } from '../core/math';
 import type { VehicleState } from '../sim/types';
+import { gearLabel } from '../sim/drivetrain';
 
 export class Hud {
   private readonly root: HTMLElement;
@@ -53,7 +54,7 @@ export class Hud {
   }
 
   update(state: VehicleState, redlineRpm: number, batteryFraction: number): void {
-    this.gear.textContent = String(state.gear);
+    this.gear.textContent = gearLabel(state.gear);
     this.speed.textContent = String(Math.round(Math.abs(state.speed) * KMH));
 
     const rpm = clamp(state.engineRpm / redlineRpm, 0, 1);

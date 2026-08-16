@@ -35,8 +35,23 @@ describe.each(Object.keys(CIRCUIT_SPECS))('%s', (id) => {
         `ground at ${groundY.toFixed(1)} against a lowest vertex of ${lowest.toFixed(1)}`
     ).toBeGreaterThan(0);
 
-    /* The old failure: a plane pinned near the origin. Any circuit that
-       descends more than that is drawn underneath its own scenery. */
-    if (highest - lowest > 10) expect(groundY).toBeLessThan(-10);
   });
+});
+
+/**
+ * The regression itself, stated directly rather than through a proxy.
+ *
+ * The plane used to sit at a fixed -1.2. Spa descends far past that, so
+ * the lower half of the lap was drawn underneath its own scenery. An
+ * elevation-range check is not the same claim — banking tilts the whole
+ * cross-section, so a flat oval can span ten metres corner to corner
+ * without a single metre of descent.
+ */
+it('spa descends past the old fixed ground', () => {
+  const geo = buildTrackGeometry(getCircuit('spa'));
+  let lowest = Infinity;
+  for (let i = 1; i < geo.positions.length; i += 3) {
+    if (geo.positions[i]! < lowest) lowest = geo.positions[i]!;
+  }
+  expect(lowest).toBeLessThan(-1.2);
 });

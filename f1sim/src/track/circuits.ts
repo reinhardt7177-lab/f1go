@@ -145,7 +145,49 @@ const MONZA: CircuitSpec = {
   ]
 };
 
+/**
+ * A banked oval, and the place to start.
+ *
+ * Spa and Monza are circuits to learn. This is not — it is two straights
+ * and two long left-handers, so there is nothing to memorise and the car
+ * is the only thing left to pay attention to. Getting a feel for how the
+ * rear steps out, what the tyres do as they come up to temperature and
+ * where the braking point actually is all happen faster when the corner
+ * is the same corner every time.
+ *
+ * Flat, and it stays flat. Every turn is the same radius and the two
+ * straights are the same length, so the shape closes on its own without
+ * the correction the road circuits need — the four bends sum to exactly
+ * one revolution by construction rather than by adjustment.
+ *
+ * The banking is gentle, three and a half degrees. Enough that the car
+ * leans into the corner and carries speed it could not carry flat, not
+ * so much that it drives itself round — and small for a second reason:
+ * banking tilts the whole cross-section, run-off and grass included, so
+ * a steep oval builds a hillside forty metres out on either side.
+ */
+const PRACTICE_OVAL: CircuitSpec = {
+  id: 'oval',
+  name: 'Practice Oval',
+  country: 'Anywhere',
+  defaultHalfWidth: 9.5,
+  defaultRunoff: 20,
+  kerbWidth: 1.6,
+  startLine: 0,
+  sectorSplits: [1124, 2248, 3372],
+  sections: [
+    { name: 'Front Straight', length: 900 },
+    { name: 'T1', length: 393, radius: -250, banking: -0.06 },
+    { name: 'T2', length: 393, radius: -250, banking: -0.06 },
+    { name: 'Back Straight', length: 900 },
+    { name: 'T3', length: 393, radius: -250, banking: -0.06 },
+    { name: 'T4', length: 393, radius: -250, banking: -0.06 }
+  ]
+};
+
+/* The oval is first because it is where a new driver should start. */
 export const CIRCUIT_SPECS: Record<string, CircuitSpec> = {
+  oval: PRACTICE_OVAL,
   spa: SPA,
   monza: MONZA,
   proving: PROVING_GROUND

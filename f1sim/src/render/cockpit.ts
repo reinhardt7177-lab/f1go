@@ -23,6 +23,7 @@
  * screen HUD is the concession.
  */
 import * as THREE from 'three';
+import { gearLabel } from '../sim/drivetrain';
 
 /**
  * Where the driver's eye sits, in chassis coordinates (metres).
@@ -89,7 +90,7 @@ class WheelDisplay {
     c.font = '700 62px "Segoe UI", system-ui, sans-serif';
     c.textAlign = 'center';
     c.textBaseline = 'middle';
-    c.fillText(String(gear), this.w * 0.28, this.h * 0.60);
+    c.fillText(gearLabel(gear), this.w * 0.28, this.h * 0.60);
 
     c.font = '700 34px "Segoe UI", system-ui, sans-serif';
     c.fillText(String(Math.round(speedKmh)), this.w * 0.68, this.h * 0.55);
