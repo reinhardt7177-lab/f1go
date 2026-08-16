@@ -3,6 +3,22 @@
    ------------------------------------------------------------------ */
 'use strict';
 
+/* ------------------------------------------------------------------
+   How arcade this is.
+
+   Both the player and the rivals read their corner speed from these
+   two numbers, so the whole field moves together when they change and
+   nobody gets a private advantage.
+
+   GRIP raises every corner speed; FALLOFF decides how much harder a
+   tight corner is than an open one. A simulator wants a low grip and
+   a steep falloff — hairpins at walking pace. An arcade racer wants
+   the opposite: corners you can carry speed through, so the lap flows
+   and a mistake costs a place rather than the race.
+   ------------------------------------------------------------------ */
+var CORNER_GRIP = 2.3;
+var CORNER_FALLOFF = 0.46;
+
 var Game = {
 
   /* --- tuning ---------------------------------------------------- */
@@ -15,7 +31,12 @@ var Game = {
      whether the game is a game: too low and a corner cannot carry you
      off the road, so steering becomes optional and holding the
      throttle drives a clean lap by itself. */
-  centrifugal: 0.62,
+  /* Raised once to stop the car driving itself, and that worked; but
+     with corner speeds now high enough that a fast bend never trips
+     the grip limit, this became the only thing acting in one — and at
+     0.62 it threw the car off a corner the player was taking properly.
+     Enough to punish ignoring the wheel, not enough to overrule it. */
+  centrifugal: 0.40,
   offRoadLimit: 0.24,         // fraction of top speed you keep off track
 
   /* --- runtime state --------------------------------------------- */
@@ -521,8 +542,20 @@ var Game = {
        * means lifting and steering, which is what the player is there
        * to do. The speed penalty is kept small — that is tyre scrub,
        * not a brake. */
-      var effGrip = this.grip * (1 - this.tyreWear * 0.35) * (1 + this.weightT * 0.10);
-      var corneringLimit = effGrip * 1.9 / (Math.abs(playerSeg.curve) + 1.15);
+      /* How fast a corner may be taken.
+       *
+       * The old shape fell away far too steeply: a medium corner
+       * capped at 115 km/h and a hairpin at 49, against 340 on the
+       * straights. Most of a lap was spent crawling, every corner was
+       * a near-stop, and the speed needle spent its life slamming
+       * between the two — which is not difficulty, it is just slow.
+       *
+       * Flattening the curve's contribution lets a fast corner stay
+       * fast: roughly 205, 155, 124 and 96 km/h for medium through
+       * hairpin. Still a wide spread, but a lap now flows between its
+       * corners instead of stopping at each one. */
+      var effGrip = this.grip * (1 - this.tyreWear * 0.22) * (1 + this.weightT * 0.10);
+      var corneringLimit = effGrip * CORNER_GRIP / (Math.abs(playerSeg.curve) * CORNER_FALLOFF + 1.15);
       if (speedPercent > corneringLimit && Math.abs(playerSeg.curve) > 1) {
         var over = Math.min(1.6, (speedPercent - corneringLimit) / corneringLimit);
         this.speed = Util.accelerate(this.speed, -this.maxSpeed / 9, dt);
@@ -626,7 +659,15 @@ var Game = {
       /* rivals brake for corners and drift towards the racing line;
          their pace ebbs and flows so battles breathe, and their tyres
          wear out and get changed just like yours */
-      var cornerFactor = 1 - Math.min(0.55, Math.abs(seg.curve) * 0.085);
+      /* Rivals obey the same corner speeds the player does.
+       *
+       * They used to have a formula of their own, which let them take
+       * a hairpin at 153 km/h while the player was held to 96 — so a
+       * clean, well judged lap still finished last and the race had
+       * nothing to offer. Sharing the limit makes `pace` mean what it
+       * says: how close to the car's potential this driver gets. */
+      var aiLimit = this.grip * CORNER_GRIP / (Math.abs(seg.curve) * CORNER_FALLOFF + 1.15);
+      var cornerFactor = Math.min(1, aiLimit);
       var ebb = 1 + Math.sin(car.wobble * 0.4) * 0.02;
       var speed = this.maxSpeed * car.pace * cornerFactor * ebb * (1 - car.wear * 0.07);
 

@@ -18,13 +18,14 @@ var RUMBLE_LENGTH = 3;      // segments per rumble-strip stripe
 var ROAD_WIDTH = 3000;      // half-width of the road in world units
 var LANES = 3;
 
-/* Section lengths, in segments. Scaled up from the original set by
-   about three quarters: the circuits were quick enough to be over
-   before they had said anything, and a grand prix lap wants room for
-   a rhythm rather than a sequence of corners taken back to back.
-   Everything moves together, so the shape of each circuit is
-   unchanged — only the time it takes to drive it. */
-var LEN = { NONE: 0, TINY: 21, SHORT: 44, MEDIUM: 88, LONG: 175, HUGE: 280 };
+/* Section lengths, in segments.
+ *
+ * These were pushed up by three quarters to stop laps feeling brief,
+ * and that was too far: a lap ran past ninety seconds, and since most
+ * of it is corners, lengthening the circuit mostly lengthened the
+ * time spent crawling. Three laps of that is four and a half minutes
+ * of the same thing. Back to a modest stretch over the original. */
+var LEN = { NONE: 0, TINY: 14, SHORT: 29, MEDIUM: 58, LONG: 116, HUGE: 186 };
 var CRV = { NONE: 0, KINK: 1, EASY: 2, MEDIUM: 4, HARD: 6, TIGHT: 8, HAIRPIN: 11 };
 
 /* ------------------------------------------------------------------ */
@@ -154,17 +155,6 @@ var THEMES = {
     wallColor: ['#dddddd', '#c8c8c8'],
     fogDensity: 5
   },
-  suzuka: {
-    sky: ['#123a52', '#3f7fa6', '#bfe0ea'],
-    haze: '#bfe0ea',
-    grass: ['#3e7048', '#33613c'],
-    road: ['#393c42', '#35383e'],
-    rumble: ['#1a56b0', '#f4f4f4'],
-    lane: '#f0f0f0',
-    walls: false,
-    wallColor: ['#dddddd', '#c8c8c8'],
-    fogDensity: 5
-  },
   monza: {
     sky: ['#274b78', '#6f9fc9', '#dce8ef'],
     haze: '#dce8ef',
@@ -261,40 +251,6 @@ function buildSilverstone() {
 }
 
 /* ------------------------------------------------------------------
-   Suzuka - the S curves flow left-right-left-right into Dunlop,
-   Degner 1 and 2 are both rights, the hairpin is a left, Spoon is a
-   double left, and 130R is a single flat-out left before the Casio
-   Triangle chicane.
-   ------------------------------------------------------------------ */
-function buildSuzuka() {
-  var b = new TrackBuilder(THEMES.suzuka);
-
-  b.straight('START / FINISH', LEN.LONG);
-  b.at('T1-2 FIRST CURVE', LEN.SHORT, LEN.MEDIUM, LEN.SHORT, CRV.EASY);
-  b.esses('T3-4 S CURVES', LEN.TINY, -CRV.EASY);
-  b.esses('T5-6 S CURVES', LEN.TINY, -CRV.EASY);
-  b.at('T7 DUNLOP', LEN.SHORT, LEN.MEDIUM, LEN.SHORT, -CRV.MEDIUM);
-  b.at('T8 DEGNER 1', LEN.TINY, LEN.TINY, LEN.TINY, CRV.MEDIUM);
-  b.at('T9 DEGNER 2', LEN.TINY, LEN.SHORT, LEN.TINY, CRV.HARD);
-  b.straight('CROSSOVER', LEN.SHORT);
-  b.at('T11 HAIRPIN', LEN.TINY, LEN.SHORT, LEN.TINY, -CRV.HAIRPIN);
-  b.at('T12-13 200R', LEN.MEDIUM, LEN.LONG, LEN.MEDIUM, CRV.EASY);
-  b.at('T14 SPOON', LEN.SHORT, LEN.MEDIUM, LEN.TINY, -CRV.MEDIUM);
-  b.at('T15 SPOON', LEN.TINY, LEN.MEDIUM, LEN.SHORT, -CRV.HARD);
-  b.straight('BACK STRAIGHT', LEN.HUGE);
-  b.at('T15 130R', LEN.SHORT, LEN.MEDIUM, LEN.SHORT, -CRV.KINK);
-  b.straight('CASIO TRIANGLE', LEN.SHORT);
-  b.at('T16 CHICANE', LEN.TINY, LEN.TINY, LEN.TINY, CRV.TIGHT);
-  b.at('T17 CHICANE', LEN.TINY, LEN.TINY, LEN.TINY, -CRV.TIGHT);
-  b.at('T18 FINAL CORNER', LEN.SHORT, LEN.MEDIUM, LEN.MEDIUM, CRV.MEDIUM);
-  b.straight('START / FINISH', LEN.MEDIUM);
-
-  b.scatter(['billboard'], 26, 1.6, 2.6);
-  b.grandstands(25, 80, -1);
-  return b.finish();
-}
-
-/* ------------------------------------------------------------------
    Monza - the Temple of Speed. Flat out down the main straight into
    the Rettifilo chicane (R-L), Curva Grande's long fast right, the
    Roggia chicane (L-R), two Lesmo rights, Ascari (L-R-L), the back
@@ -371,14 +327,6 @@ var TRACKS = {
     blurb: 'Fast and flowing. Maggotts-Becketts-Chapel is flat out if you are brave.',
     grip: 1.05,
     build: buildSilverstone
-  },
-  suzuka: {
-    id: 'suzuka',
-    name: 'SUZUKA',
-    subtitle: 'Suzuka International Racing Course',
-    blurb: 'Figure-of-eight. Rhythm through the Esses decides your whole lap.',
-    grip: 1.0,
-    build: buildSuzuka
   },
   monza: {
     id: 'monza',
