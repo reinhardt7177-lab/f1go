@@ -9,6 +9,7 @@ import type { Quat, Vec3 } from '../core/math';
 import type { VehicleState } from '../sim/types';
 import type { TrackGeometry } from '../track/mesh';
 import { loadCarModel } from './carmodel';
+import type { CarFit } from './carmodel';
 import { Cockpit, EYE } from './cockpit';
 
 /**
@@ -208,11 +209,17 @@ export class SceneRenderer {
    * body would have them sliding through corners instead of following
    * the suspension.
    */
-  async useCarModel(url: string): Promise<void> {
-    const car = await loadCarModel(url);
+  async useCarModel(url: string, fit: CarFit): Promise<void> {
+    const car = await loadCarModel(url, fit);
     for (const child of [...this.bodyGroup.children]) this.bodyGroup.remove(child);
     this.bodyGroup.add(car.object);
-    console.info('[render] car model:', Math.round(car.triangles), 'triangles');
+    console.info(
+      '[render] car model:',
+      Math.round(car.triangles),
+      'triangles,',
+      Math.round(car.wheelTriangles),
+      'cut with the moulded wheels'
+    );
   }
 
   private buildCar(): void {

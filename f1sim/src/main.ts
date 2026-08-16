@@ -93,8 +93,18 @@ const boot = async (): Promise<void> => {
   /* The car model loads in the background. The blocked-out car is a
      complete fallback, so nothing waits on this and a missing file
      costs a console line rather than a session. */
+  /* Where the model has to land. The axle line and the wheel-centre
+     height come straight from the suspension, so a model fitted to them
+     sits on the road the simulation is driving on rather than on the
+     one the exporter imagined. */
+  const chassis = params.chassis;
   void renderer
-    .useCarModel('assets/car.glb')
+    .useCarModel('assets/car.glb', {
+      wheelbase: chassis.wheelbase,
+      axleMidZ: chassis.wheelbase * (chassis.frontWeightBias - 0.5),
+      wheelCentreY: chassis.hardpointY - params.suspension.restLength,
+      wheelRadius: chassis.wheelRadius
+    })
     .catch((e) => console.warn('[render] car model unavailable:', e));
 
   /* The rest of the grid. Sharing the racing line and speed profile the
