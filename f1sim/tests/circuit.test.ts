@@ -7,13 +7,13 @@ import { getCircuit } from '../src/track/circuits';
 import { buildTrackGeometry } from '../src/track/mesh';
 import { initPhysics } from '../src/sim/world';
 
-const spa = getCircuit('spa');
+const spa = getCircuit('redbullring');
 
 describe('circuit geometry', () => {
   it('comes out close to the real lap distance', () => {
     // Spa is 7.004 km. The integration is built from corner radii, so a
     // couple of per cent either way is expected and acceptable.
-    expect(spa.length).toBeGreaterThan(6600);
+    expect(spa.length).toBeGreaterThan(4200);
     expect(spa.length).toBeLessThan(7400);
   });
 
@@ -54,16 +54,16 @@ describe('circuit geometry', () => {
       lowest = Math.min(lowest, y);
       highest = Math.max(highest, y);
     }
-    // Spa climbs about a hundred metres from Eau Rouge to Les Combes.
+    // The Red Bull Ring climbs some eighty metres from Turn 1 to Remus.
     expect(highest - lowest).toBeGreaterThan(50);
   });
 
   it('names the section you are driving through', () => {
     const names = new Set<string>();
     for (let s = 0; s < spa.length; s += 10) names.add(spa.sectionAt(s));
-    expect(names.has('T1 La Source')).toBe(true);
-    expect(names.has('Kemmel Straight')).toBe(true);
-    expect(names.has('T10 Pouhon')).toBe(true);
+    expect(names.has('T1 Niki Lauda')).toBe(true);
+    expect(names.has('Climb to Remus')).toBe(true);
+    expect(names.has('T9 Rindt')).toBe(true);
   });
 
   it('never lays one piece of road over another', () => {
@@ -102,9 +102,9 @@ describe('circuit geometry', () => {
       }
       return worst;
     };
-    // La Source is the tightest corner on the circuit; Blanchimont is
+    // Niki Lauda is the tightest corner on the circuit; T8 is
     // nearly flat out. The geometry has to reflect that.
-    expect(curvatureAt('T1 La Source')).toBeGreaterThan(curvatureAt('T16 Blanchimont') * 5);
+    expect(curvatureAt('T1 Niki Lauda')).toBeGreaterThan(curvatureAt('T8') * 1.8);
   });
 });
 
@@ -263,7 +263,7 @@ describe('driving the circuit', () => {
     // A mirrored yaw looks correct at the start line, where the tangent
     // happens to lie along the forward axis, and is wrong everywhere else.
     for (const start of [0, 1500, 3000, 5000]) {
-      const world = new SimWorld(undefined, { circuitId: 'spa', startDistance: start });
+      const world = new SimWorld(undefined, { circuitId: 'redbullring', startDistance: start });
       const forward = quatRotate(world.car.body.rotation(), vec3(0, 0, -1));
       const tangent = spa.spline.sampleAt(start).tangent;
 
@@ -283,7 +283,7 @@ describe('driving the circuit', () => {
     const { SimWorld } = await import('../src/sim/world');
     const { neutralControls } = await import('../src/sim/types');
 
-    const world = new SimWorld(undefined, { circuitId: 'spa' });
+    const world = new SimWorld(undefined, { circuitId: 'redbullring' });
     world.car.controls = { ...neutralControls(), throttle: 0.3 };
     for (let i = 0; i < 120 * 6; i++) world.step(1 / 120);
 
@@ -296,7 +296,7 @@ describe('driving the circuit', () => {
 
   it('places the car on the road at any distance round the lap', async () => {
     const { SimWorld } = await import('../src/sim/world');
-    const world = new SimWorld(undefined, { circuitId: 'spa', startDistance: 3000 });
+    const world = new SimWorld(undefined, { circuitId: 'redbullring', startDistance: 3000 });
 
     const p = world.car.body.translation();
     const projected = spa.spline.project(vec3(p.x, p.y, p.z));
@@ -309,7 +309,7 @@ describe('driving the circuit', () => {
 
   it('settles onto the road surface rather than through it', async () => {
     const { SimWorld } = await import('../src/sim/world');
-    const world = new SimWorld(undefined, { circuitId: 'spa' });
+    const world = new SimWorld(undefined, { circuitId: 'redbullring' });
     const roadY = spa.spline.sampleAt(0).position.y;
 
     for (let i = 0; i < 240; i++) world.step(1 / 120);
@@ -337,7 +337,7 @@ describe('a full lap', () => {
    * going round, rather than by feeding the timer synthetic distances.
    * The stand-in driver below is a lookahead pursuit controller with a
    * speed target of sqrt(a/k); it is enough for 150 m radius bends and
-   * nowhere near enough for La Source or Eau Rouge. Getting a car round
+   * nowhere near enough for Niki Lauda or Remus. Getting a car round
    * Spa needs a real racing line and a proper speed profile, which is
    * stage three.
    */

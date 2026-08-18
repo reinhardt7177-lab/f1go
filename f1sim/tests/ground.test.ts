@@ -41,14 +41,16 @@ describe.each(Object.keys(CIRCUIT_SPECS))('%s', (id) => {
 /**
  * The regression itself, stated directly rather than through a proxy.
  *
- * The plane used to sit at a fixed -1.2. Spa descends far past that, so
- * the lower half of the lap was drawn underneath its own scenery. An
+ * The plane used to sit at a fixed -1.2. Interlagos descends far past
+ * that — it drops into the Senna S off the start line and does not come
+ * back up until the last sector — so the lower half of the lap was drawn
+ * underneath its own scenery. An
  * elevation-range check is not the same claim — banking tilts the whole
  * cross-section, so a flat oval can span ten metres corner to corner
  * without a single metre of descent.
  */
-it('spa descends past the old fixed ground', () => {
-  const geo = buildTrackGeometry(getCircuit('spa'));
+it('interlagos descends past the old fixed ground', () => {
+  const geo = buildTrackGeometry(getCircuit('interlagos'));
   let lowest = Infinity;
   for (let i = 1; i < geo.positions.length; i += 3) {
     if (geo.positions[i]! < lowest) lowest = geo.positions[i]!;

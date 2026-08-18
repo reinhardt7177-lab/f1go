@@ -76,7 +76,7 @@ export class RacingLine {
     }
 
     // Road width is stated per section, so it steps at every boundary —
-    // Kemmel is 7.5 m half-width and Les Combes 6, and the constraint
+    // A straight is 9.2 m half-width and a hairpin 7.6, and the constraint
     // drops 1.5 m over a single station. A line pinned to that boundary
     // inherits the step as a kink, and the sharpest curvature on the
     // whole circuit ends up being on a straight. Narrowing early instead

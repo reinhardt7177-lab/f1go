@@ -1,2 +1,5 @@
 dist-site/
 node_modules/
+
+# Local Claude Code permissions, not shared.
+.claude/settings.local.json

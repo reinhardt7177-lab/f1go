@@ -24,23 +24,54 @@ export interface TrackGeometry {
   surfaces: SurfaceKind[];
   vertexCount: number;
   triangleCount: number;
+
+  /* The sweep, as a grid. The triangle soup above is what the collider
+     and the renderer consume, but anything that wants to follow a
+     single edge all the way round the circuit needs to know the shape
+     it was built from. */
+  /** Cross-sections around the lap. */
+  rings: number;
+  /** Vertices across one cross-section. */
+  across: number;
+  /**
+   * Lateral stations that are a drawn edge, with the weight of the line
+   * they carry (m).
+   *
+   * Which boundaries these are is a fact about the cross-section, so it
+   * belongs here rather than in the renderer: the road edge is at the
+   * station where tarmac becomes kerb, and only this file knows which
+   * one that is.
+   */
+  inkStations: { station: number; width: number }[];
 }
 
 /** Paint, and tarmac that has been rubbered in by a season of cars. */
-const PAINT: [number, number, number] = [0.86, 0.87, 0.88];
-const GROOVE: [number, number, number] = [0.145, 0.152, 0.168];
+const PAINT: [number, number, number] = [0.93, 0.94, 0.95];
+const GROOVE: [number, number, number] = [0.24, 0.26, 0.29];
 
 /** The pale half of a kerb. The red half comes from SURFACE_COLOR. */
-const KERB_PALE: [number, number, number] = [0.83, 0.83, 0.84];
+const KERB_PALE: [number, number, number] = [0.93, 0.93, 0.94];
 /** Metres of kerb per stripe. */
 const KERB_STRIPE = 3;
 
+/*
+ * Raised and warmed from the near-photographic values these started as.
+ *
+ * Flat shading removes the one thing that was carrying these colours:
+ * under a lighting model, tarmac at 0.19 is a dark surface that the sun
+ * lifts to a readable grey. Under four flat bands it is simply dark, and
+ * a black line drawn on it — which is now how the road edge is
+ * described — disappears into it. Every surface therefore has to be
+ * bright enough to be drawn *on*, which is the same reason an
+ * illustrator paints a road light grey and not the colour tarmac
+ * actually is.
+ */
 const SURFACE_COLOR: Record<SurfaceKind, [number, number, number]> = {
-  tarmac: [0.19, 0.2, 0.22],
-  kerb: [0.78, 0.16, 0.16],
-  runoff: [0.32, 0.31, 0.33],
-  gravel: [0.55, 0.48, 0.36],
-  grass: [0.2, 0.34, 0.2]
+  tarmac: [0.3, 0.32, 0.35],
+  kerb: [0.88, 0.18, 0.18],
+  runoff: [0.46, 0.45, 0.47],
+  gravel: [0.68, 0.59, 0.42],
+  grass: [0.33, 0.56, 0.28]
 };
 
 interface Station {
@@ -52,13 +83,23 @@ interface Station {
       is tarmac that has been driven on — neither is a new surface as
       far as the car is concerned. */
   tint?: [number, number, number];
+  /**
+   * Weight of the drawn line along this station (m), if it carries one.
+   *
+   * A circuit seen from a car is mostly one flat grey plane, and what
+   * makes it read as a road is its edges. Under photographic lighting
+   * those come free — the kerb catches the sun, the grass is a
+   * different material. Under flat shading they do not, so the edges
+   * have to be drawn, the way they would be in a panel of a comic.
+   */
+  ink?: number;
 }
 
 /**
  * Clamp the cross-section so it cannot fold through itself.
  *
  * Sweeping a fixed-width ribbon along a curve is only valid while the
- * ribbon is narrower than the radius of curvature. At Spa's hairpins the
+ * ribbon is narrower than the radius of curvature. At a hairpin the
  * radius is 24 m while the run-off and grass reach 33 m from the
  * centreline, so the inner edge wraps past the centre of the corner and
  * comes back out over the road — a sheet of grass lying on top of the
@@ -93,8 +134,98 @@ const clampToCurvature = (stations: Station[], curvature: number): Station[] => 
   return clamped;
 };
 
+/**
+ * How wide each cross-section may sweep before it reaches into another
+ * part of the circuit.
+ *
+ * `clampToCurvature` already stops a section folding through its own
+ * corner. This is the other half of the same problem, and the one that
+ * was actually visible: nothing stopped a section reaching across at a
+ * *different* part of the lap. The verges are wide — road, kerb,
+ * run-off and a grass apron come to 33 m either side of the centreline
+ * at Monza — so any corner that doubles the circuit back within 66 m
+ * had two sheets of scenery lying through each other, one a few
+ * centimetres above the other.
+ *
+ * `tools/check-layout.ts` never caught it twice over. It compares
+ * `halfWidth` only, so the verges are outside what it measures at all;
+ * and it skips pairs closer than 250 m along the lap, which is exactly
+ * where a hairpin puts them. A 24 m hairpin leaves its two straights
+ * 48 m apart and about 150 m apart around the lap — invisible to the
+ * check, and unmissable on screen.
+ *
+ * The rule is the obvious one: two parts of the circuit that pass
+ * within `d` of each other may each sweep `d / 2`, so they meet and
+ * never cross. The road itself is never clamped away — a circuit that
+ * narrowed its own tarmac to fix its scenery would be fixing the wrong
+ * thing.
+ */
+const proximityLimits = (circuit: Circuit, rings: number): Float32Array => {
+  const limits = new Float32Array(rings).fill(Infinity);
+
+  const xs = new Float64Array(rings);
+  const ys = new Float64Array(rings);
+  const zs = new Float64Array(rings);
+  const floor = new Float64Array(rings);
+
+  for (let i = 0; i < rings; i++) {
+    const s = (i / rings) * circuit.length;
+    const p = circuit.spline.sampleAt(s).position;
+    xs[i] = p.x;
+    ys[i] = p.y;
+    zs[i] = p.z;
+    // Never below the road plus its kerb, whatever the neighbours do.
+    floor[i] = circuit.halfWidthAt(s) + circuit.kerbWidth + 0.5;
+  }
+
+  const ringSpacing = circuit.length / rings;
+
+  for (let i = 0; i < rings; i++) {
+    for (let j = i + 1; j < rings; j++) {
+      /* A bridge is not an overlap. Four metres is a road's worth of
+         clearance: below that two sheets at the same place are a
+         mistake, above it one is over the other on purpose.
+         (Spa was removed over exactly this: its start/finish straight
+         passed within a metre of the descent to Eau Rouge, five metres
+         apart in height. The clamp below cannot fix a layout that
+         crosses itself, and should not try.) */
+      if (Math.abs(ys[i]! - ys[j]!) > 4) continue;
+
+      const plan = Math.hypot(xs[i]! - xs[j]!, zs[i]! - zs[j]!);
+      const alongLap = Math.min(j - i, rings - (j - i)) * ringSpacing;
+
+      /* Are these two pieces of road, or one?
+       *
+       * Not a fixed separation: it has to hold for the proving ground,
+       * whose road is sixty metres wide, and for a twenty-four metre
+       * hairpin, and no single number does both. What separates the two
+       * cases is how the distance around compares with the distance
+       * across. Along a straight or a gentle curve you can walk from one
+       * ring to the other in about the distance between them, and they
+       * are the same road. Round a hairpin the walk is half again as
+       * long as the gap, and they are two — which is exactly when the
+       * verges have to stop short of each other. */
+      if (alongLap < 40 || alongLap < plan * 1.5) continue;
+
+      const share = plan / 2;
+      if (share < limits[i]!) limits[i] = share;
+      if (share < limits[j]!) limits[j] = share;
+    }
+  }
+
+  for (let i = 0; i < rings; i++) {
+    if (limits[i]! < floor[i]!) limits[i] = floor[i]!;
+  }
+  return limits;
+};
+
 /** Lateral stations across the road, as offsets from the centreline. */
-const lateralStations = (circuit: Circuit, s: number, curvature = 0): Station[] => {
+const lateralStations = (
+  circuit: Circuit,
+  s: number,
+  curvature = 0,
+  maxExtent = Infinity
+): Station[] => {
   const w = circuit.halfWidthAt(s);
   const k = circuit.kerbWidth;
   const r = circuit.runoffAt(s);
@@ -110,13 +241,19 @@ const lateralStations = (circuit: Circuit, s: number, curvature = 0): Station[] 
      which is right, because a white line is paint on tarmac. */
   const line = 0.12;
 
+  /* The grass apron used to reach fourteen metres past the run-off. It
+     is there to catch a car that has left the circuit entirely — the
+     mesh is the collider, so the edge of it is the edge of the world —
+     and not to be looked at, because the ground plane already paints
+     grass to the horizon in the same colour. Eight metres still catches
+     the car and sweeps a great deal less scenery into the next corner. */
   const stations: Station[] = [
-    { t: -(w + k + r + 14), surface: 'grass', drop: 0.35 },
+    { t: -(w + k + r + 8), surface: 'grass', drop: 0.35 },
     { t: -(w + k + r), surface: 'grass', drop: 0.12 },
-    { t: -(w + k + r) + 0.01, surface: 'runoff', drop: 0.1 },
+    { t: -(w + k + r) + 0.01, surface: 'runoff', drop: 0.1, ink: 0.34 },
     { t: -(w + k), surface: 'runoff', drop: 0.04 },
-    { t: -(w + k) + 0.01, surface: 'kerb', drop: 0.03 },
-    { t: -w, surface: 'kerb', drop: 0 },
+    { t: -(w + k) + 0.01, surface: 'kerb', drop: 0.03, ink: 0.2 },
+    { t: -w, surface: 'kerb', drop: 0, ink: 0.26 },
     { t: -w + 0.01, surface: 'tarmac', drop: 0, tint: PAINT },
     { t: -w + line, surface: 'tarmac', drop: 0, tint: PAINT },
     { t: -w + line + 0.01, surface: 'tarmac', drop: 0 },
@@ -127,30 +264,59 @@ const lateralStations = (circuit: Circuit, s: number, curvature = 0): Station[] 
     { t: w - line - 0.01, surface: 'tarmac', drop: 0 },
     { t: w - line, surface: 'tarmac', drop: 0, tint: PAINT },
     { t: w - 0.01, surface: 'tarmac', drop: 0, tint: PAINT },
-    { t: w, surface: 'kerb', drop: 0 },
-    { t: w + k - 0.01, surface: 'kerb', drop: 0.03 },
+    { t: w, surface: 'kerb', drop: 0, ink: 0.26 },
+    { t: w + k - 0.01, surface: 'kerb', drop: 0.03, ink: 0.2 },
     { t: w + k, surface: 'runoff', drop: 0.04 },
-    { t: w + k + r - 0.01, surface: 'runoff', drop: 0.1 },
+    { t: w + k + r - 0.01, surface: 'runoff', drop: 0.1, ink: 0.34 },
     { t: w + k + r, surface: 'grass', drop: 0.12 },
-    { t: w + k + r + 14, surface: 'grass', drop: 0.35 }
+    { t: w + k + r + 8, surface: 'grass', drop: 0.35 }
   ];
 
-  return clampToCurvature(stations, curvature);
+  return clampToExtent(clampToCurvature(stations, curvature), maxExtent);
+};
+
+/**
+ * Pull the section in to `maxExtent` either side.
+ *
+ * Stations are moved rather than dropped, so every cross-section keeps
+ * the same number of vertices and the sweep stays a regular grid — the
+ * strip indices, the ink lines and the surface array all depend on
+ * that. A clamped station lands on top of its neighbour and the quad
+ * between them degenerates to nothing, which draws as nothing.
+ */
+const clampToExtent = (stations: Station[], maxExtent: number): Station[] => {
+  if (!Number.isFinite(maxExtent)) return stations;
+  return stations.map((station) =>
+    Math.abs(station.t) <= maxExtent
+      ? station
+      : { ...station, t: Math.sign(station.t) * maxExtent }
+  );
 };
 
 /**
  * @param stationSpacing distance between cross-sections (m). Four metres
- *        keeps Eau Rouge smooth without producing a million triangles.
+ *        keeps a fast sweep smooth without a million triangles.
  */
 export const buildTrackGeometry = (circuit: Circuit, stationSpacing = 4): TrackGeometry => {
   const rings = Math.max(8, Math.round(circuit.length / stationSpacing));
-  const across = lateralStations(circuit, 0, 0).length;
+  const template = lateralStations(circuit, 0, 0);
+  const across = template.length;
+
+  /* Read off the template rather than hard-coded: the cross-section is
+     edited often, and an index written down somewhere else would go on
+     drawing a line down the middle of the road the first time a station
+     was inserted above it. */
+  const inkStations = template.flatMap((station, index) =>
+    station.ink === undefined ? [] : [{ station: index, width: station.ink }]
+  );
 
   const positions = new Float32Array(rings * across * 3);
   const normals = new Float32Array(rings * across * 3);
   const colors = new Float32Array(rings * across * 3);
   const surfaces: SurfaceKind[] = new Array(rings * across);
   const indices = new Uint32Array(rings * (across - 1) * 6);
+
+  const limits = proximityLimits(circuit, rings);
 
   let vi = 0;
   let ii = 0;
@@ -159,7 +325,7 @@ export const buildTrackGeometry = (circuit: Circuit, stationSpacing = 4): TrackG
     const s = (ring / rings) * circuit.length;
     const sample = circuit.spline.sampleAt(s);
     const banking = circuit.bankingAt(s);
-    const stations = lateralStations(circuit, s, sample.curvature);
+    const stations = lateralStations(circuit, s, sample.curvature, limits[ring]);
 
     // Banking rotates the lateral axis about the tangent.
     const left = rotateAboutAxis(sample.left, sample.tangent, banking);
@@ -219,7 +385,10 @@ export const buildTrackGeometry = (circuit: Circuit, stationSpacing = 4): TrackG
     colors,
     surfaces,
     vertexCount: vi,
-    triangleCount: ii / 3
+    triangleCount: ii / 3,
+    rings,
+    across,
+    inkStations
   };
 };
 

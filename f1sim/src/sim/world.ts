@@ -57,7 +57,7 @@ export class SimWorld {
   constructor(params: VehicleParams = defaultVehicleParams(), options: WorldOptions = {}) {
     this.physics = new RAPIER.World({ x: 0, y: -GRAVITY, z: 0 });
 
-    this.circuit = getCircuit(options.circuitId ?? 'spa');
+    this.circuit = getCircuit(options.circuitId ?? 'redbullring');
     this.geometry = buildTrackGeometry(this.circuit);
     this.timer = new LapTimer(this.circuit);
 

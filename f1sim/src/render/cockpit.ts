@@ -8,13 +8,11 @@
  *
  * Two things drive the layout, and they pull against each other.
  *
- * The eye is behind the halo, so the halo's front hoop and its centre
- * pillar cut across the view. That is not a defect to be designed
- * around: it is the single most recognisable thing about the modern
- * cockpit, and a first-person view without it reads as a generic
- * racing game. But the pillar sits dead centre, exactly where the apex
- * is, so it is kept genuinely thin — a real pillar subtends about two
- * degrees, and anything fatter turns every corner into guesswork.
+ * The eye is behind the halo, so the hoop cuts across the view. That is
+ * not a defect to be designed around: it is the single most
+ * recognisable thing about the modern cockpit, and a first-person view
+ * without it reads as a generic racing game. Its centre pillar is a
+ * different matter, and is gone — see `buildHalo`.
  *
  * The wheel is the other half. It is the only part that moves, and it
  * is what makes the car feel connected to your hands rather than to a
@@ -24,6 +22,7 @@
  */
 import * as THREE from 'three';
 import { gearLabel } from '../sim/drivetrain';
+import { outlineMaterial, outlineMesh, toonMaterial } from './toon';
 
 /**
  * Where the driver's eye sits, in chassis coordinates (metres).
@@ -37,15 +36,34 @@ import { gearLabel } from '../sim/drivetrain';
  */
 export const EYE = new THREE.Vector3(0, 0.62, -0.10);
 
-// Carbon is nearly black in life, but a cockpit rendered at its true
-// value is a silhouette: the halo, the tub and the mirrors all collapse
-// into one dark mass and none of them reads as a separate object. These
-// are lifted, and separated from each other, so the shapes stay legible.
-const CARBON = 0x2a3038;
-const CARBON_LIGHT = 0x3c444e;
+/*
+ * Carbon is nearly black in life, but a cockpit rendered at its true
+ * value is a silhouette: the halo, the tub and the mirrors all collapse
+ * into one dark mass and none of them reads as a separate object. These
+ * are lifted, and separated from each other, so the shapes stay
+ * legible.
+ *
+ * Drawn rather than lit, they have to go further still. Under a
+ * lighting model the halo separated from the tub behind it because the
+ * two caught the sun differently; under four flat bands they are one
+ * value and one shape. So the ink line does the separating instead —
+ * which means every part needs to be light enough to have a black line
+ * drawn round it, and the values below are picked for that rather than
+ * for what carbon fibre looks like.
+ */
+const CARBON = 0x39414b;
+const CARBON_LIGHT = 0x4d5661;
 
-const mat = (color: number, roughness = 0.7, metalness = 0.05): THREE.MeshStandardMaterial =>
-  new THREE.MeshStandardMaterial({ color, roughness, metalness });
+/**
+ * Flat-shaded, and unused arguments kept.
+ *
+ * The call sites pass a roughness and a metalness because that is what
+ * the parts genuinely are, and those numbers are still the right note
+ * to leave in the source even though nothing consumes them now. Taking
+ * them out would mean editing thirty call sites to say less.
+ */
+const mat = (color: number, _roughness = 0.7, _metalness = 0.05): THREE.MeshToonMaterial =>
+  toonMaterial(color);
 
 /**
  * Draw a rounded-rectangle display face as a texture.
@@ -113,6 +131,7 @@ export class Cockpit {
   private readonly wheel = new THREE.Group();
   private readonly display = new WheelDisplay();
   private readonly revStrip: THREE.Mesh;
+  private readonly outline = outlineMaterial();
 
   constructor() {
     this.buildTub();
@@ -121,6 +140,40 @@ export class Cockpit {
     this.buildNose();
     this.revStrip = this.buildWheel();
     this.group.add(this.wheel);
+    this.drawOutlines();
+  }
+
+  /**
+   * A line round every part of the cockpit.
+   *
+   * Done in one pass at the end rather than at each call site: the
+   * cockpit is thirty small parts and threading a hull through every
+   * one of them would bury what each part actually is under bookkeeping
+   * about how it is drawn.
+   *
+   * Flat faces are skipped. An inverted hull works by pushing a closed
+   * surface out along its normals, and a plane is not closed — every
+   * normal points the same way, so the hull is the same plane shifted
+   * forward, which lands it exactly on top of the thing it was meant to
+   * outline. That is fine for a mirror and fatal for the display, which
+   * is the one part of the cockpit you have to be able to read.
+   */
+  private drawOutlines(): void {
+    const meshes: THREE.Mesh[] = [];
+    this.group.traverse((object) => {
+      const mesh = object as THREE.Mesh;
+      if (!mesh.isMesh || !mesh.geometry) return;
+      if (mesh.userData.noOutline || mesh.userData.outline) return;
+      meshes.push(mesh);
+    });
+    // Added after the walk, or the traverse would find the hulls it
+    // just made and start outlining those.
+    for (const mesh of meshes) mesh.add(outlineMesh(mesh.geometry, this.outline));
+  }
+
+  /** Line weight is in pixels, so it has to be told about the viewport. */
+  setScreenHeight(height: number): void {
+    this.outline.uniforms.screenHeight!.value = height;
   }
 
   /**
@@ -181,7 +234,6 @@ export class Cockpit {
     // middle of the world — which is the one place it must not be, since
     // the horizon is where the corner appears.
     const HALO_Y = 0.76;
-    const front = HALO_Z - HALO_R;
 
     const ring = new THREE.Mesh(new THREE.TorusGeometry(HALO_R, 0.028, 10, 40, Math.PI), halo);
     ring.rotation.set(-Math.PI / 2, 0, 0);
@@ -196,24 +248,27 @@ export class Cockpit {
       this.group.add(leg);
     }
 
-    // The centre pillar, standing at the hoop's front point and running
-    // down to the nose deck. Slim on purpose: it sits exactly where the
-    // apex appears, and a real one subtends about two degrees. Being
-    // nearly a metre ahead of the eye rather than half a metre is most
-    // of what keeps it from becoming a bar across the view.
-    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.022, 0.54, 8), halo);
-    pillar.position.set(0, HALO_Y - 0.27, front + 0.01);
-    this.group.add(pillar);
+    /* There is no centre pillar, and there was.
+     *
+     * A real halo has one, it is the most recognisable thing about the
+     * modern cockpit, and it was kept deliberately thin here on the
+     * argument that a real one subtends about two degrees. All of that
+     * is true and none of it survived contact with the screen: two
+     * degrees of a windscreen is a detail you look past, and two
+     * degrees of a 1280-pixel viewport is a bar standing exactly where
+     * the apex appears, in the one part of the frame you steer with.
+     *
+     * Broadcast has the same problem and solves it the same way — the
+     * onboard camera is mounted above the halo rather than behind it,
+     * so the pillar is out of shot. This is that camera. */
   }
 
   /** Mirrors on stalks, out at the edge of the tub. */
   private buildMirrors(): void {
     const stalkMat = mat(CARBON, 0.7);
-    const glassMat = new THREE.MeshStandardMaterial({
-      color: 0x8fb0c8,
-      roughness: 0.15,
-      metalness: 0.85
-    });
+    // Unlit: a mirror drawn flat is a pale shape, and shading it would
+    // only make it a slightly different pale shape.
+    const glassMat = new THREE.MeshBasicMaterial({ color: 0x9dc0d8 });
 
     // Well forward of the eye, on the tub shoulder. Level with the head
     // they were effectively at arm's reach sideways, which made a 20 cm
@@ -236,6 +291,7 @@ export class Cockpit {
       const glass = new THREE.Mesh(new THREE.PlaneGeometry(0.125, 0.048), glassMat);
       glass.position.set(side * MIRROR_X, MIRROR_Y, MIRROR_Z + 0.019);
       glass.rotation.y = Math.PI + side * 0.30;
+      glass.userData.noOutline = true;
       this.group.add(glass);
     }
   }
@@ -299,6 +355,7 @@ export class Cockpit {
     );
     face.position.set(0, 0.005, -0.019);
     face.rotation.y = Math.PI;
+    face.userData.noOutline = true;
     this.wheel.add(face);
 
     // Below and ahead of the eye, tilted back towards the driver the way

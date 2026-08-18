@@ -1068,3 +1068,330 @@ body {
   border: 1px solid var(--line); background: rgba(14, 18, 23, 0.9); color: var(--text);
 }
 #results #results-again { background: var(--red, #e2000f); border-color: transparent; color: #fff; }
+
+/* ---------------- cartoon overlays ---------------- */
+
+/*
+ * Layer order, stated rather than inferred.
+ *
+ * Everything on top of the canvas used to be stacked by document order
+ * alone, which was fine while every layer was a panel. The two drawn
+ * overlays below are not panels: the speed lines have to sit under the
+ * instruments (they are scenery, and tinting the gear readout would be
+ * a bug) and the name tags have to sit over the road but under the
+ * buttons a thumb is aiming at. Neither of those is expressible by
+ * appending in the right order from a module that does not know what
+ * else exists, so the order is written down here instead.
+ */
+#view { z-index: 0; }
+.speed-lines { z-index: 1; }
+.rival-tags { z-index: 2; }
+#overlay { z-index: 3; }
+.hud { z-index: 4; }
+#help,
+#touch-buttons,
+#btn-fullscreen { z-index: 5; }
+#start-card,
+#rotate-prompt,
+#results { z-index: 6; }
+
+/* --- rival name tags --- */
+
+.rival-tags {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  /* The tags are transformed every frame; containing them keeps that
+     off the rest of the page's layout. */
+  contain: strict;
+}
+
+.rival-tag {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px 3px;
+  background: #fff;
+  color: #000;
+  border: 2px solid #000;
+  border-radius: 6px;
+  /* Offset, no blur — the house style, and the only kind of shadow that
+     survives being drawn over flat colour. */
+  box-shadow: 2px 2px 0 #000;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  /* Opacity is written every frame; the transition would fight it. */
+  will-change: transform, opacity;
+}
+
+.rival-tag i {
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid #000;
+  border-radius: 2px;
+}
+
+/* --- speed lines --- */
+
+.speed-lines {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  /* Scaled about the middle, which is where the rays converge and where
+     the corner you are aiming at is. */
+  transform-origin: 50% 50%;
+  will-change: opacity, transform;
+}
+
+.speed-lines svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.speed-lines path {
+  fill: #000;
+}
+
+/*
+ * Speed lines are a motion effect and a strong one. Anyone who has asked
+ * the system to calm animations down should not be given a screen that
+ * pulses at every straight.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .speed-lines { display: none; }
+}
+
+/* ---------------- the start, and what it leads to ---------------- */
+
+.start-lights,
+.overtake-notice { z-index: 7; }
+
+.start-lights {
+  position: fixed;
+  left: 50%;
+  top: 11%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  pointer-events: none;
+}
+
+.start-lights.hidden { display: none; }
+
+/* The gantry. Heavy black frame and offset shadow: this is the one
+   moment the whole screen is about, and it is drawn like a sign. */
+.start-lights .gantry {
+  display: flex;
+  gap: 12px;
+  padding: 14px 18px;
+  background: #14181e;
+  border: 4px solid #000;
+  border-radius: 14px;
+  box-shadow: 6px 6px 0 #000;
+}
+
+.start-lights .gantry i {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 3px solid #000;
+  /* Unlit is a hole in the gantry, not a grey circle — the contrast
+     between off and on has to survive being seen from the back of a
+     classroom. */
+  background: #2a3038;
+}
+
+.start-lights .gantry i.on {
+  background: #ff1f2d;
+  /* No blur on the shadow anywhere else; this is the exception, because
+     a light that is on is the one thing on screen that genuinely emits. */
+  box-shadow: 0 0 18px rgba(255, 31, 45, 0.85);
+}
+
+.start-lights .go {
+  font-size: 46px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  color: #12d16b;
+  -webkit-text-stroke: 3px #000;
+  paint-order: stroke fill;
+  opacity: 0;
+  transform: scale(0.7);
+}
+
+.start-lights .go.on {
+  opacity: 1;
+  transform: scale(1);
+  transition: opacity 90ms ease-out, transform 160ms cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+
+@media (max-width: 720px) {
+  .start-lights .gantry { gap: 8px; padding: 10px 12px; }
+  .start-lights .gantry i { width: 28px; height: 28px; }
+  .start-lights .go { font-size: 32px; }
+}
+
+/* --- overtake cards --- */
+
+.overtake-notice {
+  position: fixed;
+  left: 50%;
+  top: 26%;
+  transform: translateX(-50%);
+  pointer-events: none;
+  opacity: 0;
+}
+
+.overtake-notice.on {
+  opacity: 1;
+  /* Arrives fast and leaves slowly: the arrival is the event, and the
+     fade is just getting out of the way of the corner. */
+  animation: overtake-in 180ms cubic-bezier(0.2, 1.5, 0.4, 1);
+}
+
+@keyframes overtake-in {
+  from { transform: translateX(-50%) scale(0.8); opacity: 0; }
+  to { transform: translateX(-50%) scale(1); opacity: 1; }
+}
+
+.overtake-notice .card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  border: 3px solid #000;
+  border-radius: 10px;
+  box-shadow: 4px 4px 0 #000;
+  color: #000;
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.overtake-notice .card.gain { background: #12d16b; }
+.overtake-notice .card.loss { background: #ff6b6b; }
+.overtake-notice .mark { font-size: 18px; }
+.overtake-notice .who { font-size: 17px; }
+.overtake-notice .pos {
+  background: #000;
+  color: #fff;
+  border-radius: 5px;
+  padding: 2px 7px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overtake-notice.on { animation: none; }
+  .start-lights .go.on { transition: none; }
+}
+
+/* --- the trophy --- */
+
+#results .trophy {
+  width: 108px;
+  height: 126px;
+  display: block;
+  margin: 0 auto 6px;
+}
+
+@media (max-height: 620px) {
+  #results .trophy { width: 74px; height: 86px; }
+}
+
+/* ---------------- driving, and the bench ---------------- */
+
+/*
+ * The default is driving. Everything hidden here is an instrument for
+ * the person tuning the car, and every one of them is between the
+ * player and the road until they ask for it.
+ *
+ * Hidden rather than removed: the panels still exist, still hold their
+ * state, and come back exactly as they were. `main.ts` skips updating
+ * the expensive two while they are off screen, which is the only part
+ * of this that costs anything.
+ */
+body:not(.bench) .telemetry,
+body:not(.bench) .setup-status,
+body:not(.bench) .tuning,
+body:not(.bench) .sliders,
+/* Nine keyboard bindings in one line of 10px text. Nobody has ever
+   read it, and CLAUDE.md's first UX principle says so out loud. */
+body:not(.bench) #help {
+  display: none;
+}
+
+/* Driving leaves the right-hand column empty, so the left one no longer
+   has to be a narrow strip fighting it for width. */
+body:not(.bench) .stack.right { display: none; }
+
+.hud-mode {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 5;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  padding: 9px 14px;
+  cursor: pointer;
+  color: #000;
+  background: #fff;
+  border: 2.5px solid #000;
+  border-radius: 8px;
+  box-shadow: 3px 3px 0 #000;
+}
+
+/* The house press: shadow to nothing and the button moves into it, so
+   a finger gets a physical answer rather than a colour change. */
+.hud-mode:active {
+  box-shadow: 0 0 0 #000;
+  transform: translate(3px, 3px);
+}
+
+.hud-mode.on {
+  background: #4f46e5;
+  color: #fff;
+}
+
+@media (max-width: 720px) {
+  .hud-mode { font-size: 10px; padding: 7px 10px; }
+}
+
+/* ---------------- minimap ---------------- */
+
+.minimap {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 5;
+  width: 154px;
+  height: 154px;
+  padding: 6px;
+  background: #fff;
+  border: 2.5px solid #000;
+  border-radius: 12px;
+  box-shadow: 4px 4px 0 #000;
+  pointer-events: none;
+}
+
+.minimap canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* The touch buttons live on this edge, so on a phone the map moves up
+   out of the way of the thumb rather than sitting under it. */
+@media (max-width: 720px) {
+  .minimap { width: 104px; height: 104px; bottom: auto; top: 58px; }
+}

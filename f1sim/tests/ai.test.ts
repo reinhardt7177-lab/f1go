@@ -8,7 +8,7 @@ import { defaultVehicleParams } from '../src/sim/vehicle';
 import { initPhysics } from '../src/sim/world';
 import { getCircuit } from '../src/track/circuits';
 
-const circuit = getCircuit('spa');
+const circuit = getCircuit('redbullring');
 const params = defaultVehicleParams();
 const line = new RacingLine(circuit);
 const profile = new SpeedProfile(line, params);
@@ -51,22 +51,37 @@ describe('racing line', () => {
       return worst;
     };
 
-    const laSource = peak('T1 La Source');
+    const tightest = peak('T1 Niki Lauda');
     const sections = new Set<string>();
     for (let s = 0; s < circuit.length; s += 5) sections.add(circuit.sectionAt(s));
     for (const name of sections) {
-      if (name === 'T1 La Source') continue;
-      expect(peak(name), `${name} out-curves the hairpin`).toBeLessThanOrEqual(laSource);
+      if (name === 'T1 Niki Lauda') continue;
+      /* A five per cent margin. Niki Lauda and Remus are 42 m and
+         46 m, and a racing line through the second can legitimately
+         be a shade tighter than one through the first — what must
+         not happen is a *straight* out-curving either. */
+      expect(peak(name), `${name} out-curves the hairpin`).toBeLessThanOrEqual(tightest * 1.05);
     }
   });
 
   it('runs straight down the middle of a straight', () => {
     // Not at its ends — a racing line turns in before the corner starts,
     // so the last stations of a straight legitimately curve. The middle
-    // of the Kemmel straight has no such excuse, and a kink there means
+    // of the climb to Remus has no such excuse, and a kink there means
     // the width constraint is stepping rather than the road bending.
+    const inside: number[] = [];
+    for (let s = 0; s < circuit.length; s += 5) {
+      if (circuit.sectionAt(s) === 'Climb to Remus') inside.push(s);
+    }
+    expect(inside.length).toBeGreaterThan(20);
+
+    /* The middle half of it, by station rather than by metre — a
+       hard-coded distance range is a fact about one circuit, and the
+       point being made here is about straights in general. */
+    const from = inside[Math.floor(inside.length * 0.25)]!;
+    const to = inside[Math.floor(inside.length * 0.75)]!;
     let worst = 0;
-    for (let s = 1300; s < 1900; s += 5) {
+    for (let s = from; s <= to; s += 5) {
       worst = Math.max(worst, Math.abs(line.curvatureAt(s)));
     }
     expect(1 / Math.max(worst, 1e-9)).toBeGreaterThan(400);
@@ -78,11 +93,11 @@ describe('corner limit', () => {
     const hairpin = cornerLimit(1 / 20, params, options);
     const sweep = cornerLimit(1 / 330, params, options);
 
-    // La Source is taken at about 80 km/h.
+    // Niki Lauda is taken at about 90 km/h.
     expect(hairpin * KMH).toBeGreaterThan(50);
     expect(hairpin * KMH).toBeLessThan(110);
 
-    // Blanchimont is flat out, and that is not a tuned constant — the
+    // T8 is flat out, and that is not a tuned constant — the
     // downforce term outruns the corner demand and the algebra returns
     // the ceiling on its own.
     expect(sweep).toBe(options.maxSpeed);
@@ -120,12 +135,12 @@ describe('speed profile', () => {
   });
 
   it('brakes before the corner, not at it', () => {
-    // Find the slowest point of La Source, then check the profile is
+    // Find the slowest point of Niki Lauda, then check the profile is
     // already coming down well before it.
     let apex = 0;
     let slowest = Infinity;
     for (let s = 0; s < circuit.length; s += 5) {
-      if (circuit.sectionAt(s) !== 'T1 La Source') continue;
+      if (circuit.sectionAt(s) !== 'T1 Niki Lauda') continue;
       const v = profile.at(s);
       if (v < slowest) {
         slowest = v;
@@ -133,8 +148,11 @@ describe('speed profile', () => {
       }
     }
 
-    const before = profile.at(apex - 120);
-    const wayBefore = profile.at(apex - 220);
+    /* Braking for this hairpin begins about 110 m out — at 120 m the
+       car is still accelerating up the straight, which is the correct
+       answer and not the one this test is asking about. */
+    const before = profile.at(apex - 80);
+    const wayBefore = profile.at(apex - 180);
     expect(before).toBeLessThan(wayBefore);
     expect(slowest).toBeLessThan(before);
   });
@@ -143,7 +161,7 @@ describe('speed profile', () => {
     let apex = 0;
     let slowest = Infinity;
     for (let s = 0; s < circuit.length; s += 5) {
-      if (circuit.sectionAt(s) !== 'T5 Les Combes') continue;
+      if (circuit.sectionAt(s) !== 'T3 Remus') continue;
       const v = profile.at(s);
       if (v < slowest) {
         slowest = v;
@@ -155,19 +173,20 @@ describe('speed profile', () => {
 
   it('produces a plausible lap time', () => {
     const ideal = profile.idealLapTime();
-    // A real pole at Spa is about 105 s. This line is a shortest path
-    // rather than a minimum-curvature one and the profile leaves grip in
-    // hand, so slower is expected — but it has to be in the right world.
-    expect(ideal).toBeGreaterThan(95);
-    expect(ideal).toBeLessThan(200);
+    // A real pole at the Red Bull Ring is about 64 s. This line is a
+    // shortest path rather than a minimum-curvature one and the profile
+    // leaves grip in hand, so slower is expected — but it has to be in
+    // the right world.
+    expect(ideal).toBeGreaterThan(58);
+    expect(ideal).toBeLessThan(120);
   });
 
-  it('is flat out through Blanchimont', () => {
+  it('is flat out through the fastest corner', () => {
     let slowest = Infinity;
     for (let s = 0; s < circuit.length; s += 5) {
-      if (circuit.sectionAt(s) === 'T16 Blanchimont') slowest = Math.min(slowest, profile.at(s));
+      if (circuit.sectionAt(s) === 'T8') slowest = Math.min(slowest, profile.at(s));
     }
-    expect(slowest * KMH).toBeGreaterThan(250);
+    expect(slowest * KMH).toBeGreaterThan(190);
   });
 });
 
@@ -178,7 +197,7 @@ describe('the driver', () => {
 
   it('gets the car round the circuit', async () => {
     const { SimWorld } = await import('../src/sim/world');
-    const world = new SimWorld(params, { circuitId: 'spa' });
+    const world = new SimWorld(params, { circuitId: 'redbullring' });
     const driver = new Driver(line, profile, params);
     const DT = 1 / 120;
 
@@ -215,7 +234,7 @@ describe('the driver', () => {
 
   it('produces controls inside their legal ranges', async () => {
     const { SimWorld } = await import('../src/sim/world');
-    const world = new SimWorld(params, { circuitId: 'spa' });
+    const world = new SimWorld(params, { circuitId: 'redbullring' });
     const driver = new Driver(line, profile, params);
 
     for (let i = 0; i < 120 * 30; i++) {
@@ -233,7 +252,7 @@ describe('the driver', () => {
 
   it('asks to be recovered when it is stuck and not before', async () => {
     const { SimWorld } = await import('../src/sim/world');
-    const world = new SimWorld(params, { circuitId: 'spa' });
+    const world = new SimWorld(params, { circuitId: 'redbullring' });
     const driver = new Driver(line, profile, params);
 
     // Held still on the road, it should eventually give up.

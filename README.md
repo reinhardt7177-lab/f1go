@@ -6,7 +6,7 @@ ground-effect aerodynamics that depend on ride height, a full
 drivetrain, and lap timing derived from the car's position along the
 centreline spline.
 
-Race nine rivals over Spa-Francorchamps or Monza, with F1 points
+Race nine rivals over the Red Bull Ring, Interlagos or Monza, with F1 points
 carried across a season.
 
 ```
@@ -56,7 +56,7 @@ field.
 
 ## Circuits
 
-Spa-Francorchamps and Monza, plus a flat proving ground used by the
+The Red Bull Ring, Interlagos and Monza, plus a flat proving ground used by the
 vehicle-dynamics tests, where a measurement of braking distance means
 something because the surface is uniform.
 
@@ -75,7 +75,11 @@ npx tsx tools/fit-layout.ts <id> <metres> # solve it so it closes
 
 The fitter optimises for closure *and* against the road crossing over
 itself, which the first version of Spa did — leaving one sheet of
-tarmac lying two metres above another.
+tarmac lying two metres above another. Spa has since been removed: its
+start/finish straight and its descent to Eau Rouge passed within a
+metre of each other, and no amount of care in the mesh builder can
+separate two roads that are on the same ground. `tests/overlap.test.ts`
+now asserts that no circuit does this.
 
 ## The field
 

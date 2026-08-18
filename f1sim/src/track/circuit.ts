@@ -240,7 +240,7 @@ export const buildCircuit = (spec: CircuitSpec, step = 4): Circuit => {
   // Round off the vertical profile — after closing the loop, not before.
   //
   // Gradient is stated per section, so it steps at every boundary: at
-  // Spa the descent to Eau Rouge runs at -7.5 per cent straight into
+  // Interlagos the drop into the Senna S runs at -8 per cent into
   // Raidillon at +17, a 25-point break over a single sample. That is a
   // crease, not a compression, and a car with 50 mm of floor clearance
   // and a 3.6 m wheelbase grounds out on it and stops dead. Real

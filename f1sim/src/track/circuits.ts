@@ -4,73 +4,12 @@
  * Lengths, radii and gradients are read off track maps and elevation
  * profiles rather than survey data, then adjusted so the lap closes and
  * the total distance comes out right. The intent is that each corner
- * *drives* like its real counterpart — that Eau Rouge is genuinely
- * committed and Pouhon genuinely long — not that the geometry would
- * survive a tape measure.
+ * *drives* like its real counterpart — that the climb to Remus is
+ * genuinely long and the Senna S genuinely steep — not that the
+ * geometry would survive a tape measure.
  */
 import { buildCircuit } from './circuit';
 import type { Circuit, CircuitSpec } from './circuit';
-
-/**
- * Spa-Francorchamps. Seven kilometres, a hundred metres of elevation,
- * and the best sequence of corners in the sport.
- *
- * The elevation is the point of this circuit and it is why it was chosen
- * for stage two: Eau Rouge compresses the suspension hard enough to push
- * the floor into its stall, so the aerodynamic platform is doing real
- * work here in a way it never can on a flat pad.
- *
- * Pouhon's radius and Stavelot's are wider than a track map would
- * suggest. A layout integrated from approximate radii is not guaranteed
- * to produce a plan view that avoids itself, and the first pass here
- * curled round far enough that the run back to Blanchimont crossed
- * both the Kemmel straight and the run to Stavelot — leaving one sheet
- * of road lying two metres above another. A car reaching that at
- * 250 km/h is launched off the circuit. These two radii are what open
- * the shape back out; `tests/circuit.test.ts` holds it open.
- */
-const SPA: CircuitSpec = {
-  id: 'spa',
-  name: 'Spa-Francorchamps',
-  country: 'Belgium',
-  defaultHalfWidth: 8.3,
-  defaultRunoff: 9,
-  kerbWidth: 1.6,
-  startLine: 0,
-  sectorSplits: [2340, 4560, 7011],
-  sections: [
-
-    { name: 'Start / Finish', length: 367, gradient: -0.01, halfWidth: 9.6 },
-    { name: 'T1 La Source', length: 78, radius: 20, gradient: -0.02, halfWidth: 7.7 },
-    { name: 'Descent to Eau Rouge', length: 316, gradient: -0.075, halfWidth: 9 },
-    { name: 'T2 Eau Rouge', length: 90, radius: -95, gradient: -0.02 },
-    { name: 'T3 Raidillon', length: 130, radius: 105, gradient: 0.17, banking: 0.05 },
-    { name: 'T4 Raidillon exit', length: 95, radius: -180, gradient: 0.15 },
-    { name: 'Kemmel Straight', length: 1040, gradient: 0.03, halfWidth: 9.6 },
-    { name: 'T5 Les Combes', length: 72, radius: 46, gradient: -0.005, halfWidth: 7.7 },
-    { name: 'T6 Malmedy', length: 66, radius: -52 },
-    { name: 'T7', length: 80, radius: 62, gradient: -0.02 },
-    { name: 'Descent to Rivage', length: 179, gradient: -0.07 },
-    { name: 'T8 Rivage', length: 84, radius: 24, gradient: -0.03 },
-    { name: 'T9', length: 96, radius: -78, gradient: -0.06 },
-    { name: 'Run to Pouhon', length: 335, gradient: -0.07, halfWidth: 9 },
-    { name: 'T10 Pouhon', length: 240, radius: -150, gradient: -0.04, banking: -0.03 },
-    { name: 'T11 Pouhon exit', length: 160, radius: -160, gradient: 0.01 },
-    { name: 'Run to Fagnes', length: 344, gradient: 0.015 },
-    { name: 'T12 Fagnes', length: 74, radius: 58 },
-    { name: 'T13 Fagnes', length: 74, radius: -62 },
-    { name: 'Run to Stavelot', length: 281, gradient: -0.01, halfWidth: 9 },
-    { name: 'T14 Campus', length: 130, radius: 74 },
-    { name: 'T15 Stavelot', length: 150, radius: 88, gradient: 0.01 },
-    { name: 'Run to Blanchimont', length: 1016, gradient: 0.02, halfWidth: 9.6 },
-    { name: 'T16 Blanchimont', length: 380, radius: -330, gradient: 0.015 },
-    { name: 'T17 Blanchimont', length: 260, radius: -280 },
-    { name: 'Run to Bus Stop', length: 502, gradient: -0.005 },
-    { name: 'T18 Bus Stop', length: 52, radius: 26, halfWidth: 7.7 },
-    { name: 'T19 Bus Stop', length: 60, radius: -26 },
-    { name: 'Pit straight approach', length: 253, gradient: 0.01, halfWidth: 9.6 }
-  ]
-};
 
 /**
  * Two long straights joined by constant-radius bends, flat, and wide
@@ -78,8 +17,8 @@ const SPA: CircuitSpec = {
  *
  * Not a circuit so much as an instrument. Every vehicle-dynamics test
  * runs here, because a measurement of braking distance or steady-state
- * grip is only meaningful if the surface is uniform and level — on Spa
- * the same test would be measuring Eau Rouge instead.
+ * grip is only meaningful if the surface is uniform and level — on a
+ * real circuit the same test would be measuring its gradients instead.
  */
 const PROVING_GROUND: CircuitSpec = {
   id: 'proving',
@@ -99,9 +38,10 @@ const PROVING_GROUND: CircuitSpec = {
 };
 
 /**
- * Monza. The Temple of Speed, and the opposite question to Spa.
+ * Monza. The Temple of Speed, and the opposite question to the others.
  *
- * Spa asks what the aerodynamic platform does over elevation. Monza asks
+ * The Red Bull Ring asks what the aerodynamic platform does over
+ * elevation. Monza asks
  * what happens when you take the wings off: three-quarters of the lap is
  * full throttle, the corners that remain are two chicanes, two
  * right-handers and the Parabolica, and the whole compromise moves to
@@ -148,7 +88,7 @@ const MONZA: CircuitSpec = {
 /**
  * A banked oval, and the place to start.
  *
- * Spa and Monza are circuits to learn. This is not — it is two straights
+ * The real circuits are ones to learn. This is not — it is two straights
  * and two long left-handers, so there is nothing to memorise and the car
  * is the only thing left to pay attention to. Getting a feel for how the
  * rear steps out, what the tyres do as they come up to temperature and
@@ -185,10 +125,94 @@ const PRACTICE_OVAL: CircuitSpec = {
   ]
 };
 
+
+/*
+ * Five real circuits.
+ *
+ * Chosen for one property before anything else: none of them crosses
+ * over itself. That rules out Suzuka, whose figure-of-eight is its most
+ * famous feature and is exactly the thing that put a road through the
+ * air over the pit straight at Spa. A lap should be a single ribbon.
+ *
+ * Each is a real layout reduced to the sequence a car actually feels:
+ * how long the straight is, how tight the corner is, which way it goes,
+ * whether it climbs. Corner radii are published nowhere, so they are
+ * derived from what each corner is known for, and the section lengths
+ * are then solved for closure by `tools/fit-layout.ts`.
+ *
+ * Every one is checked by `tests/overlap.test.ts`, which builds the
+ * mesh and asserts no part of the circuit is laid over another.
+ */
+
+/** Austria. Ten corners, three long climbs, the shortest lap here. */
+const RED_BULL_RING: CircuitSpec = {
+  id: 'redbullring',
+  name: 'Red Bull Ring',
+  country: 'Austria',
+  defaultHalfWidth: 8.0,
+  defaultRunoff: 16,
+  kerbWidth: 1.8,
+  startLine: 0,
+  sectorSplits: [1450, 2900, 4318],
+  sections: [
+    { name: 'Start / Finish', length: 518, gradient: 0.02, halfWidth: 9.2 },
+    { name: 'T1 Niki Lauda', length: 60, radius: -42, gradient: 0.06, halfWidth: 7.6 },
+    { name: 'Climb to Remus', length: 810, gradient: 0.09, halfWidth: 9 },
+    { name: 'T3 Remus', length: 76, radius: -46, gradient: 0.02, halfWidth: 7.6 },
+    { name: 'Run to Schlossgold', length: 583, gradient: -0.02, halfWidth: 9 },
+    { name: 'T4 Schlossgold', length: 96, radius: -78, gradient: -0.04 },
+    { name: 'Descent to Rauch', length: 422, gradient: -0.07 },
+    { name: 'T5', length: 74, radius: -56, gradient: -0.05 },
+    { name: 'T6 Rauch', length: 90, radius: 120, gradient: -0.03 },
+    { name: 'Run to Wurth', length: 346, gradient: -0.02 },
+    { name: 'T7 Wurth', length: 104, radius: -84, gradient: 0.01 },
+    { name: 'T8', length: 92, radius: 110, gradient: 0.02 },
+    { name: 'Run to Rindt', length: 345, gradient: 0.01, halfWidth: 9 },
+    { name: 'T9 Rindt', length: 118, radius: -92, gradient: -0.01, halfWidth: 7.6 },
+    { name: 'T10', length: 130, radius: -110, gradient: -0.02 },
+    { name: 'Pit straight approach', length: 454, gradient: -0.01, halfWidth: 9.2 }
+  ]
+};
+
+/** Brazil. Anticlockwise, and it climbs the whole last sector. */
+const INTERLAGOS: CircuitSpec = {
+  id: 'interlagos',
+  name: 'Interlagos',
+  country: 'Brazil',
+  defaultHalfWidth: 7.6,
+  defaultRunoff: 12,
+  kerbWidth: 1.8,
+  startLine: 0,
+  sectorSplits: [1440, 2880, 4309],
+  sections: [
+    { name: 'Start / Finish', length: 197, gradient: -0.02, halfWidth: 9 },
+    { name: 'T1 Senna S', length: 78, radius: 40, gradient: -0.08, halfWidth: 7.2 },
+    { name: 'T2 Senna S', length: 80, radius: -54, gradient: -0.06 },
+    { name: 'Run to Curva do Sol', length: 74, gradient: -0.03, halfWidth: 7.6 },
+    { name: 'T3 Curva do Sol', length: 170, radius: 92, gradient: -0.01 },
+    { name: 'Reta Oposta', length: 777, gradient: -0.02, halfWidth: 9 },
+    { name: 'T4 Descida do Lago', length: 96, radius: 60, gradient: -0.03, halfWidth: 7.6 },
+    { name: 'T5', length: 84, radius: 78, gradient: 0.01 },
+    { name: 'Climb to Ferradura', length: 477, gradient: 0.05 },
+    { name: 'T6 Ferradura', length: 150, radius: -64, gradient: 0.03 },
+    { name: 'T7 Laranja', length: 96, radius: 89, gradient: -0.01 },
+    { name: 'Run to Pinheirinho', length: 348, gradient: -0.02 },
+    { name: 'T8 Pinheirinho', length: 104, radius: 56 },
+    { name: 'T9 Bico de Pato', length: 90, radius: -44, halfWidth: 7.2 },
+    { name: 'T10 Mergulho', length: 130, radius: 70, gradient: -0.01, halfWidth: 7.6 },
+    { name: 'Run to Juncao', length: 361, gradient: -0.02 },
+    { name: 'T11 Juncao', length: 100, radius: 48, gradient: 0.02, halfWidth: 7.2 },
+    { name: 'Subida dos Boxes', length: 472, gradient: 0.08, halfWidth: 9 },
+    { name: 'T12 Arquibancadas', length: 180, radius: -347, gradient: 0.05 },
+    { name: 'Pit straight approach', length: 209, gradient: 0.02 }
+  ]
+};
+
 /* The oval is first because it is where a new driver should start. */
 export const CIRCUIT_SPECS: Record<string, CircuitSpec> = {
   oval: PRACTICE_OVAL,
-  spa: SPA,
+  redbullring: RED_BULL_RING,
+  interlagos: INTERLAGOS,
   monza: MONZA,
   proving: PROVING_GROUND
 };

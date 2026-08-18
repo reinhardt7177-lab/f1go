@@ -1,6 +1,6 @@
 # f1sim
 
-An open-wheel car on Spa-Francorchamps, with every parameter that shapes
+An open-wheel car on real circuits, with every parameter that shapes
 the handling on a live slider and the telemetry to read what it did.
 
 Stages one to four of a racing simulation — the physics, the circuit,
@@ -78,7 +78,7 @@ from the circuit, works out a speed for every point on it from curvature
 and the grip available at that speed, and follows both. It picks itself
 up when it spins.
 
-It is honest about what it is: it laps Spa continuously and holds the
+It is honest about what it is: it laps continuously and holds the
 line within a few metres for most of it, but it still runs wide often
 enough that its laps are usually deleted for track limits. The racing
 line is a shortest path rather than a minimum-curvature one, and the
@@ -87,7 +87,7 @@ response. Both of those are what stands between this and a quick lap.
 
 The pieces are worth reading even so — `speedprofile.ts` derives which
 corners are flat from the physics rather than from a table, which is why
-Blanchimont comes out flat and La Source comes out at 80 km/h.
+a fast sweep comes out flat and a hairpin comes out at 90 km/h.
 
 ## Sessions
 
@@ -129,9 +129,9 @@ throttle and brake, left stick to steer, shoulder buttons for gears.
 
 ## The circuit
 
-Spa-Francorchamps: 7.011 km against the real 7.004, nineteen named
+Red Bull Ring: 4.320 km against the real 4.318, ten named
 corners, and 67 m of elevation. Corner sequence and gradients are read
-off track maps rather than survey data — the intent is that Eau Rouge is
+off track maps rather than survey data — the intent is that the climb to Remus is
 genuinely committed and Pouhon genuinely long, not that the geometry
 would survive a tape measure.
 
@@ -142,7 +142,7 @@ timing — is derived from integrating that list into a centreline spline.
 
 There is a second circuit, `proving`, selectable in code: two long flat
 straights joined by 150 m bends. Every vehicle-dynamics test runs there,
-because a braking-distance measurement taken on Spa would be measuring
+because a braking-distance measurement taken on a real circuit would be measuring
 Eau Rouge.
 
 ## Timing

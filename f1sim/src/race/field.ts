@@ -11,7 +11,7 @@
  * every corner on the circuit can be taken at, because it is the same
  * one the autopilot drives to; a rival is therefore not following a
  * scripted path so much as driving the same solution the AI does, less
- * well. Give one a pace of 0.96 and it takes Eau Rouge four per cent
+ * well. Give one a pace of 0.96 and it takes every corner four per cent
  * below the limit, all the way round, which is what a slightly slower
  * driver looks like.
  *

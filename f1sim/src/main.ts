@@ -23,6 +23,12 @@ import { recordLap, score, standings } from './race/championship';
 import { ResultsPanel } from './ui/results';
 import { PositionPanel } from './ui/position';
 import { Hud } from './ui/hud';
+import { RivalLabels } from './ui/labels';
+import { SpeedLines } from './ui/speedlines';
+import { StartLights } from './ui/lights';
+import { OvertakeNotice } from './ui/overtake';
+import { HudMode } from './ui/hudmode';
+import { Minimap } from './ui/minimap';
 import { SessionPanel } from './ui/session';
 import { SetupStatusPanel } from './ui/setup-status';
 import { TelemetryPanel } from './ui/telemetry';
@@ -48,15 +54,11 @@ const boot = async (): Promise<void> => {
   const askedCircuit = query.get('circuit');
   const circuitId = askedCircuit && askedCircuit in CIRCUIT_SPECS ? askedCircuit : 'oval';
   const world = new SimWorld(params, { circuitId });
-  const renderer = new SceneRenderer(canvas, world.geometry);
+  const renderer = new SceneRenderer(canvas, world.geometry, params, world.circuit);
   // The touch layer listens on the canvas so drags never fight the
   // panels, which keep their own pointer events.
   const input = new InputManager(window, {}, canvas);
   const hud = new Hud(document.body);
-
-  // Fullscreen, landscape lock and the rotate prompt. On a desktop this
-  // installs a toggle and otherwise stays out of the way.
-  new ViewportManager();
 
   // Left column stacks telemetry over the timing tower; the setup panel
   // sits on the right.
@@ -70,6 +72,13 @@ const boot = async (): Promise<void> => {
   const kind: SessionKind =
     requested && requested in SESSION_PRESETS ? requested : 'practice';
   const session = new Session(SESSION_PRESETS[kind]);
+
+  /* Fullscreen, landscape lock and the rotate prompt — and the tap that
+     dismisses the title card, which is what starts the session.
+     Constructed after the session rather than before it because that
+     tap is the session's own beginning: until someone has asked to
+     play, the grid stays held and the lights stay dark. */
+  new ViewportManager(() => session.begin());
 
   // Session first: which session is running and how much of it is left is
   // the context everything below is read against.
@@ -90,29 +99,58 @@ const boot = async (): Promise<void> => {
   const speedProfile = new SpeedProfile(racingLine, params);
   const driver = new Driver(racingLine, speedProfile, params);
 
-  /* The car model loads in the background. The blocked-out car is a
-     complete fallback, so nothing waits on this and a missing file
-     costs a console line rather than a session. */
-  /* Where the model has to land. The axle line and the wheel-centre
-     height come straight from the suspension, so a model fitted to them
-     sits on the road the simulation is driving on rather than on the
-     one the exporter imagined. */
+  /* The car is drawn rather than loaded.
+   *
+   * `assets/car.glb` is eleven thousand triangles of photographic
+   * detail, which is the wrong input to a renderer whose whole
+   * proposition is flat colour inside a black line: the line traces
+   * every duct and the result reads as a model someone has outlined.
+   * `render/carbody.ts` draws one instead, from the chassis the
+   * simulation is actually driving, and the rivals are built from the
+   * same geometry — so the grid is ten of one car rather than one
+   * detailed car being chased by nine crude ones.
+   *
+   * The model is still there and still fits: `?car=model` loads it, for
+   * anyone who wants to compare or to take the drawing back out. */
   const chassis = params.chassis;
-  void renderer
-    .useCarModel('assets/car.glb', {
-      wheelbase: chassis.wheelbase,
-      axleMidZ: chassis.wheelbase * (chassis.frontWeightBias - 0.5),
-      wheelCentreY: chassis.hardpointY - params.suspension.restLength,
-      wheelRadius: chassis.wheelRadius
-    })
-    .catch((e) => console.warn('[render] car model unavailable:', e));
+  if (query.get('car') === 'model') {
+    void renderer
+      .useCarModel('assets/car.glb', {
+        wheelbase: chassis.wheelbase,
+        axleMidZ: chassis.wheelbase * (chassis.frontWeightBias - 0.5),
+        wheelCentreY: chassis.hardpointY - params.suspension.restLength,
+        wheelRadius: chassis.wheelRadius
+      })
+      .catch((e) => console.warn('[render] car model unavailable:', e));
+  }
 
   /* The rest of the grid. Sharing the racing line and speed profile the
      autopilot uses means a rival is driving the same solution, less
      well, rather than following a script laid alongside it. */
   const field = new Field(racingLine, speedProfile, world.circuit.length);
+  /* And now they are drawn. The field has produced a position, a
+     heading and a colour for every rival since it was written; until
+     this line nothing read them, so the race was scored over an empty
+     circuit. */
+  renderer.setField(field.rivals);
+  const rivalLabels = new RivalLabels(document.body, field.rivals);
   const results = new ResultsPanel(document.body);
   let scored = false;
+
+  // Speed lines sit over the canvas and under the panels; the HUD is
+  // already mounted on the body, so this goes with it.
+  const speedLines = new SpeedLines(document.body);
+  const startLights = new StartLights(document.body);
+  const overtakeNotice = new OvertakeNotice(document.body);
+  /* Which of the two interfaces is on screen. The instruments are for
+     tuning the car and are in the way of driving it, so driving is the
+     default and the bench is one button away. */
+  const hudMode = new HudMode(document.body);
+  /* Where everyone is on the circuit. The cockpit can only show the two
+     hundred metres in front of you, which is not enough to know whether
+     the car you are chasing is about to reach a corner or has already
+     cleared it. */
+  const minimap = new Minimap(document.body, world.circuit);
 
   // Right-hand column: live setup state above the controls that shape it.
   const right = document.createElement('div');
@@ -305,11 +343,17 @@ const boot = async (): Promise<void> => {
           };
 
       const finished = session.phase === 'finished';
+      /* On the grid the car is held, exactly as it is during a pit
+         stop — the same mechanism, because it is the same thing: the
+         session is running and the car is not allowed to move yet.
+         Anticipating the lights therefore does nothing, which is the
+         correct answer to anticipating the lights. */
+      const held = session.onGrid || session.inPitStop;
 
       world.car.controls = {
         ...controls,
-        throttle: session.inPitStop || finished ? 0 : controls.throttle,
-        brake: session.inPitStop ? 1 : controls.brake
+        throttle: held || finished ? 0 : controls.throttle,
+        brake: held ? 1 : controls.brake
       };
 
       // Whatever is driving — human, AI or autopilot — the wheel in the
@@ -325,8 +369,9 @@ const boot = async (): Promise<void> => {
       }
 
       // Servicing holds the car; the session clock keeps running, which
-      // is exactly what makes a stop cost something.
-      if (session.inPitStop) world.car.holdStationary();
+      // is exactly what makes a stop cost something. On the grid the
+      // clock does not run — that is the difference between the two.
+      if (held) world.car.holdStationary();
 
       world.step(dt);
       session.update(dt, world.onTrack, world.lapJustCompleted, world.timer);
@@ -340,8 +385,16 @@ const boot = async (): Promise<void> => {
       }
 
       /* The field runs whether or not this session scores it: traffic
-         to judge in practice, opponents in a race. */
-      field.update(dt, session.elapsed, session.config.laps ?? null);
+         to judge in practice, opponents in a race.
+         On the grid it is stepped by nothing — which still places every
+         car on its slot and points it down the road, but moves none of
+         them. Rivals that set off while the player was held would be a
+         hundred metres up the road by the time the lights went out. */
+      field.update(
+        session.onGrid ? 0 : dt,
+        session.elapsed,
+        session.config.laps ?? null
+      );
 
       if (world.lapJustCompleted) {
         timing.setBest(world.timer.bestLap?.time ?? null);
@@ -369,31 +422,44 @@ const boot = async (): Promise<void> => {
     },
     render: (alpha, frameDt) => {
       renderer.render(alpha, frameDt);
-      telemetry.update(
-        world.car.getState(),
-        params.drivetrain.redlineRpm,
-        world.car.drivetrain.ersStore / params.drivetrain.ersCapacity
-      );
       const snapshot = world.car.getState();
       const battery = world.car.drivetrain.ersStore / params.drivetrain.ersCapacity;
       hud.update(snapshot, params.drivetrain.redlineRpm, battery);
+
+      /* The two expensive panels are skipped while they are off screen.
+         Between them they rewrite some sixty elements a frame — cheap
+         enough to leave running, but there is no reason to pay for a
+         g-g plot nobody can see. */
+      if (hudMode.engineering) {
+        telemetry.update(snapshot, params.drivetrain.redlineRpm, battery);
+        setupStatus.update(snapshot, battery);
+      }
       timing.update(world.timer, world.currentSection(), world.onTrack);
+      const place = field.positionOf(
+        Math.max(1, world.timer.lap),
+        world.distance,
+        null
+      );
       positionPanel.update(
-        field.positionOf(Math.max(1, world.timer.lap), world.distance, null),
+        place,
         field.rivals.length + 1,
         field.gapAhead(Math.max(1, world.timer.lap), world.distance),
         world.car.getState().speed
       );
+
+      minimap.update(world.distance, field.rivals);
+
+      const now = performance.now();
+      startLights.update(session, now);
+      overtakeNotice.update(place, field, now, session.phase === 'green');
+      speedLines.update(Math.abs(snapshot.speed) * 3.6);
+      rivalLabels.update(field.rivals, (point) => renderer.worldToScreen(point));
       sessionPanel.update(session, world.timer);
-      setupStatus.update(
-        world.car.getState(),
-        world.car.drivetrain.ersStore / params.drivetrain.ersCapacity
-      );
     }
   });
 
   // Exposed for console poking and for the browser-driven smoke test.
-  Object.assign(window, { world, params, renderer, loop, tuning, session, driver, racingLine, speedProfile, input });
+  Object.assign(window, { world, params, renderer, loop, tuning, session, driver, racingLine, speedProfile, input, field, startLights, overtakeNotice, hudMode });
 };
 
 void boot();

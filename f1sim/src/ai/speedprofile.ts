@@ -16,8 +16,9 @@
  *
  *     and the denominator going negative is not a failure — it means
  *     downforce grows faster than the corner demands, so the corner is
- *     flat out at any speed. That is exactly why Blanchimont is flat and
- *     La Source is not, and it falls straight out of the algebra.
+ *     flat out at any speed. That is exactly why a 150 m sweep is flat
+ *     and a 42 m hairpin is not, and it falls straight out of the
+ *     algebra.
  *
  *  2. **Backward pass.** Walk the lap backwards, capping each station at
  *     the speed from which you could still slow to the next one. This is
