@@ -7,17 +7,17 @@
  * late. Everything else in the session had a shape and the start did
  * not.
  *
- * Five lights fix that, and they do it the way the real thing does: the
- * filling is the countdown, and it is the *extinguishing* that is the
- * flag. That grammar is worth keeping exactly, because it is the one
- * piece of motor racing every spectator already knows how to read, and
- * a child watching this has almost certainly seen it before they ever
- * saw the game.
+ * Five lights fix that. Four count down and the fifth is the flag —
+ * which is not what Formula 1 does, and the reason is in
+ * `COUNTDOWN_LIGHTS`: the real signal is the lights going *out*, and
+ * that only reads as a signal to someone who already knows the sport.
+ * A child watching five lamps disappear has been shown the absence of
+ * something. All five lit means go, and needs explaining to nobody.
  */
 import type { Session } from '../race/session';
 import { START_LIGHTS } from '../race/session';
 
-/** How long GO! stays up after the lights go out (ms). */
+/** How long GO! stays up after the last lamp lights (ms). */
 const GO_DURATION = 900;
 
 export class StartLights {
@@ -77,9 +77,12 @@ export class StartLights {
        floating over the title with nothing counting is furniture. */
     const onGrid = session.hasBegun && session.onGrid;
     if (this.wasOnGrid && !onGrid) {
+      /* The fifth lamp and the release are the same instant, so the
+         gantry is filled rather than cleared. Switching it off here
+         would read as the start being called back. */
       this.goUntil = now + GO_DURATION;
-      for (const lamp of this.lamps) lamp.className = '';
-      this.shown = 0;
+      for (const lamp of this.lamps) lamp.className = 'on';
+      this.shown = this.lamps.length;
     }
     this.wasOnGrid = onGrid;
 
@@ -98,6 +101,7 @@ export class StartLights {
     }
 
     if (now < this.goUntil) {
+      // Still lit, and GO! underneath it.
       this.root.classList.remove('hidden');
       this.go.classList.add('on');
       return;

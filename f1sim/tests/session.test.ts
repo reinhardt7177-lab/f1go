@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { LapTimer } from '../src/race/timing';
-import { LIGHT_INTERVAL, SESSION_PRESETS, START_LIGHTS, Session } from '../src/race/session';
+import { COUNTDOWN_LIGHTS, LIGHT_INTERVAL, SESSION_PRESETS, START_LIGHTS, Session } from '../src/race/session';
 import type { SessionConfig, SessionKind } from '../src/race/session';
 import { getCircuit } from '../src/track/circuits';
 
@@ -253,7 +253,7 @@ describe('the start', () => {
     expect(session.state(timer).lapsDone).toBe(0);
   });
 
-  it('fills the lights one a second and puts them all out together', () => {
+  it('counts down on four lights and goes on the fifth', () => {
     const session = started(SESSION_PRESETS.race);
     expect(session.lights).toBe(0);
 
@@ -264,21 +264,23 @@ describe('the start', () => {
        fail for a reason that has nothing to do with the lights. */
     const seen: number[] = [];
     let held = 0;
-    for (let i = 0; i < START_LIGHTS; i++) {
+    for (let i = 0; i < COUNTDOWN_LIGHTS; i++) {
       // Half a beat after the light is due, so nothing lands on a boundary.
       const target = (i + 1.5) * LIGHT_INTERVAL;
       hold(session, target - held);
       held = target;
       seen.push(session.lights);
     }
-    expect(seen).toEqual([1, 2, 3, 4, START_LIGHTS]);
+    // Four, and it stops there however long the gantry waits.
+    expect(seen).toEqual([1, 2, 3, COUNTDOWN_LIGHTS]);
 
-    /* And then all five at once, rather than counting back down. That
-       is the grammar of an F1 start: you launch on the extinguishing,
-       not on the last lamp of a countdown. */
+    /* Then the fifth, and the release, in the same instant. Not the
+       real F1 signal — which is all five going out — and deliberately
+       so: the extinguishing only reads as a flag to someone who already
+       knows the sport. All lit means go. */
     hold(session, SESSION_PRESETS.race.formationHold + DT);
     expect(session.phase).toBe('green');
-    expect(session.lights).toBe(0);
+    expect(session.lights).toBe(START_LIGHTS);
   });
 
   it('announces the start exactly once', () => {
@@ -310,7 +312,7 @@ describe('the start', () => {
       const session = started(SESSION_PRESETS[kind]);
       expect(session.phase, kind).toBe('formation');
       expect(session.onGrid, kind).toBe(true);
-      expect(session.formationDuration, kind).toBeGreaterThan(4);
+      expect(session.formationDuration, kind).toBeGreaterThan(3);
     }
   });
 
@@ -321,8 +323,8 @@ describe('the start', () => {
     const quick = started({ ...SESSION_PRESETS.race, formationHold: 0.2 });
     const slow = started({ ...SESSION_PRESETS.race, formationHold: 2 });
 
-    hold(quick, START_LIGHTS * LIGHT_INTERVAL + 0.3);
-    hold(slow, START_LIGHTS * LIGHT_INTERVAL + 0.3);
+    hold(quick, COUNTDOWN_LIGHTS * LIGHT_INTERVAL + 0.3);
+    hold(slow, COUNTDOWN_LIGHTS * LIGHT_INTERVAL + 0.3);
 
     expect(quick.phase).toBe('green');
     expect(slow.phase).toBe('formation');

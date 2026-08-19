@@ -38,15 +38,15 @@ export interface SessionConfig {
   /** Stationary time a pit stop costs (s). */
   pitStopDuration: number;
   /**
-   * Seconds the lights hold on before they go out, or 0 for no start
-   * procedure at all.
+   * Seconds the gantry waits on four lights before the fifth, or 0 for
+   * no start procedure at all.
    *
-   * The five lights themselves are on a fixed cadence — that is what
-   * makes them a countdown you can time your launch against. The hold
-   * afterwards is the part that is *not* fixed, in reality and here,
-   * because a start you can anticipate exactly is not a start. It is a
-   * parameter rather than a random draw inside the class so a test can
-   * pin it, and so the same session run twice is the same session.
+   * The first four are on a fixed cadence — that is what makes them a
+   * countdown you can time your launch against. The wait before the
+   * last one is the part that is *not* fixed, which is what stops a
+   * start being something you can anticipate exactly. It is a parameter
+   * rather than a random draw inside the class so a test can pin it,
+   * and so the same session run twice is the same session.
    */
   formationHold: number;
 }
@@ -54,6 +54,23 @@ export interface SessionConfig {
 /** Lights in the gantry, and the seconds between each coming on. */
 export const START_LIGHTS = 5;
 export const LIGHT_INTERVAL = 0.9;
+
+/**
+ * How many light up as the countdown, before the one that means go.
+ *
+ * Real Formula 1 fills all five and then extinguishes them, and the
+ * extinguishing is the flag. That is the correct grammar and it is not
+ * the one used here, deliberately: it only reads as a start signal if
+ * you already know the sport, and a ten-year-old watching five lights
+ * disappear has been given no signal at all — they have been given the
+ * absence of one.
+ *
+ * So four count down and the fifth is the flag. The tension is
+ * identical, because the unpredictable wait now sits before the last
+ * lamp rather than after it, and the meaning is legible to someone who
+ * has never seen a grand prix: all lit, go.
+ */
+export const COUNTDOWN_LIGHTS = START_LIGHTS - 1;
 
 export const SESSION_PRESETS: Record<SessionKind, SessionConfig> = {
   practice: {
@@ -161,24 +178,28 @@ export class Session {
   /** Total length of the start procedure (s). */
   get formationDuration(): number {
     return this.config.formationHold > 0
-      ? START_LIGHTS * LIGHT_INTERVAL + this.config.formationHold
+      ? COUNTDOWN_LIGHTS * LIGHT_INTERVAL + this.config.formationHold
       : 0;
   }
 
   /**
    * Lights showing, 0..5.
    *
-   * They fill one a second and then all go out together, which is the
-   * whole grammar of an F1 start: the filling is the countdown and the
-   * *extinguishing* is the flag. A sequence that counted down to zero
-   * lights one at a time would be a different signal — you would launch
-   * on the last one going out rather than on all five, and that is not
-   * the thing every driver has trained on.
+   * Four fill on a fixed cadence, then the gantry waits, then the fifth
+   * comes on and the car is released in the same instant. All five lit
+   * *is* the flag — see `COUNTDOWN_LIGHTS` for why this is deliberately
+   * not what Formula 1 does.
+   *
+   * They stay lit once the session is green, because the signal is the
+   * lamp being on. The gantry is taken off screen a moment later by the
+   * UI rather than being switched off here, which would read as the
+   * start being cancelled.
    */
   get lights(): number {
-    if (!this.started || this.phase !== 'formation') return 0;
+    if (!this.started) return 0;
+    if (this.phase !== 'formation') return START_LIGHTS;
     return Math.min(
-      START_LIGHTS,
+      COUNTDOWN_LIGHTS,
       Math.floor(this.formationElapsed / LIGHT_INTERVAL)
     );
   }
