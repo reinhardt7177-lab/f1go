@@ -109,8 +109,29 @@ export const outlineMaterial = (thickness = OUTLINE_WEIGHT): THREE.ShaderMateria
       uniform float thickness;
       uniform float screenHeight;
       void main() {
-        vec4 mv = modelViewMatrix * vec4(position, 1.0);
-        vec3 n = normalize(normalMatrix * normal);
+        vec3 pos = position;
+        vec3 nrm = normal;
+
+        /* Instanced draws have to apply their own transform.
+         *
+         * Three.js injects instanceMatrix and this define for an
+         * InstancedMesh whatever the material is, but it only *uses*
+         * them in shaders it builds itself. A hand-written one that
+         * ignores them draws every instance at the object's origin —
+         * which, with several hundred outline hulls and an origin that
+         * happens to be the start line, is a solid black shell around
+         * the camera and a screen that renders nothing but the car.
+         *
+         * The normal needs the same treatment. normalMatrix knows
+         * about the mesh but not about the instance, so an unrotated
+         * normal would push the hull out along the wrong axis. */
+        #ifdef USE_INSTANCING
+          pos = (instanceMatrix * vec4(pos, 1.0)).xyz;
+          nrm = mat3(instanceMatrix) * nrm;
+        #endif
+
+        vec4 mv = modelViewMatrix * vec4(pos, 1.0);
+        vec3 n = normalize(normalMatrix * nrm);
         /* Perspective divide takes a metre to (focal / -z) pixels, so
            the push has to carry -z to come out constant on screen. The
            2.0 is the clip cube's height in NDC. */
