@@ -99,12 +99,12 @@ export class SceneRenderer {
    * car on its grid box instead, and the card becomes a caption over
    * it.
    */
-  showcase = false;
+  showcase: 'menu' | 'grid' | null = null;
 
   /** Seconds the showcase orbit has been running, for its angle. */
   private showcaseTime = 0;
   /** What `showcase` was last frame, so visibility is written once. */
-  private showcaseApplied = false;
+  private showcaseApplied: 'menu' | 'grid' | null = null;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -454,7 +454,7 @@ export class SceneRenderer {
        says, so the body has to come back and the cockpit has to go —
        otherwise the title screen orbits a floating steering wheel with
        no car around it. */
-    const inside = !this.showcase && this.cameraMode === 'cockpit';
+    const inside = this.showcase === null && this.cameraMode === 'cockpit';
     this.cockpit.setVisible(inside);
     this.bodyGroup.visible = !inside;
   }
@@ -585,7 +585,27 @@ export class SceneRenderer {
     const q = new THREE.Quaternion(rot.x, rot.y, rot.z, rot.w);
     const carPos = new THREE.Vector3(pos.x, pos.y, pos.z);
 
-    if (this.showcase) {
+    if (this.showcase === 'grid') {
+      /* Held on the grid, looking up the road at the cars in front.
+       *
+       * This is the shot the start deserves and the cockpit cannot
+       * give: from inside the car the grid is nine cars you cannot see
+       * because they are all in front of you and below the nose. From
+       * behind and above, the stagger reads, the lights are legible,
+       * and the moment the field launches is something you watch
+       * happen rather than something you find out about from the
+       * speedometer. */
+      const back = new THREE.Vector3(0, 4.2, 11).applyQuaternion(q).add(carPos);
+      const k = 1 - Math.exp(-frameDt * 6);
+      this.smoothedCamPos.lerp(back, k);
+      this.camera.position.copy(this.smoothedCamPos);
+      this.camera.lookAt(carPos.x, carPos.y + 1.4, carPos.z);
+      this.camera.fov = 44;
+      this.camera.updateProjectionMatrix();
+      return;
+    }
+
+    if (this.showcase === 'menu') {
       /* A slow walk around the car on its grid box.
        *
        * Low and close, because the point is the car rather than the

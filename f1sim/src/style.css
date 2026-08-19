@@ -985,15 +985,36 @@ body {
   border-color: var(--red);
 }
 
+/*
+ * One button, and it says what it does.
+ *
+ * This was a line of text explaining that tapping the screen would go
+ * fullscreen and rotate the device — an instruction about the browser,
+ * printed where the only thing anyone wants is to start. The fullscreen
+ * and the orientation lock still happen; they are just consequences of
+ * pressing START rather than the reason given for pressing it.
+ */
 #start-card .cta {
-  margin-top: 22px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-  border: 1px solid var(--red);
-  background: rgba(226, 0, 15, 0.14);
-  border-radius: 9px;
-  padding: 13px 22px;
+  margin-top: 26px;
+  font-family: inherit;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  text-indent: 0.18em;
+  cursor: pointer;
+  color: #fff;
+  background: var(--red);
+  border: 3px solid #000;
+  border-radius: 12px;
+  padding: 16px 54px;
+  box-shadow: 5px 5px 0 #000;
+}
+
+/* The house press: the shadow goes to nothing and the button moves into
+   it, so a finger gets a physical answer rather than a colour change. */
+#start-card .cta:active {
+  box-shadow: 0 0 0 #000;
+  transform: translate(5px, 5px);
 }
 
 #start-card small {
@@ -1252,6 +1273,42 @@ body {
   /* No blur on the shadow anywhere else; this is the exception, because
      a light that is on is the one thing on screen that genuinely emits. */
   box-shadow: 0 0 18px rgba(255, 31, 45, 0.85);
+  /* And it arrives rather than appearing. A lamp that simply changes
+     colour between two frames is easy to miss on a small screen; a
+     flash that overshoots and settles is not, and it is the same thing
+     a real bulb does. */
+  animation: lamp-on 260ms cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+
+@keyframes lamp-on {
+  from {
+    box-shadow: 0 0 34px rgba(255, 31, 45, 1);
+    transform: scale(1.28);
+  }
+  to {
+    box-shadow: 0 0 18px rgba(255, 31, 45, 0.85);
+    transform: scale(1);
+  }
+}
+
+/*
+ * The gantry itself pulses gently while it is filling, so a screen with
+ * nine stationary cars on it is not a still photograph. It stops dead
+ * the moment the lights go out, which is the point: the only thing that
+ * should be moving at that instant is the field.
+ */
+.start-lights:not(.hidden) .gantry {
+  animation: gantry-wait 1.8s ease-in-out infinite;
+}
+
+@keyframes gantry-wait {
+  0%, 100% { box-shadow: 6px 6px 0 #000; }
+  50% { box-shadow: 6px 6px 0 #000, 0 0 26px rgba(255, 31, 45, 0.35); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .start-lights .gantry i.on,
+  .start-lights:not(.hidden) .gantry { animation: none; }
 }
 
 .start-lights .go {

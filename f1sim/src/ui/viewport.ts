@@ -87,11 +87,19 @@ export class ViewportManager {
     // desktop player needs both of those just as much.
     this.start.classList.remove('hidden');
 
-    this.start.addEventListener('click', () => {
+    /* One button rather than the whole card.
+     *
+     * The card used to start the session wherever you touched it, which
+     * meant reaching for a circuit and missing began the race. Now the
+     * only thing that starts it is START — and because a click is a
+     * user gesture, fullscreen and the orientation lock still get the
+     * permission they need. */
+    const begin = (): void => {
       void enterImmersive();
       this.start.classList.add('hidden');
       this.onStart();
-    });
+    };
+    document.getElementById('btn-start')?.addEventListener('click', begin);
 
     this.toggle.addEventListener('click', () => {
       void (isFullscreen() ? exitImmersive() : enterImmersive());

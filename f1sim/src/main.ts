@@ -523,7 +523,10 @@ const boot = async (): Promise<void> => {
       /* The title card is a caption over the game, not a sheet in front
          of it — so while it is up the camera walks slowly round the car
          on its grid box. */
-      renderer.showcase = !session.hasBegun;
+      /* Three shots, in order: the car on its box while the title is
+         up, the grid from behind while the lights fill, and then the
+         driver's own view from the moment they are released. */
+      renderer.showcase = !session.hasBegun ? 'menu' : session.onGrid ? 'grid' : null;
       renderer.render(alpha, frameDt);
       const snapshot = world.car.getState();
       const battery = world.car.drivetrain.ersStore / params.drivetrain.ersCapacity;
