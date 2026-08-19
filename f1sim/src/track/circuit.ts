@@ -221,6 +221,49 @@ export const buildCircuit = (spec: CircuitSpec, step = 4): Circuit => {
     }
   }
 
+  /*
+   * Ramp the banking in and out.
+   *
+   * A section carries one banking angle, so the value written above is
+   * a step function: on the proving oval it goes from level to three
+   * and a half degrees between one four-metre sample and the next. The
+   * road edge is nine and a half metres from the centreline, so that
+   * step lifts it by `9.5 * sin(0.06)` — **570 millimetres**, measured.
+   * And the mesh is the collider, so it is not a visual seam; it is a
+   * half-metre wall across the road at the entry to every banked
+   * corner. A car meeting one at speed is launched and lands on its
+   * roof, which is exactly what was reported.
+   *
+   * Real circuits ramp banking in over a hundred metres and more — a
+   * superspeedway does not tilt under you at a line — and so does this:
+   * a periodic box blur, run twice so the result is smooth rather than
+   * merely continuous. Two passes of a 120 m window spread the
+   * transition over about 175 m, which takes the 570 mm step down to
+   * around 13 mm from one four-metre section of road to the next. That
+   * is a road surface; the original was a kerb laid across the racing
+   * line.
+   *
+   * Only banking is smoothed. A gradient step changes the slope rather
+   * than the height, so it is a kink of a few degrees rather than a
+   * wall, and blurring it would quietly move where every hill is.
+   */
+  const RAMP = 120;
+  const blurBanking = (): void => {
+    const n = samples.length;
+    const half = Math.max(1, Math.round(RAMP / (2 * step)));
+    for (let pass = 0; pass < 2; pass++) {
+      const source = samples.map((sample) => sample.banking);
+      for (let i = 0; i < n; i++) {
+        let total = 0;
+        for (let k = -half; k <= half; k++) {
+          total += source[(i + k + n * 2) % n]!;
+        }
+        samples[i]!.banking = total / (half * 2 + 1);
+      }
+    }
+  };
+  blurBanking();
+
   // Close the loop cleanly. Real circuits return to their start; the
   // integration will not, because the radii are approximations. Spread
   // the mismatch over the whole lap so no single corner distorts.
