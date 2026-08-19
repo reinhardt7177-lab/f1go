@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { LapTimer } from '../src/race/timing';
 import { LIGHT_INTERVAL, SESSION_PRESETS, START_LIGHTS, Session } from '../src/race/session';
-import type { SessionConfig } from '../src/race/session';
+import type { SessionConfig, SessionKind } from '../src/race/session';
 import { getCircuit } from '../src/track/circuits';
 
 const circuit = getCircuit('proving');
@@ -60,23 +60,30 @@ const racing = (overrides: Partial<SessionConfig> = {}): SessionConfig => ({
   ...overrides
 });
 
+/** The same, for a session of any other kind. */
+const underWay = (kind: SessionKind, overrides: Partial<SessionConfig> = {}): SessionConfig => ({
+  ...SESSION_PRESETS[kind],
+  formationHold: 0,
+  ...overrides
+});
+
 describe('practice', () => {
   it('never ends on its own', () => {
-    const session = started(SESSION_PRESETS.practice);
+    const session = started(underWay('practice'));
     hold(session, 600);
     expect(session.phase).toBe('green');
     expect(session.state(timer).remaining).toBeNull();
   });
 
   it('reports the best lap as its result', () => {
-    const session = started(SESSION_PRESETS.practice);
+    const session = started(underWay('practice'));
     lap(session, 40);
     expect(session.result(timer).time).toBeCloseTo(timer.bestLap!.time, 3);
   });
 });
 
 describe('qualifying', () => {
-  const config = (): SessionConfig => ({ ...SESSION_PRESETS.qualifying, duration: 120 });
+  const config = (): SessionConfig => underWay('qualifying', { duration: 120 });
 
   it('counts down and throws the flag when time is up', () => {
     const session = started(config());
@@ -165,7 +172,7 @@ describe('track limits', () => {
   });
 
   it('leaves practice unpunished', () => {
-    const session = started(SESSION_PRESETS.practice);
+    const session = started(underWay('practice'));
     for (let i = 0; i < 5; i++) {
       hold(session, 0.5, true);
       hold(session, 0.5, false);
@@ -293,12 +300,17 @@ describe('the start', () => {
     expect(session.strikes).toBe(0);
   });
 
-  it('starts practice and qualifying green, with no ceremony', () => {
-    for (const kind of ['practice', 'qualifying'] as const) {
+  it('holds every session on the grid, not just a race', () => {
+    /* Practice used to skip the lights on the reasoning that it is for
+       going out and driving. That dropped a ten-year-old straight into
+       a moving car with no sign that anything had begun — which is the
+       exact confusion the phase exists to remove, so every session now
+       starts the same way. */
+    for (const kind of ['practice', 'qualifying', 'race'] as const) {
       const session = started(SESSION_PRESETS[kind]);
-      expect(session.phase).toBe('green');
-      expect(session.onGrid).toBe(false);
-      expect(session.formationDuration).toBe(0);
+      expect(session.phase, kind).toBe('formation');
+      expect(session.onGrid, kind).toBe(true);
+      expect(session.formationDuration, kind).toBeGreaterThan(4);
     }
   });
 
@@ -342,10 +354,11 @@ describe('before the player has entered', () => {
   });
 
   it('holds the car even in a session with no lights', () => {
-    /* Practice has no start procedure and goes green immediately, so
-       `formation` cannot be what holds it. The gate has to be its own
-       thing, or a practice run would be under way behind the card. */
-    const session = new Session(SESSION_PRESETS.practice);
+    /* A session configured without a start procedure goes green
+       immediately, so `formation` cannot be what holds it behind the
+       title card. The gate has to be its own thing, or the run would be
+       under way before anyone had pressed START. */
+    const session = new Session(underWay('practice'));
     expect(session.phase).toBe('green');
     expect(session.onGrid).toBe(true);
 

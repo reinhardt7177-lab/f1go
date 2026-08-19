@@ -13,6 +13,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  arcadeReverse,
   defaultSteerLimiter,
   defaultYawAssist,
   driverAids,
@@ -226,5 +227,53 @@ describe('the aids together', () => {
     const out = driverAids(asked, state, assist, DT);
     expect(out.throttle).toBe(0.5);
     expect(out.steer).toBe(0.2);
+  });
+});
+
+describe('arcade reverse', () => {
+  const asked = (over: Partial<typeof base> = {}) => ({ ...base, ...over });
+  const base = { ...neutralControls() };
+
+  it('is an ordinary brake while the car is moving', () => {
+    const out = arcadeReverse(asked({ brake: 1 }), 3, 20);
+    expect(out.brake).toBe(1);
+    expect(out.shiftDown).toBe(false);
+  });
+
+  it('asks for reverse when the key is still held at a standstill', () => {
+    /* The car has a reverse gear and it works — but reaching it means
+       holding the downshift paddle through neutral, which nobody who
+       has not read the controls will ever find. Holding the back key is
+       what every game they have played does. */
+    const out = arcadeReverse(asked({ brake: 1 }), 1, 0.2);
+    expect(out.shiftDown).toBe(true);
+    expect(out.brake).toBe(0);
+  });
+
+  it('does not ask for it while the throttle is also down', () => {
+    // Both keys held is a driver holding the car on the brakes, not a
+    // driver asking to go backwards.
+    const out = arcadeReverse(asked({ brake: 1, throttle: 1 }), 1, 0.2);
+    expect(out.shiftDown).toBe(false);
+  });
+
+  it('makes the back key the accelerator once reverse is engaged', () => {
+    const out = arcadeReverse(asked({ brake: 1 }), 0, -3);
+    expect(out.throttle).toBe(1);
+    expect(out.brake).toBe(0);
+  });
+
+  it('makes the forward key the brake while reversing', () => {
+    const out = arcadeReverse(asked({ throttle: 1 }), 0, -6);
+    expect(out.brake).toBe(1);
+    expect(out.throttle).toBe(0);
+  });
+
+  it('goes back to first once the reversing car has stopped', () => {
+    /* One press to stop, and the same press to set off again — which is
+       what makes it feel like a car rather than a gearbox. */
+    const out = arcadeReverse(asked({ throttle: 1 }), 0, -0.3);
+    expect(out.shiftUp).toBe(true);
+    expect(out.brake).toBe(0);
   });
 });

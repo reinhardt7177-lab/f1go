@@ -61,10 +61,16 @@ export const SESSION_PRESETS: Record<SessionKind, SessionConfig> = {
     strikesAllowed: 99,
     penaltySeconds: 0,
     pitStopDuration: 12,
-    // Practice is for going out and driving. Holding the car on a grid
-    // to watch five lights would be ceremony in front of the one
-    // session that has nothing to be ceremonious about.
-    formationHold: 0
+    /* Every session starts on the grid, practice included.
+     *
+     * This used to be zero, on the reasoning that practice is for going
+     * out and driving and that five lights in front of it would be
+     * ceremony. That was wrong about who is playing. The lights are the
+     * one piece of motor racing a child already knows how to read, and
+     * a session that skipped them dropped the player straight into a
+     * moving car with no idea a race had a beginning — which is
+     * precisely the confusion the phase was added to remove. */
+    formationHold: 0.8
   },
   qualifying: {
     kind: 'qualifying',
@@ -72,7 +78,7 @@ export const SESSION_PRESETS: Record<SessionKind, SessionConfig> = {
     strikesAllowed: 2,
     penaltySeconds: 5,
     pitStopDuration: 12,
-    formationHold: 0
+    formationHold: 0.8
   },
   race: {
     kind: 'race',

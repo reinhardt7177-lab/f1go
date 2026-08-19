@@ -323,10 +323,69 @@ export const stabilityTorque = (
   return -clamp(yawRate / 2.5, -1, 1) * authority * peak;
 };
 
+/**
+ * Reverse without knowing there is a gearbox.
+ *
+ * The car has a reverse gear and it works, but reaching it means
+ * holding the downshift paddle through neutral at walking pace — a
+ * thing a ten-year-old will never find and would not think to look for.
+ * What they do is hold the back key and wait to go backwards, because
+ * that is what every game they have played does.
+ *
+ * So the brake becomes both. Held while rolling forwards it is a brake;
+ * held once the car has stopped it selects reverse and feeds in
+ * throttle. Pressing forward again brakes the reversing car and then
+ * puts it back into first. Nothing about the gearbox changes — this
+ * presses the same paddles a driver would, just without being asked.
+ *
+ * @param gear    the gear currently engaged; 0 is reverse
+ * @param speed   forward speed, negative when travelling backwards
+ */
+export const arcadeReverse = (
+  desired: ControlState,
+  gear: number,
+  speed: number,
+  p: ReverseParams = defaultReverse()
+): ControlState => {
+  const reversing = gear === 0;
+  const stopped = Math.abs(speed) < p.selectBelow;
+
+  if (reversing) {
+    /* Backwards, and the back key is now the accelerator. The forward
+       key is the brake, and once it has stopped the car it shifts up
+       out of reverse — one press to stop, and the same press to set off
+       again. */
+    if (desired.throttle > 0) {
+      return stopped
+        ? { ...desired, throttle: 0, brake: 0, shiftUp: true }
+        : { ...desired, throttle: 0, brake: desired.throttle };
+    }
+    return { ...desired, throttle: desired.brake, brake: 0 };
+  }
+
+  /* Forwards. The brake is a brake until the car is stopped and the key
+     is still held, at which point it asks for reverse. */
+  if (desired.brake > 0 && stopped && desired.throttle === 0) {
+    return { ...desired, brake: 0, throttle: 0, shiftDown: true };
+  }
+  return desired;
+};
+
+export interface ReverseParams {
+  /** Road speed below which the car counts as stopped (m/s). */
+  selectBelow: number;
+}
+
+/* Two metres a second, matching the gearbox's own rule for when reverse
+   may be selected at all — asking for it above that would be a request
+   the drivetrain refuses, and the car would simply sit there. */
+export const defaultReverse = (): ReverseParams => ({ selectBelow: 1.8 });
+
 export interface EasyModeParams {
   traction: TractionControlParams;
   steering: SteerLimiterParams;
   yaw: YawAssistParams;
+  reverse: ReverseParams;
   /** Below this road speed every loop is bypassed and reset (m/s). */
   bypassSpeed: number;
 }
@@ -335,6 +394,7 @@ export const defaultEasyMode = (): EasyModeParams => ({
   traction: defaultTractionControl(),
   steering: defaultSteerLimiter(),
   yaw: defaultYawAssist(),
+  reverse: defaultReverse(),
   bypassSpeed: 3
 });
 
@@ -372,17 +432,21 @@ export const driverAids = (
   dt: number,
   p: EasyModeParams = defaultEasyMode()
 ): ControlState => {
+  /* Reverse first, because it rewrites what the pedals mean and
+     everything below reads them. */
+  const pedals = arcadeReverse(desired, state.gear, state.speed, p.reverse);
+
   if (Math.abs(state.speed) < p.bypassSpeed) {
     assist.throttleLimit = 1;
     assist.steerLimit = 1;
-    return desired;
+    return pedals;
   }
 
   const drivenSlip = Math.max(
     Math.abs(state.wheels[RL].slipRatio),
     Math.abs(state.wheels[RR].slipRatio)
   );
-  let throttle = tractionControl(desired.throttle, drivenSlip, assist, dt, p.traction);
+  let throttle = tractionControl(pedals.throttle, drivenSlip, assist, dt, p.traction);
 
   /* The mean of the two front wheels rather than the larger. They share
      a steer angle and sit 1.6 m apart, so they track each other closely
@@ -392,11 +456,11 @@ export const driverAids = (
   const sideslip = sideslipOf(state);
   const sliding = Math.abs(sideslip) > p.yaw.deadband;
   const steer = grounded
-    ? steerLimiter(desired.steer, frontSlip, assist, dt, p.steering, sliding)
-    : clamp(desired.steer, -assist.steerLimit, assist.steerLimit);
+    ? steerLimiter(pedals.steer, frontSlip, assist, dt, p.steering, sliding)
+    : clamp(pedals.steer, -assist.steerLimit, assist.steerLimit);
 
   const caught = yawAssist(steer, throttle, sideslip, state.angularVelocity.y, state.speed, p.yaw);
   throttle = caught.throttle;
 
-  return { ...desired, throttle, steer: caught.steer };
+  return { ...pedals, throttle, steer: caught.steer };
 };
