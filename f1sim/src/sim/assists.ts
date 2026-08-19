@@ -23,11 +23,21 @@ export interface AssistState {
   throttleLimit: number;
   /** Current ceiling on |steer|, 0..1. */
   steerLimit: number;
+  /**
+   * Yaw moment the aids want this tick (N m).
+   *
+   * Written by `driverAids` and read by the composition root, so the
+   * sideslip, the yaw excess and the torque are all computed once from
+   * one snapshot. Computing it separately at the call site meant the
+   * aids and the torque could be handed different states.
+   */
+  stabilityTorque: number;
 }
 
 export const initialAssistState = (): AssistState => ({
   throttleLimit: 1,
-  steerLimit: 1
+  steerLimit: 1,
+  stabilityTorque: 0
 });
 
 export interface TractionControlParams {
@@ -60,8 +70,24 @@ export const tractionControl = (
   drivenSlip: number,
   state: AssistState,
   dt: number,
-  p: TractionControlParams = defaultTractionControl()
+  p: TractionControlParams = defaultTractionControl(),
+  sliding = false
 ): number => {
+  /* A sliding car reads as a wheelspinning one, and it is not.
+   *
+   * Slip ratio is measured against the contact patch's *longitudinal*
+   * velocity. When the car goes sideways that collapses while the wheel
+   * speed does not, so the ratio climbs even though the rear tyres are
+   * turning at exactly the speed they should. The controller then walks
+   * its ceiling down to the floor, and a car with no drive cannot pull
+   * itself straight — measured at 0.07 of throttle through an entire
+   * seventy-degree slide. So it holds its ground and lets the yaw
+   * assist's throttle trim be the only thing shaping throttle while the
+   * car is out of shape. */
+  if (sliding) {
+    return Math.min(desired, state.throttleLimit);
+  }
+
   if (drivenSlip > p.targetSlip) {
     state.throttleLimit -= dt * p.cutRate * clamp(drivenSlip / p.targetSlip - 1, 0, 3);
   } else {
@@ -94,6 +120,15 @@ export interface SteerLimiterParams {
   restoreRate: number;
   /** Never cut below this, or slow corners become impossible. */
   floor: number;
+  /* The chassis, mirrored as plain numbers so this file still imports
+     nothing from the vehicle — the same discipline `counterGain` keeps. */
+  latAccel: number;
+  latAccelPerV2: number;
+  wheelbase: number;
+  maxSteerAngle: number;
+  steerSpeedFactor: number;
+  /** How much more lock than the limit corner needs to allow. */
+  speedHeadroom: number;
 }
 
 export const defaultSteerLimiter = (): SteerLimiterParams => ({
@@ -113,7 +148,17 @@ export const defaultSteerLimiter = (): SteerLimiterParams => ({
      is 300 km/h, where the grip-limited radius needs 1.4 degrees of
      lock against 7.9 available — a ratio of 0.18. Below that the
      limiter can never bind on a straight. */
-  floor: 0.1
+  floor: 0.1,
+  latAccel: 16.0,
+  latAccelPerV2: 0.00345,
+  wheelbase: 3.6,
+  maxSteerAngle: 0.349,
+  steerSpeedFactor: 0.45,
+  /* Sixty per cent more lock than a grip-limited corner can use. Enough
+     that the car can still be provoked and corrected and never feels
+     numb; little enough that full travel stops being a request the
+     front axle answers with drag. */
+  speedHeadroom: 1.6
 });
 
 /**
@@ -134,13 +179,49 @@ export const defaultSteerLimiter = (): SteerLimiterParams => ({
  * @param desired    steer the driver asked for, -1..1
  * @param frontSlip  mean slip angle across the front axle (rad, signed)
  */
+/**
+ * The most lock worth having at this speed.
+ *
+ * The integrator below is a closed loop, so it can only cut *after* the
+ * front axle has gone past its peak and the half-metre of relaxation
+ * lag has already put the transient into the car. This stops the
+ * request being made at all.
+ *
+ * At 130 km/h the front axle can use 3.2 degrees and full travel asks
+ * for 15.2 — nearly five times over — and past the peak the lateral
+ * curve slopes down, so the extra lock buys drag and nothing else. That
+ * is what turned a corner into a 130-to-25 km/h scrub.
+ *
+ * Below about 63 km/h this returns exactly 1 and the driver keeps every
+ * degree. That is not a special case: under that speed the car is
+ * limited by the steering rack rather than by grip — at 50 km/h it
+ * needs 17.3 of the 18.2 degrees it has — so the ceiling falls out of
+ * the arithmetic above 1 and clamps. Slow corners are untouched.
+ */
+export const speedLockCeiling = (
+  speed: number,
+  p: SteerLimiterParams = defaultSteerLimiter()
+): number => {
+  const v = Math.abs(speed);
+  if (v < 1) return 1;
+
+  const needed = Math.atan(
+    ((p.latAccel + p.latAccelPerV2 * v * v) * p.wheelbase) / (v * v)
+  );
+  const available =
+    p.maxSteerAngle * (1 - (1 - p.steerSpeedFactor) * clamp((v * 3.6) / 300, 0, 1));
+
+  return clamp((p.speedHeadroom * needed) / available, p.floor, 1);
+};
+
 export const steerLimiter = (
   desired: number,
   frontSlip: number,
   state: AssistState,
   dt: number,
   p: SteerLimiterParams = defaultSteerLimiter(),
-  sliding = false
+  sliding = false,
+  speed = 0
 ): number => {
   /* The sign test is what makes this safe, and it is not obvious.
    *
@@ -156,23 +237,23 @@ export const steerLimiter = (
    * limiter can never take away a correction. Delete this test and the
    * assist fights the driver at exactly the moment they need the wheel
    * most. */
-  /* And the limiter stands down entirely once the car is sideways.
-   *
-   * A yawing car carries a large front slip angle whatever the steering
-   * is doing, so without this the loop reads a save as understeer and
-   * keeps cutting — it walked the ceiling down to its floor mid-slide
-   * and left the driver with a tenth of the lock at the moment the yaw
-   * assist was trying to use all of it. The two aids own different
-   * problems: this one owns "more lock than the front can use in a
-   * corner", the yaw assist owns "the car is already going sideways",
-   * and they must not both act. */
-  const understeering =
-    !sliding &&
+  const beyondPeak =
     desired !== 0 &&
     Math.abs(frontSlip) > p.targetSlip &&
     Math.sign(frontSlip) !== Math.sign(desired);
 
-  if (understeering) {
+  if (sliding) {
+    /* Stand down — but stand down *frozen*.
+     *
+     * A yawing car carries a large front slip angle whatever the
+     * steering is doing, so the loop cannot read it. What it must not
+     * do is conclude from that silence that the lock is safe to hand
+     * back. This branch used to fall through to the restore below, and
+     * the ceiling climbed from 0.93 to 1.00 during a twenty-seven
+     * degree slide — giving the player's full wrong-way lock back at
+     * the one moment it was actively wrong. Hold whatever the corner
+     * had earned and let the yaw assist do its work. */
+  } else if (beyondPeak) {
     state.steerLimit -=
       dt * p.cutRate * clamp(Math.abs(frontSlip) / p.targetSlip - 1, 0, 3);
   } else {
@@ -180,7 +261,124 @@ export const steerLimiter = (
   }
   state.steerLimit = clamp(state.steerLimit, p.floor, 1);
 
-  return clamp(desired, -state.steerLimit, state.steerLimit);
+  /* Whichever is tighter: what the corner has earned, or what the speed
+     can use. The ceiling is applied to the command and never written
+     back into the state, so the integrator keeps its own memory. */
+  const ceiling = Math.min(state.steerLimit, speedLockCeiling(speed, p));
+  return clamp(desired, -ceiling, ceiling);
+};
+
+export interface YawLimiterParams {
+  /** Mechanical grip, as lateral acceleration at rest (m/s^2). */
+  latAccel: number;
+  /** Downforce's share, which grows with the square of speed. */
+  latAccelPerV2: number;
+  /** Distance between axles (m). */
+  wheelbase: number;
+  /** Yaw rate allowed past the target before anything acts (rad/s). */
+  band: number;
+  /** Below this road speed yaw means nothing (m/s). */
+  minSpeed: number;
+  /** Excess at which the correcting torque saturates (rad/s). */
+  span: number;
+  /** Strongest moment the assist will ask for (N m). */
+  peak: number;
+}
+
+export const defaultYawLimiter = (): YawLimiterParams => ({
+  /* A two-term fit of what this car can actually pull: mechanical grip
+     plus downforce. It reproduces the numbers quoted elsewhere in this
+     file — 18.7 m/s^2 at 100 km/h, which is the 39 m grip-limited
+     radius the steering limiter's note cites, and 40 at 300 km/h. */
+  latAccel: 16.0,
+  latAccelPerV2: 0.00345,
+  wheelbase: 3.6,
+  /* Additive rather than a multiplier, and that matters: a
+     multiplicative margin gives zero tolerance in a straight line,
+     where the target is zero, and welds the car to the road. A quarter
+     of a radian per second is fourteen degrees a second of free
+     rotation at any speed — enough for turn-in overshoot and for the
+     half-metre of relaxation lag in the tyre model. A spin is three to
+     five times over, not one point three. */
+  band: 0.25,
+  minSpeed: 8,
+  span: 1.0,
+  /* 1100 kg m^2 of yaw inertia times ten radians per second squared.
+     That removes the one and a half rad/s of excess measured in a real
+     slide in 0.15 s, against the 0.53 s the previous 5200 needed — and
+     0.5 s is longer than the whole event. For scale the rear axle at
+     the limit makes about 13,250 N m of yaw moment on its own, so this
+     is below the authority the tyres themselves routinely use. */
+  peak: 11_000
+});
+
+/**
+ * How much faster the car is rotating than anything could justify.
+ *
+ * This is the change that stops the spin, and the reason is timing.
+ * Sideslip is a lagging indicator: in a measured slide it was still
+ * only eleven degrees — barely past the yaw assist's deadband — while
+ * the car was already rotating at 1.46 rad/s against the 0.56 the grip
+ * at that speed could hold. **Two and a half times over, half a second
+ * before the angle said anything was wrong.**
+ *
+ * The target is the smaller of what the steering is asking for and what
+ * the tyres can deliver, so it is zero on a straight, exactly the
+ * corner's own rate through a corner, and never more than grip allows.
+ * Everything beyond it plus a band is excess, and only the excess is
+ * ever acted on — which is why this cannot resist a turn the driver
+ * genuinely asked for.
+ *
+ * @param steerAngle signed road-wheel angle (rad)
+ * @returns signed excess yaw rate (rad/s), zero when the car is honest
+ */
+export const yawExcessOf = (
+  yawRate: number,
+  steerAngle: number,
+  speed: number,
+  p: YawLimiterParams = defaultYawLimiter()
+): number => {
+  if (Math.abs(speed) < p.minSpeed) return 0;
+
+  /* What the steering is asking for. A positive steer is a right turn,
+     and a right turn is a *negative* yaw rate about +Y — rotating the
+     car's -Z nose by a positive yaw swings it towards -X, which is to
+     the left. Hence the minus, and getting it wrong would make the
+     assist add to every corner instead of nothing. */
+  const asked = (-speed * Math.tan(steerAngle)) / p.wheelbase;
+  const grip = (p.latAccel + p.latAccelPerV2 * speed * speed) / Math.abs(speed);
+
+  const target = clamp(asked, -grip, grip);
+  const error = yawRate - target;
+  return error - clamp(error, -p.band, p.band);
+};
+
+/**
+ * The moment a real stability program makes with the brakes.
+ *
+ * Steering and throttle are not enough on their own, and the reason is
+ * worth writing down: countersteer can only produce as much yaw moment
+ * as the front tyres have grip left, and a car already sideways has
+ * very little. Held at full opposite lock with the throttle cut, the
+ * simulated car still rotated all the way round — correctly, because
+ * that is what the physics says.
+ *
+ * A real car answers this by braking individual wheels, which makes a
+ * yaw moment out of longitudinal force and needs no cornering grip at
+ * all. There is no per-wheel brake channel here, so this asks for the
+ * moment directly. It is a gameplay force and it says so — but it is
+ * the same force an electronic stability program would make, for the
+ * same reason, and it is driven by the yaw *excess*, so it is exactly
+ * zero whenever the car is doing what its steering asked.
+ */
+export const stabilityTorque = (
+  yawExcess: number,
+  p: YawLimiterParams = defaultYawLimiter()
+): number => {
+  // Guarded so an honest car reports exactly +0 rather than -0, which
+  // is a different number to `Object.is` and therefore to a test.
+  if (yawExcess === 0) return 0;
+  return -clamp(yawExcess / p.span, -1, 1) * p.peak;
 };
 
 export interface YawAssistParams {
@@ -209,31 +407,56 @@ export const defaultYawAssist = (): YawAssistParams => ({
      the yaw rate had doubled by the time the assist was allowed to
      look at it. */
   deadband: 0.12,
-  /* Twenty degrees is a slide, not a cornering attitude. */
-  fullBand: 0.35,
-  /* 1 / (20 degrees) — one degree of slide asks for one degree of lock,
-     which is literally what a driver does. Expressed this way rather
-     than by importing `maxSteerAngle`, so this file still knows nothing
-     about the chassis. */
-  counterGain: 3.2,
-  /* The lead term, and deliberately small: a legitimate 50 km/h corner
-     runs about 1.2 rad/s of yaw, which this turns into 0.14 of lock — a
-     nudge, not a fight. It commands countersteer as the slide starts
-     and takes it away again as the slide is caught, which is what stops
-     the correction becoming a tank-slapper. Reverse its sign and the
-     assist oscillates. */
-  rateGain: 0.12,
-  /* Blend, never override — but only just. At twenty degrees of slide
-     the lock the driver is holding is actively wrong, and leaving even
-     a third of it in was enough to stop the save: with the player at
-     full opposite lock the assist could only reach two thirds of the
-     countersteer it wanted. A tenth of the wheel is enough to keep the
-     car from feeling like it is driving itself. */
-  maxAuthority: 0.9,
-  /* Cut to 40 per cent at a full slide rather than to nothing: power-on
-     oversteer feeds itself and a ten-year-old will not lift, but a car
-     with no throttle at all cannot drive out of a spin either. */
-  throttleTrim: 0.6,
+  /* Eleven and a half degrees, down from twenty.
+     Sideslip grew from nothing to twenty-seven degrees in one second in
+     the slide this was tuned against, so the old ramp needed half a
+     second to reach full authority and the car was gone by then. This
+     one takes 0.17 s. It also catches the car while the rear axle still
+     has 97 per cent of its peak force to straighten up with, against 90
+     per cent at twenty degrees. */
+  fullBand: 0.2,
+  /* Saturating at 10.4 degrees of slide, just inside the point where
+     the assist is allowed its full authority — so it is asking for
+     everything it has by the time it may use everything it has.
+     One degree of slide per degree of lock, which is what the old value
+     was aiming at, turns out to be too little: at 130 km/h the rack
+     only offers 15.2 degrees, so matching the slide angle merely points
+     the front wheels *along* the direction of travel, and wheels
+     pointing where the car is already going make no restoring moment at
+     all. This asks for about 1.45 times the slide, which does. */
+  counterGain: 5.5,
+  /* The lead term — and its sign was wrong, which is worth stating
+     plainly because the comment that used to sit here described the
+     right physics and the code did the opposite.
+     Forward is -Z and right is +X, so a right turn is a *negative* yaw
+     rate; and when the rear steps out in that turn the velocity vector
+     sits to the left of the nose, making sideslip negative too. Slide
+     and yaw rate therefore share a sign while a slide is opening and
+     oppose once it is being caught. Subtracting the rate term, as this
+     did, took countersteer away exactly while the slide grew and added
+     it while the car came back — a positive feedback term wearing a
+     damper's clothes, and the reason the measured trace oscillated
+     between thirteen and twenty degrees instead of settling.
+     Driven off the yaw *excess* rather than the raw rate, so a car
+     going round a corner at the rate that corner implies contributes
+     nothing. Read the size as a release time: the command nulls once
+     the car is unwinding fast enough to close the remaining slide in
+     about three tenths of a second. */
+  rateGain: 1.6,
+  /* Blend, never override — but only just. With the driver holding
+     full wrong-way lock this is the difference between reaching -0.80
+     of countersteer and -0.90, and the measured slide needed the
+     latter. What keeps the car from feeling like it drives itself is
+     the deadband, not this number: below seven degrees of sideslip the
+     assist is bit-exact zero. */
+  maxAuthority: 0.95,
+  /* Now the only thing shaping throttle while the car is sideways —
+     traction control stands down there, because slip ratio misreads a
+     yaw event as wheelspin. A third of throttle in fourth at 130 km/h
+     cannot light the rears, and it is the difference between a car that
+     drives out of a slide and the 0.07 that was measured, which is a
+     car being dragged to a halt. */
+  throttleTrim: 0.7,
   minSpeed: 6
 });
 
@@ -252,16 +475,18 @@ export interface YawAssistResult {
  * invented understeer gradient, and its target is exactly zero, which
  * is the whole reason to prefer it to a yaw-rate error.
  *
- * @param sideslip  radians, positive when the car travels to the right
- *                  of its own nose
- * @param yawRate   radians per second about the vertical axis
- * @param speed     road speed, m/s
+ * @param sideslip   radians, positive when the car travels to the right
+ *                   of its own nose
+ * @param yawExcess  yaw rate beyond what the steering and grip imply,
+ *                   from `yawExcessOf` — not the raw rate, which cannot
+ *                   tell a corner from a spin
+ * @param speed      road speed, m/s
  */
 export const yawAssist = (
   desiredSteer: number,
   desiredThrottle: number,
   sideslip: number,
-  yawRate: number,
+  yawExcess: number,
   speed: number,
   p: YawAssistParams = defaultYawAssist()
 ): YawAssistResult => {
@@ -273,54 +498,18 @@ export const yawAssist = (
 
   const authority = clamp(over / (p.fullBand - p.deadband), 0, 1) * p.maxAuthority;
 
-  /* A tail out to the left means the car is yawing right and travelling
-     to the left of its nose, so both terms come out negative and the
-     assist steers left — into the slide, as it should. */
-  const counter = clamp(p.counterGain * sideslip - p.rateGain * yawRate, -1, 1);
+  /* A tail out to the right means the car is yawing right and
+     travelling to the left of its nose: sideslip negative, yaw rate
+     negative, both terms negative, and the assist steers left — into
+     the slide, as it should. The two share a sign while the slide opens
+     and oppose while it is caught, which is why they *add*. */
+  const counter = clamp(p.counterGain * sideslip + p.rateGain * yawExcess, -1, 1);
 
   return {
     steer: desiredSteer + authority * (counter - desiredSteer),
     throttle: desiredThrottle * (1 - p.throttleTrim * authority),
     authority
   };
-};
-
-/**
- * The moment a real stability program makes with the brakes.
- *
- * Steering and throttle turned out not to be enough on their own, and
- * the reason is worth writing down: countersteer can only produce as
- * much yaw moment as the front tyres have grip left, and a car already
- * sideways at seventy degrees has very little. Held at full opposite
- * lock with the throttle cut, the simulated car still rotated all the
- * way round — correctly, because that is what the physics says.
- *
- * A real car answers this by braking individual wheels, which makes a
- * yaw moment out of longitudinal force and needs no cornering grip at
- * all. There is no per-wheel brake channel here, so this asks for the
- * moment directly. It is a gameplay force and it says so — but it is
- * the same force an electronic stability program would make, for the
- * same reason, and it is gated on the same authority as everything
- * else, so it is exactly zero until the car is genuinely sliding.
- *
- * @returns newton-metres about the vertical axis, signed
- */
-export const stabilityTorque = (
-  sideslip: number,
-  yawRate: number,
-  speed: number,
-  p: YawAssistParams = defaultYawAssist(),
-  peak = 5200
-): number => {
-  if (Math.abs(speed) < p.minSpeed) return 0;
-  const over = Math.abs(sideslip) - p.deadband;
-  if (over <= 0) return 0;
-
-  const authority = clamp(over / (p.fullBand - p.deadband), 0, 1);
-  /* Opposing the yaw rate rather than the slide angle: it is angular
-     momentum that has to go, and a damper is what removes it without
-     ever pushing the car the other way. */
-  return -clamp(yawRate / 2.5, -1, 1) * authority * peak;
 };
 
 /**
@@ -385,6 +574,7 @@ export interface EasyModeParams {
   traction: TractionControlParams;
   steering: SteerLimiterParams;
   yaw: YawAssistParams;
+  limiter: YawLimiterParams;
   reverse: ReverseParams;
   /** Below this road speed every loop is bypassed and reset (m/s). */
   bypassSpeed: number;
@@ -394,6 +584,7 @@ export const defaultEasyMode = (): EasyModeParams => ({
   traction: defaultTractionControl(),
   steering: defaultSteerLimiter(),
   yaw: defaultYawAssist(),
+  limiter: defaultYawLimiter(),
   reverse: defaultReverse(),
   bypassSpeed: 3
 });
@@ -439,6 +630,7 @@ export const driverAids = (
   if (Math.abs(state.speed) < p.bypassSpeed) {
     assist.throttleLimit = 1;
     assist.steerLimit = 1;
+    assist.stabilityTorque = 0;
     return pedals;
   }
 
@@ -446,7 +638,14 @@ export const driverAids = (
     Math.abs(state.wheels[RL].slipRatio),
     Math.abs(state.wheels[RR].slipRatio)
   );
-  let throttle = tractionControl(pedals.throttle, drivenSlip, assist, dt, p.traction);
+  let throttle = tractionControl(
+    pedals.throttle,
+    drivenSlip,
+    assist,
+    dt,
+    p.traction,
+    Math.abs(sideslipOf(state)) > p.yaw.deadband
+  );
 
   /* The mean of the two front wheels rather than the larger. They share
      a steer angle and sit 1.6 m apart, so they track each other closely
@@ -455,11 +654,23 @@ export const driverAids = (
   const grounded = state.wheels[FL].grounded || state.wheels[FR].grounded;
   const sideslip = sideslipOf(state);
   const sliding = Math.abs(sideslip) > p.yaw.deadband;
+
+  /* How much faster the car is turning than anything could justify.
+     Computed once here and used by both the steering correction and the
+     torque, so the two can never be looking at different states. */
+  const excess = yawExcessOf(
+    state.angularVelocity.y,
+    state.steerAngles[FL],
+    state.speed,
+    p.limiter
+  );
+  assist.stabilityTorque = stabilityTorque(excess, p.limiter);
+
   const steer = grounded
-    ? steerLimiter(pedals.steer, frontSlip, assist, dt, p.steering, sliding)
+    ? steerLimiter(pedals.steer, frontSlip, assist, dt, p.steering, sliding, state.speed)
     : clamp(pedals.steer, -assist.steerLimit, assist.steerLimit);
 
-  const caught = yawAssist(steer, throttle, sideslip, state.angularVelocity.y, state.speed, p.yaw);
+  const caught = yawAssist(steer, throttle, sideslip, excess, state.speed, p.yaw);
   throttle = caught.throttle;
 
   return { ...pedals, throttle, steer: caught.steer };

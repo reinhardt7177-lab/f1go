@@ -8,7 +8,7 @@ import { FixedLoop } from './core/loop';
 import { InputManager } from './input/controls';
 import { CAMERA_LABELS, SceneRenderer } from './render/scene';
 import type { CameraMode } from './render/scene';
-import { driverAids, initialAssistState, sideslipOf, stabilityTorque, tractionControl } from './sim/assists';
+import { driverAids, initialAssistState, tractionControl } from './sim/assists';
 import { RL, RR } from './sim/types';
 import { defaultVehicleParams } from './sim/vehicle';
 import { SimWorld, defaultBarrier, initPhysics } from './sim/world';
@@ -240,6 +240,7 @@ const boot = async (): Promise<void> => {
     input.options.steerRampTime = on ? 0.45 : 0.34;
     assist.throttleLimit = 1;
     assist.steerLimit = 1;
+    assist.stabilityTorque = 0;
     world.car.stabilityTorque = 0;
     steeringPanel.refresh();
   };
@@ -407,9 +408,7 @@ const boot = async (): Promise<void> => {
          so the moment has to come from somewhere else. Zero unless the
          car is genuinely sliding. */
       world.car.stabilityTorque =
-        aids.easy && !aids.autopilot
-          ? stabilityTorque(sideslipOf(state), state.angularVelocity.y, state.speed)
-          : 0;
+        aids.easy && !aids.autopilot ? assist.stabilityTorque : 0;
 
       const finished = session.phase === 'finished';
       /* On the grid the car is held, exactly as it is during a pit

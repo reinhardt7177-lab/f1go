@@ -27,7 +27,6 @@ export class StartLights {
 
   private shown = -1;
   private goUntil = 0;
-  private done = false;
   /** Whether the car was still being held the last time this ran. */
   private wasOnGrid = false;
 
@@ -107,10 +106,18 @@ export class StartLights {
       return;
     }
 
-    // Hidden for the rest of the session, and only written once — this
-    // runs every frame for the next twenty minutes.
-    if (!this.done) {
-      this.done = true;
+    /* Away, and written only when it is not already away.
+     *
+     * This used to be latched behind a `done` flag set the first time
+     * the gantry was hidden — an optimisation, since this runs every
+     * frame for the next twenty minutes. It was wrong, because the
+     * gantry is hidden *twice*: once at boot, while the title card is
+     * up and `hasBegun` is still false, and once for real after GO!.
+     * The latch closed on the first of those, so the second never ran
+     * and the lights stayed on screen with GO! under them for the whole
+     * session. Comparing against what is actually on screen costs one
+     * `contains` a frame and cannot get out of step. */
+    if (!this.root.classList.contains('hidden')) {
       this.root.classList.add('hidden');
       this.go.classList.remove('on');
     }

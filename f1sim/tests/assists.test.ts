@@ -108,19 +108,24 @@ describe('yaw assist', () => {
     expect(out.authority).toBeGreaterThan(0);
   });
 
-  it('lets go as the slide is caught', () => {
-    /* Same slide, but the yaw rate has reversed — the car is coming
-       back. The counter command must be smaller than it was while the
-       slide was still developing, or the correction becomes a
-       tank-slapper. This is the `-rateGain * yawRate` sign, pinned. */
-    const developing = yawAssist(0, 1, -20 * DEG, 1.5, 60);
-    const catching = yawAssist(0, 1, -20 * DEG, -1.5, 60);
-    expect(Math.abs(catching.steer)).toBeLessThan(Math.abs(developing.steer));
+  it('steers harder into a slide that is still opening', () => {
+    /* Sideslip and yaw rate share a sign while a slide develops — a
+       car spinning right travels to the left of its own nose, so both
+       are negative — and oppose once it is coming back. The lead term
+       must therefore *add*. It used to subtract, which fed the slide
+       while it grew and fought the correction while it was caught, and
+       this test had the two cases the wrong way round and so agreed
+       with it. If it ever inverts again, this fails. */
+    const opening = yawAssist(0, 1, -20 * DEG, -1.5, 60);
+    const catching = yawAssist(0, 1, -20 * DEG, 1.5, 60);
+    expect(Math.abs(opening.steer)).toBeGreaterThan(Math.abs(catching.steer));
   });
 
   it('trims the throttle in proportion to the slide', () => {
-    const small = yawAssist(0, 1, 18 * DEG, 0, 60);
-    const large = yawAssist(0, 1, 30 * DEG, 0, 60);
+    // Both inside the ramp, which now reaches full authority at 11.5
+    // degrees rather than twenty.
+    const small = yawAssist(0, 1, 8 * DEG, 0, 60);
+    const large = yawAssist(0, 1, 10 * DEG, 0, 60);
     expect(small.throttle).toBeLessThan(1);
     expect(large.throttle).toBeLessThan(small.throttle);
 

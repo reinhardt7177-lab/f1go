@@ -86,14 +86,17 @@ describe('the boundary', () => {
     /* What "soft" has to mean, stated as a number.
        The car must not get past the wall it can see. A spring alone let
        it nine metres into the grass at 140 km/h — drawn wall, car
-       sailing over it — so the outward momentum is taken away directly
-       as well. Two metres is a wheel over the line, which is what
-       leaning on a barrier looks like. Unheld the same car makes 242 m. */
+       sailing over it. Taking the outward momentum away fast enough to
+       hold it at two metres turned out to pivot the car instead: the
+       velocity vector swung round while the nose stayed put, which the
+       stability assist then read as a spin. So the wall is softer and
+       has friction, and the car leans on it for about three metres
+       before it is turned. Unheld the same car makes 242. */
     const world = new SimWorld(defaultVehicleParams(), { circuitId: 'redbullring' });
     const widest =
       world.circuit.halfWidthAt(0) + world.circuit.kerbWidth + world.circuit.runoffAt(0);
     world.dispose();
 
-    expect(strayed(true)).toBeLessThan(widest + 2);
+    expect(strayed(true)).toBeLessThan(widest + 4);
   });
 });

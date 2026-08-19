@@ -10,7 +10,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { KMH } from '../src/core/math';
-import { driverAids, initialAssistState, sideslipOf, stabilityTorque } from '../src/sim/assists';
+import { driverAids, initialAssistState, sideslipOf } from '../src/sim/assists';
 import type { AssistState } from '../src/sim/assists';
 import { neutralControls } from '../src/sim/types';
 import type { ControlState } from '../src/sim/types';
@@ -126,14 +126,24 @@ describe('the thermal model on the grid', () => {
 });
 
 describe('a child holding the keys down', () => {
-  /**
-   * Get the car rolling in a straight line.
+  /*
+   * Full lock and full throttle, held, from a rolling start — exactly
+   * what a ten-year-old does and exactly the complaint that started
+   * this.
    *
-   * Upshifts are driven by road speed rather than a tick counter, the
-   * same way `vehicle.test.ts` does it and for the same reason: shifting
-   * on a timer runs the car into eighth at walking pace, where it cannot
-   * pull and simply rolls backwards. A backwards car reads as 180
-   * degrees of sideslip, which looks exactly like a spin and is not one.
+   * On the proving ground rather than a circuit, and that is a
+   * deliberate retreat from an earlier version of this test. Pinning
+   * the car to one named corner meant first driving it there, and every
+   * way of doing that measured something else: steering straight put
+   * the car three hundred metres into a field before the corner
+   * arrived, and handing the job to the autopilot made the test depend
+   * on the autopilot. The pad has no corner to leave and no barrier to
+   * hit, so what is left in the numbers is the car and the aids.
+   *
+   * What was wrong before was not the venue but the bar. The old
+   * threshold was 45 degrees of sideslip, and a car at 44 has spun. The
+   * measured failure reached 78 and lost four fifths of its speed;
+   * both of those are now asserted against.
    */
   const rollUp = (world: SimWorld, assist: AssistState, target: number): number => {
     for (let i = 0; i < 3600; i++) {
@@ -141,23 +151,17 @@ describe('a child holding the keys down', () => {
       const kmh = Math.abs(state.speed) * KMH;
       if (kmh > target) break;
 
-      const wantShift = kmh > world.car.drivetrain.gear * 42;
       const eased = driverAids({ ...neutralControls(), throttle: 0.8 }, state, assist, DT);
-      world.car.stabilityTorque = stabilityTorque(
-        sideslipOf(state), state.angularVelocity.y, state.speed
-      );
-      world.car.controls = { ...eased, shiftUp: wantShift };
+      world.car.stabilityTorque = assist.stabilityTorque;
+      world.car.controls = { ...eased, shiftUp: kmh > world.car.drivetrain.gear * 42 };
       world.step(DT);
     }
     return Math.abs(world.car.getState().speed) * KMH;
   };
 
-  /**
-   * Full lock and full throttle, held — exactly what a ten-year-old
-   * does, and exactly the complaint that started this. Returns the worst
-   * sideslip reached in ten seconds.
-   */
-  const worstSlide = (easy: boolean): number => {
+  interface Run { entry: number; peak: number; lateMean: number; minSpeed: number }
+
+  const heldAtFullLock = (easy: boolean): Run => {
     const world = testWorld();
     if (easy) {
       world.car.gripBoost = 1.25;
@@ -166,31 +170,98 @@ describe('a child holding the keys down', () => {
     }
     const assist = initialAssistState();
 
-    const entry = rollUp(world, assist, 110);
-    // If the car never got up to speed the rest measures nothing.
-    expect(entry).toBeGreaterThan(100);
+    const entry = rollUp(world, assist, 130);
+    expect(entry).toBeGreaterThan(120);
 
-    let worst = 0;
+    let peak = 0;
+    let minSpeed = Infinity;
+    const late: number[] = [];
     const asked: ControlState = { ...neutralControls(), throttle: 1, steer: 1 };
+
     for (let i = 0; i < 1200; i++) {
       const state = world.car.getState();
       world.car.controls = easy ? driverAids(asked, state, assist, DT) : asked;
-      world.car.stabilityTorque = easy
-        ? stabilityTorque(sideslipOf(state), state.angularVelocity.y, state.speed)
-        : 0;
+      world.car.stabilityTorque = easy ? assist.stabilityTorque : 0;
       world.step(DT);
-      worst = Math.max(worst, Math.abs(sideslipOf(world.car.getState())));
+
+      const after = world.car.getState();
+      const slip = Math.abs(sideslipOf(after));
+      peak = Math.max(peak, slip);
+      minSpeed = Math.min(minSpeed, Math.abs(after.speed) * KMH);
+      // The last five seconds: one transient is not a slide.
+      if (i > 600) late.push(slip);
     }
+
     world.dispose();
-    return worst;
+    return {
+      entry,
+      peak,
+      lateMean: late.reduce((a, b) => a + b, 0) / late.length,
+      minSpeed
+    };
   };
 
-  it('spins the unassisted car', () => {
-    // The baseline has to be a spin, or the test below proves nothing.
-    expect(worstSlide(false)).toBeGreaterThan(45 * DEG);
+  it('spins the unassisted car and takes its speed', () => {
+    // The control. Without this the assertions below prove nothing.
+    const plain = heldAtFullLock(false);
+    expect(plain.peak).toBeGreaterThan(45 * DEG);
+    expect(plain.minSpeed).toBeLessThan(0.4 * plain.entry);
   });
 
-  it('does not spin the assisted one', () => {
-    expect(worstSlide(true)).toBeLessThan(45 * DEG);
+  it('keeps the assisted car pointing where it is going', () => {
+    const eased = heldAtFullLock(true);
+    /* Full authority arrives at 11.5 degrees by design, so 20 is the
+       catch plus its transient — and still comfortably under the 45
+       that used to pass. It is also well above the 6.6 degrees a car
+       cornering at the limit legitimately runs, so a merely fast lap
+       can never fail this. */
+    expect(eased.peak).toBeLessThan(20 * DEG);
+    // And caught, not merely bounded: ten seconds of yaw is a slide.
+    expect(eased.lateMean).toBeLessThan(10 * DEG);
+  });
+
+  it('and keeps most of its speed while it does', () => {
+    // The measured failure scrubbed 130 km/h to 25 — under a fifth.
+    const eased = heldAtFullLock(true);
+    expect(eased.minSpeed).toBeGreaterThan(0.5 * eased.entry);
+  });
+});
+
+describe('driving properly', () => {
+  it('is invisible in a straight line', () => {
+    /*
+     * The test that protects the simulator underneath, stated where it
+     * can be stated exactly: rolling straight at speed, the target yaw
+     * rate is zero, the excess is zero, and every aid must hand the
+     * command back bit for bit.
+     *
+     * If any of the three mechanisms ever starts shaping honest driving
+     * rather than catching mistakes, this fails on the first tick.
+     */
+    const world = testWorld();
+    world.car.gripBoost = 1.25;
+    const assist = initialAssistState();
+
+    for (let i = 0; i < 1800; i++) {
+      const state = world.car.getState();
+      const kmh = Math.abs(state.speed) * KMH;
+      if (kmh > 120) break;
+      const eased = driverAids({ ...neutralControls(), throttle: 0.8 }, state, assist, DT);
+      world.car.stabilityTorque = assist.stabilityTorque;
+      world.car.controls = { ...eased, shiftUp: kmh > world.car.drivetrain.gear * 42 };
+      world.step(DT);
+    }
+
+    const asked: ControlState = { ...neutralControls(), throttle: 0.4 };
+    for (let i = 0; i < 240; i++) {
+      const state = world.car.getState();
+      const out = driverAids(asked, state, assist, DT);
+      expect(out.steer).toBe(0);
+      expect(out.throttle).toBe(0.4);
+      expect(assist.stabilityTorque).toBe(0);
+      world.car.controls = out;
+      world.step(DT);
+    }
+    world.dispose();
   });
 });

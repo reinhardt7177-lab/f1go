@@ -45,13 +45,15 @@ export interface BarrierParams {
   absorb: number;
   /** Depth past the line at which absorption is at full strength (m). */
   absorbDepth: number;
+  /** How much of the contact force becomes drag along the wall. */
+  friction: number;
 }
 
 export const defaultBarrier = (): BarrierParams => ({
-  stiffness: 9,
+  stiffness: 14,
   /* A little over 1 g of spring, which is what turns a car that has
      drifted wide back towards the road. */
-  maxAccel: 12,
+  maxAccel: 18,
   damping: 2.5,
   /* Half a car's width, so the force starts as the bodywork reaches the
      wall rather than as the centreline does. */
@@ -72,9 +74,32 @@ export const defaultBarrier = (): BarrierParams => ({
    * would flip the car, which is the whole reason the wall is not a
    * collider in the first place.
    */
-  absorb: 14,
+  /* Gently, and this number was four times too big.
+   *
+   * At 14 the outward velocity was two thirds gone in eighty
+   * milliseconds. That stops the car leaving, but it also swings the
+   * velocity vector round while the car is still pointing where it was
+   * — measured as sideslip jumping from four degrees to forty-five in a
+   * fifth of a second with the yaw rate barely moving. The car had not
+   * rotated at all; its direction of travel had. The stability assist
+   * then read that as a spin and threw full countersteer at it.
+   *
+   * At 4 the same redirect takes about three tenths of a second, which
+   * the tyres can follow, and the spring below does more of the work. A
+   * barrier should turn a car, not pivot it. */
+  absorb: 5,
   /* Depth at which absorption reaches full strength (m). */
-  absorbDepth: 1.5
+  absorbDepth: 1.5,
+  /* And it scrapes.
+   *
+   * A wall that only pushes sideways lets a car carry its full speed
+   * along it, so the only way to stop the car going through was to take
+   * the outward velocity away violently — which pivoted it. Friction is
+   * what a real barrier does instead: the harder you lean on it the
+   * more speed it takes, in the direction you are travelling, which
+   * both slows the car and shortens how far into the wall it gets
+   * without ever swinging it round. */
+  friction: 0.55
 });
 
 /**
@@ -292,6 +317,18 @@ export class SimWorld {
       { x: sample.left.x * force, y: 0, z: sample.left.z * force },
       true
     );
+
+    /* Scraping along it. The force above is the normal load; this is
+       the friction that load produces, opposing travel — so leaning on
+       the wall costs speed, the way it does in life. */
+    const along = Math.hypot(velocity.x, velocity.z);
+    if (along > 1) {
+      const drag = accel * mass * p.friction;
+      this.car.body.addForce(
+        { x: (-velocity.x / along) * drag, y: 0, z: (-velocity.z / along) * drag },
+        true
+      );
+    }
 
     /* And take the outward momentum away directly, because a force
        cannot do it fast enough — see `defaultBarrier`. Ramped with
