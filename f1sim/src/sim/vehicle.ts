@@ -163,6 +163,58 @@ export class Vehicle {
   /** Set by the world when the car is on a circuit rather than a pad. */
   surfaceSampler: SurfaceSampler | null = null;
 
+  /*
+   * Three dials the composition root may turn, and every default is the
+   * identity — this is the simulator until something asks otherwise.
+   *
+   * They live here rather than in `VehicleParams` on purpose. The params
+   * are what the car *is*, and the tests measure them; these are what a
+   * particular session has decided to do to it. Keeping them apart is
+   * what lets easy mode exist without a single test moving.
+   */
+
+  /**
+   * Global multiplier on tyre friction. 1 is the model, untouched.
+   *
+   * Applied equally to all four wheels, so it cannot change the
+   * front-to-rear balance — it does not make the car oversteer, it
+   * makes the whole car stickier. What it buys is not peak grip but the
+   * sliding plateau: past the peak a tyre delivers 0.707 of its best,
+   * so at 1.25 a car that is already sideways has 0.88 of the force an
+   * unboosted car has at its own peak. That is the difference between a
+   * slide that keeps going and one that pulls itself straight.
+   */
+  gripBoost = 1;
+
+  /**
+   * Temperature a fresh set is fitted at, or null for the model's own
+   * cold edge — 25 degrees below optimal, where grip is 0.93.
+   */
+  tireStartTemp: number | null = null;
+
+  /**
+   * True while the car is held and no work is being done on the tyres.
+   *
+   * `holdStationary` zeroes the velocities but the thermal model kept
+   * running, so tyres cooled at 0.4 degrees a second behind the title
+   * card and on the grid. A minute of reading the title screen cost six
+   * per cent of tyre friction before the lights had even gone out.
+   * `race/session.ts` already says of that screen that "nothing at all
+   * happens behind the title card — not the lights, not the clock, not
+   * track limits"; the tyre model was the last thing still going.
+   */
+  thermalFrozen = false;
+
+  /**
+   * Yaw moment asked for by the stability assist, in newton-metres.
+   *
+   * Zero is the simulator. See `stabilityTorque` in `sim/assists.ts` for
+   * why it exists and why it cannot be done through the controls: it is
+   * the moment a real car makes with individual wheel brakes, and there
+   * is no per-wheel brake channel to make it with.
+   */
+  stabilityTorque = 0;
+
   constructor(
     private readonly world: RAPIER.World,
     params: VehicleParams = defaultVehicleParams(),
@@ -219,7 +271,7 @@ export class Vehicle {
       steerAngle: 0,
       contactY: 0,
       relaxedSlipAngle: 0,
-      condition: freshTire(params.thermal)
+      condition: freshTire(params.thermal, this.tireStartTemp ?? undefined)
     });
 
     this.wheels[FL] = make(-c.trackFront / 2, front, true, false, true);
@@ -231,7 +283,7 @@ export class Vehicle {
   /** Bolt on a new set of tyres — cold, unworn. */
   fitFreshTires(): void {
     for (const w of this.wheels) {
-      w.condition = freshTire(this.params.thermal);
+      w.condition = freshTire(this.params.thermal, this.tireStartTemp ?? undefined);
       w.relaxedSlipAngle = 0;
     }
   }
@@ -261,7 +313,7 @@ export class Vehicle {
       w.compression = 0;
       w.lastCompression = 0;
       w.relaxedSlipAngle = 0;
-      w.condition = freshTire(this.params.thermal);
+      w.condition = freshTire(this.params.thermal, this.tireStartTemp ?? undefined);
       w.telemetry = emptyWheelTelemetry();
     }
     this.gLong = 0;
@@ -274,6 +326,13 @@ export class Vehicle {
 
     this.body.resetForces(false);
     this.body.resetTorques(false);
+
+    /* After the reset, not before it — everything accumulated for this
+       tick has to survive to the solver, and the two lines above wipe
+       whatever was added first. */
+    if (this.stabilityTorque !== 0) {
+      this.body.addTorque({ x: 0, y: this.stabilityTorque, z: 0 }, true);
+    }
 
     const rot = this.body.rotation();
     const pos = this.body.translation();
@@ -431,7 +490,9 @@ export class Vehicle {
         t.omega = w.omega;
 
         // An airborne tyre still cools in the airstream.
-        stepTireCondition(thermal, w.condition, 0, Math.hypot(linvel.x, linvel.z), dt, false);
+        if (!this.thermalFrozen) {
+          stepTireCondition(thermal, w.condition, 0, Math.hypot(linvel.x, linvel.z), dt, false);
+        }
         t.surfaceTemp = w.condition.surfaceTemp;
         t.coreTemp = w.condition.coreTemp;
         t.wear = w.condition.wear;
@@ -489,7 +550,8 @@ export class Vehicle {
       // Everything that scales the available friction without changing
       // the shape of the curve.
       const surfaceGrip = this.surfaceSampler ? this.surfaceSampler(contact.point) : 1;
-      const gripScale = surfaceGrip * conditionGrip(thermal, w.condition);
+      const gripScale =
+        surfaceGrip * conditionGrip(thermal, w.condition) * this.gripBoost;
 
       // --- wheel spin, sub-stepped ---------------------------------
       // The wheel/tyre pair is a stiff system: a wheel carries very
@@ -577,7 +639,9 @@ export class Vehicle {
       const slideLat = vLat;
       const frictionPower =
         Math.abs(forces.long * slideLong) + Math.abs(forces.lat * slideLat);
-      stepTireCondition(thermal, w.condition, frictionPower, Math.abs(vLong), dt, true);
+      if (!this.thermalFrozen) {
+        stepTireCondition(thermal, w.condition, frictionPower, Math.abs(vLong), dt, true);
+      }
 
       t.grounded = true;
       t.load = load;

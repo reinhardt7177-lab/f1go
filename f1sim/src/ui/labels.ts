@@ -25,8 +25,21 @@ export interface ScreenPoint {
   distance: number;
 }
 
-/** Beyond this a tag is smaller than the car and just clutters the road. */
-const MAX_DISTANCE = 240;
+/**
+ * Beyond this the tag is dropped.
+ *
+ * Two hundred and forty metres was far too far. At that range half the
+ * field is inside a few degrees of the vanishing point, so the tags
+ * stack into a pile of overlapping badges sitting on the horizon —
+ * which is worse than no tags at all, because it is a wall of text
+ * exactly where the next corner appears.
+ *
+ * Ninety metres is about the distance over which you are actually
+ * racing someone: close enough that the car is a car rather than a
+ * dot, and near enough that only the one or two you are fighting are
+ * ever named.
+ */
+const MAX_DISTANCE = 90;
 
 /** Height above the road the tag floats at (m). */
 const LIFT = 1.5;
@@ -77,9 +90,9 @@ export class RivalLabels {
         continue;
       }
 
-      /* Fade the last fifty metres rather than switching off, so a car
+      /* Fade the last thirty metres rather than switching off, so a car
          cresting a rise does not make its tag blink. */
-      const fade = Math.min(1, (MAX_DISTANCE - screen.distance) / 50);
+      const fade = Math.min(1, (MAX_DISTANCE - screen.distance) / 30);
       tag.style.opacity = fade.toFixed(2);
       tag.style.transform = `translate3d(${screen.x.toFixed(1)}px, ${screen.y.toFixed(1)}px, 0) translate(-50%, -100%)`;
     }

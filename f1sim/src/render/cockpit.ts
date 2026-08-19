@@ -8,13 +8,11 @@
  *
  * Two things drive the layout, and they pull against each other.
  *
- * The eye is behind the halo, so the hoop cuts across the view. That is
- * not a defect to be designed around: it is the single most
- * recognisable thing about the modern cockpit, and a first-person view
- * without it reads as a generic racing game. Its centre pillar is a
- * different matter, and is gone — see `buildHalo`.
+ * There is no halo, and that was a decision rather than an oversight —
+ * see `buildHalo` for why the most recognisable part of a modern
+ * cockpit is missing from this one.
  *
- * The wheel is the other half. It is the only part that moves, and it
+ * The wheel is what is left. It is the only part that moves, and it
  * is what makes the car feel connected to your hands rather than to a
  * number somewhere. It carries its own rev lights and gear readout,
  * because in a real car that display is the primary instrument and the
@@ -38,15 +36,15 @@ export const EYE = new THREE.Vector3(0, 0.62, -0.10);
 
 /*
  * Carbon is nearly black in life, but a cockpit rendered at its true
- * value is a silhouette: the halo, the tub and the mirrors all collapse
+ * value is a silhouette: the tub, the mirrors and the nose all collapse
  * into one dark mass and none of them reads as a separate object. These
  * are lifted, and separated from each other, so the shapes stay
  * legible.
  *
  * Drawn rather than lit, they have to go further still. Under a
- * lighting model the halo separated from the tub behind it because the
- * two caught the sun differently; under four flat bands they are one
- * value and one shape. So the ink line does the separating instead —
+ * lighting model two parts separated because they caught the sun
+ * differently; under four flat bands they are one value and one shape.
+ * So the ink line does the separating instead —
  * which means every part needs to be light enough to have a black line
  * drawn round it, and the values below are picked for that rather than
  * for what carbon fibre looks like.
@@ -224,43 +222,23 @@ export class Cockpit {
    * `HALO_Z - HALO_R`, and the pillar has to stand exactly there or the
    * two do not meet.
    */
+  /**
+   * There is no halo, and there was.
+   *
+   * A real car has one, it is the most recognisable thing about the
+   * modern cockpit, and the hoop plus its centre pillar were both here
+   * on that argument. Both are gone now, and for the same reason: the
+   * pillar stood exactly where the apex appears, and the hoop draws a
+   * black bar straight across the horizon — which is the one line of
+   * the picture a driver actually reads a corner from.
+   *
+   * Broadcast has the same problem and solves it the same way. The
+   * onboard camera is mounted above the halo rather than behind it, so
+   * neither part is ever in shot. This is that camera.
+   */
   private buildHalo(): void {
-    const halo = mat(CARBON, 0.55, 0.2);
-
-    const HALO_R = 0.50;
-    const HALO_Z = -0.55;
-    // Above the eye, not level with it. At eye height the hoop lies
-    // exactly along the horizon and reads as a bar drawn across the
-    // middle of the world — which is the one place it must not be, since
-    // the horizon is where the corner appears.
-    const HALO_Y = 0.76;
-
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(HALO_R, 0.028, 10, 40, Math.PI), halo);
-    ring.rotation.set(-Math.PI / 2, 0, 0);
-    ring.position.set(0, HALO_Y, HALO_Z);
-    this.group.add(ring);
-
-    // Rear legs, from the hoop's ends back down into the tub sides.
-    for (const side of [-1, 1]) {
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.036, 0.52, 8), halo);
-      leg.position.set(side * HALO_R, HALO_Y - 0.25, HALO_Z + 0.02);
-      leg.rotation.z = side * 0.20;
-      this.group.add(leg);
-    }
-
-    /* There is no centre pillar, and there was.
-     *
-     * A real halo has one, it is the most recognisable thing about the
-     * modern cockpit, and it was kept deliberately thin here on the
-     * argument that a real one subtends about two degrees. All of that
-     * is true and none of it survived contact with the screen: two
-     * degrees of a windscreen is a detail you look past, and two
-     * degrees of a 1280-pixel viewport is a bar standing exactly where
-     * the apex appears, in the one part of the frame you steer with.
-     *
-     * Broadcast has the same problem and solves it the same way — the
-     * onboard camera is mounted above the halo rather than behind it,
-     * so the pillar is out of shot. This is that camera. */
+    /* Nothing. Kept as a call so the reason survives in one place
+       rather than as an absence someone has to notice. */
   }
 
   /** Mirrors on stalks, out at the edge of the tub. */

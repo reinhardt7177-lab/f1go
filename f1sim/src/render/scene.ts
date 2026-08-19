@@ -15,6 +15,7 @@ import { loadCarModel } from './carmodel';
 import type { CarFit } from './carmodel';
 import { buildCarGeometry, buildWheelGeometry } from './carbody';
 import { Cockpit, EYE } from './cockpit';
+import { buildBarriers } from './barrier';
 import { RivalRenderer } from './rivals';
 import { buildScenery } from './scenery';
 import { TyreSmoke } from './smoke';
@@ -286,6 +287,13 @@ export class SceneRenderer {
     ink.receiveShadow = false;
     ink.castShadow = false;
     this.scene.add(ink);
+
+    /* And the wall at the edge. Drawn only — `sim/world.ts` is what
+       actually keeps the car in, by leaning on it rather than blocking
+       it. Both read where the edge is from the same cross-section, so
+       the wall the player sees and the line they are held at cannot
+       drift apart. */
+    this.scene.add(buildBarriers(track));
 
     // Ground plane, so the horizon is not empty space where the
     // circuit's own mesh runs out. Big enough to reach past the fog in

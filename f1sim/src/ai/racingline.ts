@@ -155,6 +155,18 @@ export class RacingLine {
   }
 
   /** World position of the racing line at a distance along the circuit. */
+  /**
+   * The road's left vector at a distance along the circuit.
+   *
+   * Straight off the spline rather than off the racing line, because
+   * the two differ only by the lateral offset and it is the road's
+   * frame that anything placed *beside* the line — a grid box, a
+   * marker — has to be square to.
+   */
+  leftAt(s: number): Vec3 {
+    return this.circuit.spline.sampleAt(s).left;
+  }
+
   pointAt(s: number): Vec3 {
     const sample = this.circuit.spline.sampleAt(s);
     return v3add(sample.position, v3scale(sample.left, this.offsetAt(s)));

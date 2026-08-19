@@ -43,6 +43,8 @@ export interface TrackGeometry {
    * one that is.
    */
   inkStations: { station: number; width: number }[];
+  /** Lateral stations a barrier stands on. */
+  barrierStations: number[];
 }
 
 /** Paint, and tarmac that has been rubbered in by a season of cars. */
@@ -93,6 +95,16 @@ interface Station {
    * have to be drawn, the way they would be in a panel of a comic.
    */
   ink?: number;
+  /**
+   * True where a barrier stands.
+   *
+   * The wall is drawn from this and nothing else, so the cross-section
+   * stays the single place that knows where the edge of the circuit is.
+   * An index written down in the renderer instead would put a wall down
+   * the middle of the road the first time a station was inserted above
+   * it.
+   */
+  barrier?: boolean;
 }
 
 /**
@@ -250,7 +262,7 @@ const lateralStations = (
   const stations: Station[] = [
     { t: -(w + k + r + 8), surface: 'grass', drop: 0.35 },
     { t: -(w + k + r), surface: 'grass', drop: 0.12 },
-    { t: -(w + k + r) + 0.01, surface: 'runoff', drop: 0.1, ink: 0.34 },
+    { t: -(w + k + r) + 0.01, surface: 'runoff', drop: 0.1, ink: 0.34, barrier: true },
     { t: -(w + k), surface: 'runoff', drop: 0.04 },
     { t: -(w + k) + 0.01, surface: 'kerb', drop: 0.03, ink: 0.2 },
     { t: -w, surface: 'kerb', drop: 0, ink: 0.26 },
@@ -267,7 +279,7 @@ const lateralStations = (
     { t: w, surface: 'kerb', drop: 0, ink: 0.26 },
     { t: w + k - 0.01, surface: 'kerb', drop: 0.03, ink: 0.2 },
     { t: w + k, surface: 'runoff', drop: 0.04 },
-    { t: w + k + r - 0.01, surface: 'runoff', drop: 0.1, ink: 0.34 },
+    { t: w + k + r - 0.01, surface: 'runoff', drop: 0.1, ink: 0.34, barrier: true },
     { t: w + k + r, surface: 'grass', drop: 0.12 },
     { t: w + k + r + 8, surface: 'grass', drop: 0.35 }
   ];
@@ -308,6 +320,9 @@ export const buildTrackGeometry = (circuit: Circuit, stationSpacing = 4): TrackG
      was inserted above it. */
   const inkStations = template.flatMap((station, index) =>
     station.ink === undefined ? [] : [{ station: index, width: station.ink }]
+  );
+  const barrierStations = template.flatMap((station, index) =>
+    station.barrier === true ? [index] : []
   );
 
   const positions = new Float32Array(rings * across * 3);
@@ -388,7 +403,8 @@ export const buildTrackGeometry = (circuit: Circuit, stationSpacing = 4): TrackG
     triangleCount: ii / 3,
     rings,
     across,
-    inkStations
+    inkStations,
+    barrierStations
   };
 };
 

@@ -1121,17 +1121,17 @@ body {
   /* Offset, no blur — the house style, and the only kind of shadow that
      survives being drawn over flat colour. */
   box-shadow: 2px 2px 0 #000;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   white-space: nowrap;
   /* Opacity is written every frame; the transition would fight it. */
   will-change: transform, opacity;
 }
 
 .rival-tag i {
-  width: 9px;
-  height: 9px;
+  width: 8px;
+  height: 8px;
   border: 1.5px solid #000;
   border-radius: 2px;
 }
@@ -1333,7 +1333,8 @@ body:not(.bench) #help {
    has to be a narrow strip fighting it for width. */
 body:not(.bench) .stack.right { display: none; }
 
-.hud-mode {
+.hud-mode,
+.easy-mode {
   position: fixed;
   top: 12px;
   right: 12px;
@@ -1353,7 +1354,8 @@ body:not(.bench) .stack.right { display: none; }
 
 /* The house press: shadow to nothing and the button moves into it, so
    a finger gets a physical answer rather than a colour change. */
-.hud-mode:active {
+.hud-mode:active,
+.easy-mode:active {
   box-shadow: 0 0 0 #000;
   transform: translate(3px, 3px);
 }
@@ -1363,8 +1365,19 @@ body:not(.bench) .stack.right { display: none; }
   color: #fff;
 }
 
+/* Under the instruments button. Easy mode is on by default, so this one
+   is usually lit — which is the point: it says out loud that the car is
+   being helped, so nobody wonders later why it drives differently. */
+.easy-mode { top: 58px; }
+.easy-mode.on {
+  background: #12d16b;
+  color: #04150b;
+}
+
 @media (max-width: 720px) {
-  .hud-mode { font-size: 10px; padding: 7px 10px; }
+  .hud-mode,
+  .easy-mode { font-size: 10px; padding: 7px 10px; }
+  .easy-mode { top: 50px; }
 }
 
 /* ---------------- minimap ---------------- */

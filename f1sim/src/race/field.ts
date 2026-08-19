@@ -41,6 +41,15 @@ export interface Rival {
   heading: number;
   /** Set once it takes the flag, so a finisher stops being overtaken. */
   finishedAt: number | null;
+  /**
+   * Which side of the centreline this car's grid box is on, in metres.
+   *
+   * A Formula 1 grid is not a queue. The boxes stagger left and right
+   * of the racing line so that no car is directly behind the one in
+   * front — which is what the start looks like, and also what makes the
+   * run to the first corner a race rather than a procession.
+   */
+  gridLateral: number;
 }
 
 const NAMES = [
@@ -61,13 +70,26 @@ export interface FieldOptions {
   /** Fastest and slowest rival, as fractions of the line's own pace. */
   fastest?: number;
   slowest?: number;
-  /** Metres between cars on the grid. */
+  /** Metres between grid boxes along the road. */
   gridGap?: number;
+  /** How far each box sits off the centreline (m). */
+  gridStagger?: number;
 }
 
 export class Field {
   readonly rivals: Rival[] = [];
   private readonly lapLength: number;
+
+  /**
+   * How much of the grid stagger is still being applied, 1 down to 0.
+   *
+   * The boxes are off the racing line and the race is on it, so the two
+   * have to be blended rather than switched: a car that jumped sideways
+   * onto the line at the moment the lights went out would look like it
+   * had been teleported. Three metres over about two seconds is the
+   * same drift a real field makes on the run to the first corner.
+   */
+  private gridBlend = 1;
 
   constructor(
     private readonly line: RacingLine,
@@ -79,7 +101,11 @@ export class Field {
     const count = options.count ?? 9;
     const fastest = options.fastest ?? 0.99;
     const slowest = options.slowest ?? 0.90;
-    const gap = options.gridGap ?? 14;
+    /* Eight metres between boxes, which is what the painted grid uses.
+       Fourteen was a queue with room to accelerate into; this is a
+       grid. */
+    const gap = options.gridGap ?? 8;
+    const stagger = options.gridStagger ?? 3.1;
 
     for (let i = 0; i < count; i++) {
       const t = count === 1 ? 0 : i / (count - 1);
@@ -95,7 +121,11 @@ export class Field {
         speed: 0,
         position: vec3(0, 0, 0),
         heading: 0,
-        finishedAt: null
+        finishedAt: null,
+        /* Pole on one side, second on the other, alternating back down
+           the order. The player is last, so their box is on whichever
+           side the count leaves free — see `playerGridLateral`. */
+        gridLateral: (i % 2 === 0 ? 1 : -1) * stagger
       });
     }
   }
@@ -105,7 +135,17 @@ export class Field {
    * @param raceTime  elapsed session time, for recording finishes
    * @param totalLaps null in practice, where nobody finishes
    */
-  update(dt: number, raceTime: number, totalLaps: number | null): void {
+  /**
+   * @param onGrid true while the field is held for the start, when the
+   *               cars sit in their boxes rather than on the line
+   */
+  update(dt: number, raceTime: number, totalLaps: number | null, onGrid = false): void {
+    if (onGrid) {
+      this.gridBlend = 1;
+    } else if (this.gridBlend > 0) {
+      this.gridBlend = Math.max(0, this.gridBlend - dt / 2);
+    }
+
     for (const rival of this.rivals) {
       if (rival.finishedAt !== null) continue;
 
@@ -134,9 +174,31 @@ export class Field {
          pointing where it is going through a corner rather than where
          the centreline happens to aim. */
       const ahead = this.line.pointAt((rival.distance + 4) % this.lapLength);
-      rival.position = p;
       rival.heading = Math.atan2(ahead.x - p.x, -(ahead.z - p.z));
+
+      /* And out to the grid box while the field is still held. `left`
+         at this point on the circuit rather than a world axis, so the
+         stagger stays square to the road wherever the grid is. */
+      if (this.gridBlend > 0) {
+        const left = this.line.leftAt(rival.distance);
+        const out = rival.gridLateral * this.gridBlend;
+        rival.position = vec3(p.x + left.x * out, p.y + left.y * out, p.z + left.z * out);
+      } else {
+        rival.position = p;
+      }
     }
+  }
+
+  /**
+   * Where the player's box sits off the centreline.
+   *
+   * They start last, so it is the side the alternating order leaves
+   * free — which is what stops the player being parked on top of the
+   * car directly in front of them.
+   */
+  get playerGridLateral(): number {
+    const last = this.rivals[this.rivals.length - 1];
+    return last ? -last.gridLateral : 0;
   }
 
   /** Total distance covered, for ordering the field. */
