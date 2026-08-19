@@ -89,6 +89,23 @@ export class SceneRenderer {
   /** Scratch for projecting world points, so labels allocate nothing. */
   private readonly projected = new THREE.Vector3();
 
+  /**
+   * True while the title card is up.
+   *
+   * The card used to be an opaque sheet, which meant the first thing
+   * anyone saw of a racing game was a black rectangle — while behind
+   * it the circuit, the grid and nine rivals were being drawn every
+   * frame for nobody. This turns the camera into a slow orbit of the
+   * car on its grid box instead, and the card becomes a caption over
+   * it.
+   */
+  showcase = false;
+
+  /** Seconds the showcase orbit has been running, for its angle. */
+  private showcaseTime = 0;
+  /** What `showcase` was last frame, so visibility is written once. */
+  private showcaseApplied = false;
+
   constructor(
     private readonly canvas: HTMLCanvasElement,
     track: TrackGeometry,
@@ -433,7 +450,11 @@ export class SceneRenderer {
    * body's.
    */
   private applyCameraMode(): void {
-    const inside = this.cameraMode === 'cockpit';
+    /* The showcase orbit is outside the car whatever the camera mode
+       says, so the body has to come back and the cockpit has to go —
+       otherwise the title screen orbits a floating steering wheel with
+       no car around it. */
+    const inside = !this.showcase && this.cameraMode === 'cockpit';
     this.cockpit.setVisible(inside);
     this.bodyGroup.visible = !inside;
   }
@@ -467,6 +488,11 @@ export class SceneRenderer {
 
   render(alpha: number, frameDt: number): void {
     if (!this.curr || !this.prev) return;
+
+    if (this.showcase !== this.showcaseApplied) {
+      this.showcaseApplied = this.showcase;
+      this.applyCameraMode();
+    }
 
     const pos = v3lerp(this.prev.position, this.curr.position, alpha);
     const rot = quatSlerp(this.prev.rotation, this.curr.rotation, alpha);
@@ -558,6 +584,30 @@ export class SceneRenderer {
   private updateCamera(pos: Vec3, rot: Quat, frameDt: number): void {
     const q = new THREE.Quaternion(rot.x, rot.y, rot.z, rot.w);
     const carPos = new THREE.Vector3(pos.x, pos.y, pos.z);
+
+    if (this.showcase) {
+      /* A slow walk around the car on its grid box.
+       *
+       * Low and close, because the point is the car rather than the
+       * circuit: at eye height a single-seater is a silhouette, and
+       * from a metre and a half up it is a shape you can see the floor,
+       * the sidepod and the wing of. Slow enough — one turn every
+       * fifty seconds — that it reads as a held shot rather than a
+       * spin, and the angle is offset so the nose is never square to
+       * the lens. */
+      this.showcaseTime += frameDt;
+      const angle = 2.1 + this.showcaseTime * 0.13;
+      const radius = 9.5;
+      this.camera.position.set(
+        carPos.x + Math.sin(angle) * radius,
+        carPos.y + 1.9,
+        carPos.z + Math.cos(angle) * radius
+      );
+      this.camera.lookAt(carPos.x, carPos.y + 0.35, carPos.z);
+      this.camera.fov = 34;
+      this.camera.updateProjectionMatrix();
+      return;
+    }
 
     if (this.cameraMode === 'cockpit') {
       // The one shared eye position: the cockpit is laid out around this

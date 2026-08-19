@@ -893,6 +893,32 @@ body {
   gap: 10px;
   text-align: center;
   padding: 24px;
+}
+
+/*
+ * A caption over the game, not a sheet in front of it.
+ *
+ * This was an opaque radial gradient, which meant the first thing
+ * anyone saw of a racing game was a black rectangle — while behind it
+ * the circuit, the grid and nine rivals were being drawn every frame
+ * for nobody at all. Now the camera walks slowly round the car on its
+ * grid box (see `showcase` in `render/scene.ts`) and this is just
+ * enough darkness to keep white text legible against a bright sky.
+ *
+ * Heavier at the bottom than the top: the horizon and the sky are the
+ * part worth seeing, and the text all sits below the middle.
+ */
+#start-card {
+  background: linear-gradient(
+    to bottom,
+    rgba(4, 8, 14, 0.15) 0%,
+    rgba(4, 8, 14, 0.34) 38%,
+    rgba(4, 8, 14, 0.74) 100%
+  );
+}
+
+/* The rotate prompt stays opaque — it is asking you to stop looking. */
+#rotate-prompt {
   background: radial-gradient(circle at 50% 40%, #16202c 0%, #06080b 72%);
 }
 
@@ -905,9 +931,17 @@ body {
 .hidden { display: none !important; }
 
 #start-card h1 {
-  font-size: 42px;
-  font-weight: 800;
+  font-size: 46px;
+  font-weight: 900;
   letter-spacing: -0.02em;
+  /* Read against whatever the sky is doing behind it. */
+  text-shadow: 0 3px 18px rgba(0, 0, 0, 0.85), 0 1px 0 rgba(0, 0, 0, 0.9);
+}
+
+/* The F1 half in the house red, the rest in white — one mark, two
+   words, and the eye lands on the number first. */
+#start-card h1 span {
+  color: var(--red);
 }
 
 #start-card p {
@@ -921,7 +955,8 @@ body {
   margin-top: 10px;
   font-size: 12px;
   letter-spacing: 0.08em;
-  color: var(--muted);
+  color: #b9c3cd;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.8);
 }
 
 #circuit-picker {
@@ -933,6 +968,7 @@ body {
 }
 
 #circuit-picker button {
+  backdrop-filter: blur(6px);
   padding: 8px 16px;
   border-radius: 8px;
   border: 1px solid var(--line);
@@ -962,9 +998,10 @@ body {
 
 #start-card small {
   font-size: 11px;
-  color: var(--muted);
+  color: #b9c3cd;
   line-height: 1.7;
   max-width: 260px;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.8);
 }
 
 #rotate-prompt b {

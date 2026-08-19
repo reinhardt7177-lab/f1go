@@ -252,8 +252,10 @@ const boot = async (): Promise<void> => {
   /* And the player into their grid box rather than onto the centreline.
      They start last, so the box is on whichever side the alternating
      order leaves free — otherwise the player is parked squarely behind
-     the car in front instead of beside it. */
-  if (kind === 'race') {
+     the car in front instead of beside it. Every session, not just a
+     race: the title card orbits this car, and a grid is what it should
+     be sitting on. */
+  {
     const slot = world.gridSlot(0, field.playerGridLateral);
     world.car.reset(slot.position, slot.heading);
   }
@@ -518,6 +520,10 @@ const boot = async (): Promise<void> => {
       renderer.pushState(world.car.getState(), world.car.wheelCentres());
     },
     render: (alpha, frameDt) => {
+      /* The title card is a caption over the game, not a sheet in front
+         of it — so while it is up the camera walks slowly round the car
+         on its grid box. */
+      renderer.showcase = !session.hasBegun;
       renderer.render(alpha, frameDt);
       const snapshot = world.car.getState();
       const battery = world.car.drivetrain.ersStore / params.drivetrain.ersCapacity;
