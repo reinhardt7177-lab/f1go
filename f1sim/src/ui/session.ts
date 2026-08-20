@@ -9,7 +9,8 @@ import { formatTime } from './timing';
 const KIND_LABEL: Record<string, string> = {
   practice: 'PRACTICE',
   qualifying: 'QUALIFYING',
-  race: 'RACE'
+  race: 'RACE',
+  timetrial: 'TIME TRIAL'
 };
 
 const clock = (seconds: number): string => {

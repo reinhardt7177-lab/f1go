@@ -20,7 +20,16 @@ import { SESSION_PRESETS, Session } from './race/session';
 import type { SessionKind } from './race/session';
 import { Field } from './race/field';
 import { recordLap, score, standings } from './race/championship';
+import {
+  GhostRecorder,
+  ghostTimeAtDistance,
+  loadGhost,
+  sampleGhost,
+  saveGhost
+} from './race/ghost';
+import type { GhostLap } from './race/ghost';
 import { ResultsPanel } from './ui/results';
+import { DeltaPanel } from './ui/delta';
 import { PositionPanel } from './ui/position';
 import { Hud } from './ui/hud';
 import { RivalLabels } from './ui/labels';
@@ -104,6 +113,10 @@ const boot = async (): Promise<void> => {
   const kind: SessionKind =
     requested && requested in SESSION_PRESETS ? requested : 'practice';
   const session = new Session(SESSION_PRESETS[kind]);
+  /* A time trial is you and your own best lap: no field, no contact, and
+     a delta instead of a position. */
+  const timeTrial = kind === 'timetrial';
+  document.body.classList.toggle('timetrial', timeTrial);
 
   /* Fullscreen, landscape lock and the rotate prompt — and the tap that
      dismisses the title card, which is what starts the session.
@@ -117,6 +130,8 @@ const boot = async (): Promise<void> => {
   const sessionPanel = new SessionPanel(left);
   const timing = new TimingPanel(left, world.circuit);
   const positionPanel = new PositionPanel(left);
+  const deltaPanel = new DeltaPanel(left);
+  if (!timeTrial) deltaPanel.disable();
 
   // Driver aids shape the controls before they reach the car; the
   // vehicle model never knows they exist.
@@ -163,8 +178,45 @@ const boot = async (): Promise<void> => {
      heading and a colour for every rival since it was written; until
      this line nothing read them, so the race was scored over an empty
      circuit. */
-  renderer.setField(field.rivals);
-  const rivalLabels = new RivalLabels(document.body, field.rivals);
+  /* ------------------------------------------------------------------
+     The ghost.
+
+     It is a `Rival` and nothing more, which is the whole trick: made to
+     satisfy that shape it inherits `render/rivals.ts`, the name labels
+     and the minimap without one line of new drawing code. What it never
+     joins is `world.traffic` — a ghost is a record of a lap, not a car,
+     and driving through it is correct.
+     ------------------------------------------------------------------ */
+  let ghostLap: GhostLap | null = timeTrial ? loadGhost(circuitId) : null;
+  const ghostRecorder = new GhostRecorder();
+
+  const ghostCar = {
+    name: '고스트',
+    /* Pale, and flat like everything else. A translucent car would need
+       `transparent: true` and no depth write, which with an inverted-hull
+       outline round it produces a grey smear — the outline exists to give
+       a hard silhouette and transparency is the one thing that takes it
+       away. A car drawn in one pale value reads as a drawing of a car,
+       which is exactly what a ghost is. */
+    colour: '#cfd8e2',
+    pace: 1,
+    distance: 0,
+    lap: 0,
+    speed: 0,
+    position: { x: 0, y: -500, z: 0 },
+    heading: 0,
+    finishedAt: null,
+    gridLateral: 0
+  };
+  /** Drawn cars: the ghost alone in a time trial, the field otherwise. */
+  const drawn = timeTrial ? [ghostCar] : field.rivals;
+  /** True while the ghost has a lap to show and has not run out of it. */
+  let ghostVisible = false;
+  /** Last lap number seen, so a line crossing can clear the recorder. */
+  let lastTimedLap = 0;
+
+  renderer.setField(drawn);
+  const rivalLabels = new RivalLabels(document.body, drawn);
   const results = new ResultsPanel(document.body);
   let scored = false;
 
@@ -332,6 +384,36 @@ const boot = async (): Promise<void> => {
     }
   }
 
+  /* And which session. It was `?session=` only, which is a URL a phone
+     player never sees — so the two modes that exist for them, a lap on
+     your own against your best and a race against the field, were one of
+     them unreachable and the other undiscoverable. Same reload-rather-
+     than-rebuild rule as the circuit: the field, the ghost and the
+     session config are all decided at boot. */
+  const MODES: [string, string][] = [
+    ['practice', '연습'],
+    ['timetrial', '타임 트라이얼'],
+    ['race', '레이스']
+  ];
+  const modePicker = document.getElementById('mode-picker');
+  if (modePicker) {
+    for (const [id, label] of MODES) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = label;
+      btn.className = id === kind ? 'on' : '';
+      btn.addEventListener('click', (e) => e.stopPropagation());
+      btn.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (id === kind) return;
+        query.set('session', id);
+        location.search = query.toString();
+      });
+      modePicker.appendChild(btn);
+    }
+  }
+
   // The camera has to be reachable without a keyboard, so the button and
   // the key both go through the renderer's own cycle — keeping the mode
   // in one place means the cockpit's visibility can never disagree with
@@ -489,7 +571,7 @@ const boot = async (): Promise<void> => {
          rather than owned by the world: the rivals belong to `race/`,
          and the simulation is told where they are rather than going to
          find out. */
-      world.traffic = field.rivals;
+      world.traffic = timeTrial ? [] : field.rivals;
 
       world.step(dt);
 
@@ -522,19 +604,125 @@ const boot = async (): Promise<void> => {
          them. Rivals that set off while the player was held would be a
          hundred metres up the road by the time the lights went out. */
       field.update(
-        session.onGrid ? 0 : dt,
+        session.onGrid || timeTrial ? 0 : dt,
         session.elapsed,
         session.config.laps ?? null,
         session.onGrid
       );
 
       if (world.lapJustCompleted) {
+        const lap = world.lapJustCompleted;
         timing.setBest(world.timer.bestLap?.time ?? null);
-        timing.record(world.lapJustCompleted);
+        timing.record(lap);
         /* Best laps are kept per circuit, in the same store the arcade
            game used, so a personal best survives which half you set it
            in. */
-        recordLap(circuitId, world.lapJustCompleted.time);
+        recordLap(circuitId, lap.time);
+
+        /* And the ghost, on the same rule the lap board uses: a lap with
+           a wheel over the white line is not a lap, so it is not a
+           ghost either. Keeping an invalid one would give the player a
+           target they are not allowed to match. */
+        if (timeTrial) {
+          if (lap.valid && (!ghostLap || lap.time < ghostLap.time)) {
+            const taken = ghostRecorder.take(lap.time);
+            if (taken) {
+              ghostLap = taken;
+              saveGhost(circuitId, taken);
+            }
+          }
+          ghostRecorder.reset();
+        }
+      }
+
+      /* ------------------------------------------------------------
+         The ghost, after the lap board and not before it.
+
+         Order is the whole of this. `world.step()` moves the car, then
+         advances the lap clock, and crossing the line resets that clock
+         to zero. Recording *before* the step samples last tick's
+         position against this tick's time; recording before the lap
+         handling above means the first line crossing never resets the
+         recorder, so the out-lap and the flying lap end up in one
+         buffer — and then the distance column is not monotonic, the
+         binary search in `ghostTimeAtDistance` has nothing to stand on,
+         and the delta reads as "no comparison" for the whole lap.
+
+         That is exactly what it did. Hence: step, bank the lap, then
+         record.
+         ------------------------------------------------------------ */
+      if (timeTrial) {
+        /* A new lap started — either the first crossing of the session,
+           which banks nothing, or one that just banked a lap above. */
+        if (world.timer.lap !== lastTimedLap) {
+          lastTimedLap = world.timer.lap;
+          ghostRecorder.reset();
+        }
+
+        // Nothing is being timed before the first crossing, so there is
+        // no lap to record and no clock to record it against.
+        if (world.timer.lap >= 1) {
+          const state = world.car.getState();
+          const rot = state.rotation;
+          // Yaw straight out of the quaternion — the same reading
+          // `sim/world.ts` takes for its traffic check.
+          const yaw = Math.atan2(
+            2 * (rot.w * rot.y + rot.x * rot.z),
+            1 - 2 * (rot.y * rot.y + rot.z * rot.z)
+          );
+          ghostRecorder.record(world.timer.lapTime, {
+            x: state.position.x,
+            y: state.position.y,
+            z: state.position.z,
+            /* Negated going in because `render/rivals.ts` negates it
+               coming out: the field reports a bearing and the renderer
+               applies a yaw, and the two differ by a sign. Storing the
+               bearing keeps a recording readable by anything that reads
+               a `Rival`. */
+            heading: -yaw,
+            distance: world.distance
+          });
+
+          if (ghostLap) {
+            const frame = sampleGhost(ghostLap, world.timer.lapTime);
+
+            /* Hidden while it is on top of the camera, which in a time
+               trial is most of the time — running level with your own
+               best lap is the entire point, and from the driver's seat a
+               car half a metre away is not a rival, it is a wall across
+               the windscreen.
+
+               The test is against the *camera*, not against the player's
+               car, and that is what makes it behave in both views. From
+               the chase camera, eight metres back, a ghost alongside is
+               eight metres away and stays drawn — which is where you
+               actually want to see it. From the cockpit the same ghost
+               is half a metre from the eye and goes.
+
+               A fade would be gentler than a cut, but this renderer has
+               no per-car opacity to fade: `render/rivals.ts` builds one
+               flat material per livery, and the inverted-hull outline
+               round it is exactly the thing transparency destroys. So it
+               is a cut, placed at a distance where there was nothing
+               legible to lose. */
+            const eye = renderer.camera.position;
+            const near =
+              Math.hypot(frame.x - eye.x, frame.y - eye.y, frame.z - eye.z) < 4.5;
+
+            ghostVisible = !frame.finished && !near;
+            ghostCar.position.x = frame.x;
+            // Dropped through the floor rather than hidden by a flag:
+            // `RivalRenderer` has no visibility of its own to set.
+            ghostCar.position.y = ghostVisible ? frame.y : -500;
+            ghostCar.position.z = frame.z;
+            ghostCar.heading = frame.heading;
+            ghostCar.speed = frame.speed;
+            ghostCar.distance = frame.distance;
+          }
+        } else {
+          ghostVisible = false;
+          ghostCar.position.y = -500;
+        }
       }
 
       /* Score once, at the flag. The phase stays 'finished' for the
@@ -578,7 +766,15 @@ const boot = async (): Promise<void> => {
         world.car.getState().speed
       );
 
-      minimap.update(world.distance, field.rivals);
+      if (timeTrial) {
+        /* Null rather than zero wherever there is nothing to compare —
+           no ghost yet, or a point on the circuit its lap never reached.
+           A zero would read as "dead level", which is a lie. */
+        const was = ghostLap ? ghostTimeAtDistance(ghostLap, world.distance) : null;
+        deltaPanel.update(was === null ? null : world.timer.lapTime - was);
+      }
+
+      minimap.update(world.distance, drawn);
 
       const now = performance.now();
       startLights.update(session, now);
@@ -588,7 +784,7 @@ const boot = async (): Promise<void> => {
         input.touch?.steerPad() ?? null,
         input.touch?.pedalPad() ?? null
       );
-      rivalLabels.update(field.rivals, (point) => renderer.worldToScreen(point));
+      rivalLabels.update(drawn, (point) => renderer.worldToScreen(point));
       sessionPanel.update(session, world.timer);
     }
   });
