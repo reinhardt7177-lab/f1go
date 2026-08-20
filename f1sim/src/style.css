@@ -374,6 +374,27 @@ body {
   }
 }
 
+/*
+ * Every control that is tapped rather than dragged.
+ *
+ * `manipulation` rather than `none`: these want the browser's ordinary
+ * tap handling — they are buttons — but not the double-tap zoom, and it
+ * is the *possibility* of a double tap that costs 300 ms on every single
+ * press while the browser waits to find out. The pads use `none`
+ * instead, because a drag across them is not a gesture the browser may
+ * interpret at all.
+ */
+#btn-start,
+#btn-fullscreen,
+#circuit-picker button,
+.hud-mode,
+.easy-mode,
+.toggle,
+.sliders input {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
 .toggle {
   display: flex;
   align-items: center;
@@ -815,9 +836,6 @@ body {
 #touch-buttons button {
   width: 74px;
   height: 52px;
-  /* `touch-action: none` below stops the browser gesturing; this stops
-     the 300 ms wait for a possible double-tap that used to make every
-     on-screen control feel a third of a second behind the keyboard. */
   border-radius: 12px;
   border: 1px solid var(--line);
   background: rgba(14, 18, 23, 0.9);
@@ -826,6 +844,10 @@ body {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.1em;
+  /* Also what removes the tap delay: a browser that has been told this
+     element cannot be double-tap-zoomed has nothing to wait 300 ms to
+     find out, so the button answers on the touch rather than a third of
+     a second behind the keyboard. */
   touch-action: none;
   -webkit-tap-highlight-color: transparent;
 }
@@ -964,6 +986,12 @@ body {
   backdrop-filter: blur(6px);
 }
 
+/* Only a touch device ever needs to press this one — a desktop has F11
+   — and only a touch device is bad at pressing a 34 px square. */
+@media (pointer: coarse) {
+  #btn-fullscreen { width: 44px; height: 44px; font-size: 18px; }
+}
+
 #btn-fullscreen:hover { color: var(--text); }
 #btn-fullscreen.on { color: var(--green); border-color: var(--green); }
 
@@ -1055,6 +1083,10 @@ body {
 
 #circuit-picker button {
   backdrop-filter: blur(6px);
+  /* Choosing a circuit is a one-off, but it is also the first thing
+     anyone touches, and a 29 px-tall target is where a first impression
+     of "this does not respond" comes from. */
+  min-height: 44px;
   padding: 8px 16px;
   border-radius: 8px;
   border: 1px solid var(--line);
@@ -1149,7 +1181,7 @@ body {
   #start-card h1 { font-size: 27px; }
   #start-card .by { margin-top: 3px; font-size: 10px; }
   #circuit-picker { margin: 10px 0 2px; gap: 6px; }
-  #circuit-picker button { padding: 7px 13px; font-size: 11px; }
+  #circuit-picker button { padding: 7px 14px; font-size: 11px; min-height: 44px; }
   #start-card .cta {
     margin-top: 12px;
     font-size: 17px;
@@ -1597,9 +1629,14 @@ body:not(.bench) .stack.right { display: none; }
 }
 
 @media (pointer: coarse), (max-width: 720px) {
+  /* Smaller type, but not a smaller target. 44 px is the floor both
+     platforms' guidelines set, and these two sat at 32 — reliably
+     missable with a thumb, on the two controls that decide whether the
+     car is being helped and whether the instruments are up. The type
+     shrinks; the button does not. */
   .hud-mode,
-  .easy-mode { font-size: 10px; padding: 7px 10px; }
-  .easy-mode { top: 50px; }
+  .easy-mode { font-size: 10px; padding: 7px 12px; min-height: 44px; }
+  .easy-mode { top: 62px; }
 }
 
 /* ---------------- minimap ---------------- */
@@ -1714,7 +1751,7 @@ body:not(.bench) .stack.right { display: none; }
   /* And the two settings buttons move left of it, still in the strip
      the index finger can reach without letting go of the phone. */
   .hud-mode { top: max(8px, env(safe-area-inset-top)); right: calc(max(8px, env(safe-area-inset-right)) + 96px); }
-  .easy-mode { top: calc(max(8px, env(safe-area-inset-top)) + 34px); right: calc(max(8px, env(safe-area-inset-right)) + 96px); }
+  .easy-mode { top: calc(max(8px, env(safe-area-inset-top)) + 50px); right: calc(max(8px, env(safe-area-inset-right)) + 96px); }
 
   /*
    * The left column, compacted.
