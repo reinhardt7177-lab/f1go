@@ -27,14 +27,12 @@ import { RivalLabels } from './ui/labels';
 import { SpeedLines } from './ui/speedlines';
 import { StartLights } from './ui/lights';
 import { OvertakeNotice } from './ui/overtake';
-import { HudMode } from './ui/hudmode';
 import { EasyMode } from './ui/easymode';
 import { Minimap } from './ui/minimap';
 import { SessionPanel } from './ui/session';
-import { SetupStatusPanel } from './ui/setup-status';
-import { TelemetryPanel } from './ui/telemetry';
+import { SettingsPanel } from './ui/settings';
 import { TimingPanel } from './ui/timing';
-import { SlidersPanel, TuningPanel } from './ui/tuning';
+import { AidsPanel, SlidersPanel, TuningPanel } from './ui/tuning';
 import { KeepAwake, ViewportWatcher } from './ui/screen';
 import { TouchPads } from './ui/touchpads';
 import { ViewportManager, isCoarsePointer } from './ui/viewport';
@@ -94,8 +92,8 @@ const boot = async (): Promise<void> => {
     touchPads.resize();
   });
 
-  // Left column stacks telemetry over the timing tower; the setup panel
-  // sits on the right.
+  // The left column is the timing tower and what is read against it.
+  // The right one carries the settings, and only while they are open.
   const left = document.createElement('div');
   left.className = 'stack';
   overlay.appendChild(left);
@@ -117,7 +115,6 @@ const boot = async (): Promise<void> => {
   // Session first: which session is running and how much of it is left is
   // the context everything below is read against.
   const sessionPanel = new SessionPanel(left);
-  const telemetry = new TelemetryPanel(left);
   const timing = new TimingPanel(left, world.circuit);
   const positionPanel = new PositionPanel(left);
 
@@ -176,24 +173,28 @@ const boot = async (): Promise<void> => {
   const speedLines = new SpeedLines(document.body);
   const startLights = new StartLights(document.body);
   const overtakeNotice = new OvertakeNotice(document.body);
-  /* Which of the two interfaces is on screen. The instruments are for
-     tuning the car and are in the way of driving it, so driving is the
-     default and the bench is one button away. */
-  const hudMode = new HudMode(document.body);
+  /* The settings drawer. Closed by default — a first-time player must
+     not have to dismiss a panel before they can drive — and it now holds
+     only things you can *change*, the readouts having gone with
+     `ui/telemetry.ts` and `ui/setup-status.ts`. */
+  const settings = new SettingsPanel(document.body);
   /* Where everyone is on the circuit. The cockpit can only show the two
      hundred metres in front of you, which is not enough to know whether
      the car you are chasing is about to reach a corner or has already
      cleared it. */
   const minimap = new Minimap(document.body, world.circuit);
 
-  // Right-hand column: live setup state above the controls that shape it.
+  // Right-hand column: the controls that shape the car.
   const right = document.createElement('div');
   right.className = 'stack right';
   overlay.appendChild(right);
 
-  const setupStatus = new SetupStatusPanel(right, params);
+  const tuning = new TuningPanel(right, params);
 
-  const tuning = new TuningPanel(right, params, [
+  /* The two aids live in their own panel rather than inside the car
+     setup, because a phone hides the setup and these are exactly the
+     switches a phone player wants. */
+  const aidsPanel = new AidsPanel(right, [
     {
       label: '트랙션 컨트롤',
       note:
@@ -218,8 +219,8 @@ const boot = async (): Promise<void> => {
     }
   ]);
 
-  // Steering feel gets its own panel so it survives the phone layout,
-  // which hides the setup sliders as bench instruments.
+  // Steering feel gets its own panel: it is the setting a phone player
+  // most needs, because a thumb on glass is the input it compensates for.
   const steeringPanel = new SlidersPanel(
     right,
     '조향 설정',
@@ -564,14 +565,6 @@ const boot = async (): Promise<void> => {
       const battery = world.car.drivetrain.ersStore / params.drivetrain.ersCapacity;
       hud.update(snapshot, params.drivetrain.redlineRpm, battery);
 
-      /* The two expensive panels are skipped while they are off screen.
-         Between them they rewrite some sixty elements a frame — cheap
-         enough to leave running, but there is no reason to pay for a
-         g-g plot nobody can see. */
-      if (hudMode.engineering) {
-        telemetry.update(snapshot, params.drivetrain.redlineRpm, battery);
-        setupStatus.update(snapshot, battery);
-      }
       timing.update(world.timer, world.currentSection(), world.onTrack);
       const place = field.positionOf(
         Math.max(1, world.timer.lap),
@@ -601,7 +594,7 @@ const boot = async (): Promise<void> => {
   });
 
   // Exposed for console poking and for the browser-driven smoke test.
-  Object.assign(window, { world, params, renderer, loop, tuning, session, driver, racingLine, speedProfile, input, field, startLights, overtakeNotice, hudMode, easyMode });
+  Object.assign(window, { world, params, renderer, loop, tuning, session, driver, racingLine, speedProfile, input, field, startLights, overtakeNotice, settings, aidsPanel, easyMode });
 };
 
 void boot();

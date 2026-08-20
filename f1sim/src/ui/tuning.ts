@@ -261,10 +261,10 @@ export interface ToggleBinding {
 /**
  * A small panel of free sliders on its own.
  *
- * Steering feel needs to be reachable on a phone, and the setup panel
- * is one of the bench instruments that a 400 px screen hides — putting
- * the sliders there would have made them invisible on the only device
- * whose steering anyone has complained about.
+ * Steering feel needs to be reachable on a phone, and the car-setup
+ * panel is one of the things a 400 px screen hides — putting the sliders
+ * there would have made them invisible on the only device whose steering
+ * anyone has complained about.
  */
 export class SlidersPanel {
   private readonly refreshers: Array<() => void> = [];
@@ -331,6 +331,64 @@ export class SlidersPanel {
   }
 }
 
+/**
+ * The driving aids, on their own.
+ *
+ * These two lived inside the car-setup panel under a `주행 보조` heading,
+ * which put them behind the one rule the phone stylesheet has always
+ * applied to that panel: hide it. A 400 px screen cannot show fifteen
+ * setup sliders, so it showed none of it — and took traction control and
+ * the AI driver with it.
+ *
+ * They are not setup. Setup is what you decide in a workshop before a
+ * session; an aid is what you switch off in the middle of one because
+ * you want to find out what the car does without it. Splitting them out
+ * is what lets a phone keep the second kind, which is the kind that
+ * matters to someone learning.
+ */
+export class AidsPanel {
+  private readonly root: HTMLElement;
+  private readonly refreshers: Array<() => void> = [];
+
+  constructor(mount: HTMLElement, toggles: ToggleBinding[]) {
+    this.root = document.createElement('div');
+    this.root.className = 'panel aids';
+    mount.appendChild(this.root);
+
+    const header = document.createElement('div');
+    header.className = 'panel-head';
+    header.innerHTML = '<h3>주행 보조</h3>';
+    this.root.appendChild(header);
+
+    const body = document.createElement('div');
+    body.className = 'panel-body';
+    this.root.appendChild(body);
+
+    for (const toggle of toggles) {
+      const row = document.createElement('label');
+      row.className = 'toggle';
+      row.title = toggle.note;
+
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = toggle.get();
+      box.addEventListener('change', () => toggle.set(box.checked));
+
+      const text = document.createElement('span');
+      text.textContent = toggle.label;
+
+      row.append(box, text);
+      body.appendChild(row);
+      this.refreshers.push(() => (box.checked = toggle.get()));
+    }
+  }
+
+  /** Re-read every binding, for when something else has changed one. */
+  refresh(): void {
+    for (const r of this.refreshers) r();
+  }
+}
+
 export class TuningPanel {
   private readonly root: HTMLElement;
   private readonly refreshers: Array<() => void> = [];
@@ -339,7 +397,6 @@ export class TuningPanel {
   constructor(
     mount: HTMLElement,
     private readonly params: VehicleParams,
-    toggles: ToggleBinding[] = [],
     free: FreeSlider[] = []
   ) {
     this.root = document.createElement('div');
@@ -381,30 +438,6 @@ export class TuningPanel {
         body.appendChild(h);
       }
       body.appendChild(this.buildSlider(b));
-    }
-
-    if (toggles.length > 0) {
-      const aidHead = document.createElement('h4');
-      aidHead.textContent = '주행 보조';
-      body.appendChild(aidHead);
-
-      for (const toggle of toggles) {
-        const row = document.createElement('label');
-        row.className = 'toggle';
-        row.title = toggle.note;
-
-        const box = document.createElement('input');
-        box.type = 'checkbox';
-        box.checked = toggle.get();
-        box.addEventListener('change', () => toggle.set(box.checked));
-
-        const text = document.createElement('span');
-        text.textContent = toggle.label;
-
-        row.append(box, text);
-        body.appendChild(row);
-        this.refreshers.push(() => (box.checked = toggle.get()));
-      }
     }
 
     const presetHead = document.createElement('h4');
