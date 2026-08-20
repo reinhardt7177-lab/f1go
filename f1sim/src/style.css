@@ -662,10 +662,48 @@ body {
   text-shadow: 0 1px 8px rgba(0, 0, 0, 0.8);
 }
 
+/* The mode picker is the circuit picker one row down, and deliberately
+   looks identical: they are the same kind of choice made in the same
+   place, and giving the second one its own treatment would suggest
+   otherwise. */
+#mode-picker {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 4px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+#mode-picker button {
+  backdrop-filter: blur(6px);
+  min-height: 44px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(14, 18, 23, 0.9);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#mode-picker button.on {
+  color: var(--text);
+  border-color: var(--red);
+}
+
+@media (max-height: 560px) {
+  #mode-picker { margin: 0 0 2px; gap: 6px; }
+  #mode-picker button { padding: 7px 14px; font-size: 11px; min-height: 44px; }
+}
+
 #circuit-picker {
   display: flex;
   gap: 8px;
-  margin: 18px 0 4px;
+  margin: 18px 0 8px;
   flex-wrap: wrap;
   justify-content: center;
 }
@@ -769,7 +807,45 @@ body {
 
   #start-card h1 { font-size: 27px; }
   #start-card .by { margin-top: 3px; font-size: 10px; }
-  #circuit-picker { margin: 10px 0 2px; gap: 6px; }
+  /* The mode picker is the circuit picker one row down, and deliberately
+   looks identical: they are the same kind of choice made in the same
+   place, and giving the second one its own treatment would suggest
+   otherwise. */
+#mode-picker {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 4px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+#mode-picker button {
+  backdrop-filter: blur(6px);
+  min-height: 44px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(14, 18, 23, 0.9);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#mode-picker button.on {
+  color: var(--text);
+  border-color: var(--red);
+}
+
+@media (max-height: 560px) {
+  #mode-picker { margin: 0 0 2px; gap: 6px; }
+  #mode-picker button { padding: 7px 14px; font-size: 11px; min-height: 44px; }
+}
+
+#circuit-picker { margin: 10px 0 2px; gap: 6px; }
   #circuit-picker button { padding: 7px 14px; font-size: 11px; min-height: 44px; }
   #start-card .cta {
     margin-top: 12px;
@@ -1222,6 +1298,84 @@ body:not(.settings) .stack.right { display: none; }
   .settings-toggle,
   .easy-mode { font-size: 10px; padding: 7px 12px; min-height: 44px; }
   .easy-mode { top: 62px; }
+}
+
+/* ---------------- delta to the ghost ---------------- */
+
+/*
+ * The one number a time trial is about. It sits under the lap clock in
+ * the left column rather than beside the speedometer, because a delta is
+ * something you read on a straight and not something you steer by.
+ */
+.delta {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 10px 9px;
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.delta .lbl {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+}
+
+.delta .v {
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+/* Green ahead, red behind — and the sign is spelled out beside them,
+   because at speed a bare number reads the wrong way as often as not. */
+.delta.ahead .v { color: var(--green); }
+.delta.behind .v { color: var(--red); }
+
+/* The bar grows from the middle, so which side it is on carries the sign
+   a second time. That one is readable in peripheral vision; the digits
+   are not. */
+.delta .bar {
+  position: relative;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.delta .bar::after {
+  /* The centreline. Without it a short bar has nothing to be short of. */
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.delta .bar i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+}
+
+.delta.ahead .bar i { background: var(--green); }
+.delta.behind .bar i { background: var(--red); }
+
+/* A time trial has no field, so it has no position — and a panel reading
+   "POSITION 1 / 10" over an empty circuit is worse than no panel. */
+body.timetrial .panel.position { display: none; }
+
+@media (pointer: coarse), (max-width: 900px) {
+  .delta { padding: 5px 8px 7px; }
+  .delta .v { font-size: 19px; }
 }
 
 /* ---------------- minimap ---------------- */

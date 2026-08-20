@@ -13,7 +13,7 @@
 import { clamp } from '../core/math';
 import type { CompletedLap, LapTimer } from './timing';
 
-export type SessionKind = 'practice' | 'qualifying' | 'race';
+export type SessionKind = 'practice' | 'qualifying' | 'race' | 'timetrial';
 
 export type SessionPhase =
   /** On the grid, held, with the lights filling. */
@@ -94,6 +94,23 @@ export const SESSION_PRESETS: Record<SessionKind, SessionConfig> = {
     duration: 12 * 60,
     strikesAllowed: 2,
     penaltySeconds: 5,
+    pitStopDuration: 12,
+    formationHold: 0.8
+  },
+  /*
+   * A time trial has no end, and that is the whole of its definition.
+   *
+   * With neither `laps` nor `duration` set, `update()` never reaches a
+   * finishing condition, so the session runs until the player stops —
+   * which is what you want when the opponent is your own best lap and
+   * the only question is whether this one is quicker. Track limits still
+   * invalidate a lap; they just cost nothing else, because there is no
+   * classification for a penalty to move you down.
+   */
+  timetrial: {
+    kind: 'timetrial',
+    strikesAllowed: 99,
+    penaltySeconds: 0,
     pitStopDuration: 12,
     formationHold: 0.8
   },

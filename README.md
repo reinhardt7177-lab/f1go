@@ -7,7 +7,8 @@ drivetrain, and lap timing derived from the car's position along the
 centreline spline.
 
 Race nine rivals over the Red Bull Ring, Interlagos or Monza, with F1 points
-carried across a season.
+carried across a season — or run a time trial against a ghost of your own
+best lap.
 
 ```
 cd f1sim
@@ -35,6 +36,42 @@ Then open <http://localhost:5173>.
 body can finish up on its roof or a long way off the map, and the
 simulation is not wrong about either — but a session should not end
 there.
+
+## Time trial, and the ghost
+
+`?session=timetrial`, or the mode picker on the title card. No field, no
+contact, no end: you, the clock, and a ghost of your own best lap round
+this circuit.
+
+The ghost is a *path*, not a replay. A replay would store the inputs and
+re-run the simulation, which is what determinism buys and what
+`tests/vehicle.test.ts` guards — but a ghost is drawn and never
+simulated, so storing the answer is strictly better than storing the
+question. It costs no second physics world, and a lap recorded today
+still plays back after a change that would invalidate an input replay.
+
+A sample is five floats — x, y, z, heading, and distance along the
+centreline — taken at 20 Hz. That last one is what earns the feature its
+readout: position says where to draw the ghost, distance says *when the
+ghost was here*, and only the second can answer the question a time trial
+is about. The delta under the lap clock is your lap time minus the time
+the ghost took to reach the same point, so it compares two laps at a
+place rather than at an instant.
+
+20 Hz is chosen rather than inherited. At 85 m/s that is a sample every
+4.25 m, and through a 100 m radius corner the straight line between two
+samples departs from the arc by about 2.3 cm. A 90-second lap is 28 KB
+in `localStorage`, per circuit.
+
+The ghost is a `Rival` and nothing more, which is why it needed no new
+drawing code: made to fit that shape it inherits the car model, the name
+label and the minimap. It never joins `world.traffic` — a ghost is a
+record of a lap, and driving through it is correct. It hides itself when
+it is within four and a half metres of the *camera*, which in the cockpit
+means whenever you are level with it and from the chase camera means
+almost never; running level with your own best lap is the point of the
+mode, and from the driver's seat a car half a metre away is not a rival
+but a wall across the windscreen.
 
 ## On a phone
 
@@ -81,7 +118,7 @@ far. Drag scales with the same wing settings that produce the
 downforce, which is what makes the Monza and Monaco trims genuinely
 different cars rather than a slider.
 
-`tests/` holds 272 tests over the tyre model, the thermal model, the
+`tests/` holds 297 tests over the tyre model, the thermal model, the
 2026 power unit rules, the circuit geometry, the racing line and the
 field.
 
