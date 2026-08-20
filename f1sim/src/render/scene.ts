@@ -19,6 +19,8 @@ import { buildBarriers } from './barrier';
 import { RivalRenderer } from './rivals';
 import { buildScenery } from './scenery';
 import { TyreSmoke } from './smoke';
+import { ResolutionScaler, detectProfile, pickTier, settingsFor, tierFromQuery } from './quality';
+import type { QualitySettings, QualityTier } from './quality';
 import { buildTrackInk, inkMaterial } from './trackink';
 import { outlineMaterial, outlineMesh, toonMaterial, toonifyMaterials } from './toon';
 import type { ScreenPoint } from '../ui/labels';
@@ -101,6 +103,12 @@ export class SceneRenderer {
    */
   showcase: 'menu' | 'grid' | null = null;
 
+  /** What this device was judged able to afford. */
+  readonly tier: QualityTier;
+  private readonly quality: QualitySettings;
+  /** Moves resolution alone, from measured frame times. */
+  private readonly scaler: ResolutionScaler;
+
   /** Seconds the showcase orbit has been running, for its angle. */
   private showcaseTime = 0;
   /** What `showcase` was last frame, so visibility is written once. */
@@ -112,9 +120,26 @@ export class SceneRenderer {
     private readonly params: VehicleParams,
     circuit?: Circuit
   ) {
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-    this.renderer.shadowMap.enabled = true;
+    /* What this device can afford, decided before anything is built:
+       the forest, the shadow map and the multisample buffer are all
+       chosen here and cannot be changed later without rebuilding the
+       scene. Resolution is the exception and is left to `scaler`, which
+       moves it every second or so from measured frame times. */
+    this.tier = tierFromQuery(typeof location === 'undefined' ? '' : location.search)
+      ?? pickTier(detectProfile());
+    this.quality = settingsFor(this.tier);
+    this.scaler = new ResolutionScaler(this.quality.minResolutionScale);
+
+    this.renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: this.quality.antialias,
+      /* Ask for the discrete GPU on a laptop and, on a phone, tell the
+         driver this is a game rather than a page — some Android
+         drivers pick a lower clock without it. */
+      powerPreference: 'high-performance'
+    });
+    this.applyPixelRatio();
+    this.renderer.shadowMap.enabled = this.quality.shadows;
     /* Hard shadows, and a smaller map than the soft ones needed. A drawn
        car does not cast a soft shadow — the blur was the most expensive
        thing in the frame and the least consistent with everything else
@@ -135,7 +160,7 @@ export class SceneRenderer {
        both were being dissolved into pale grey by the time a rival was
        far enough ahead to be worth looking at. Far enough away now that
        it only softens the horizon, which is the one job it still has. */
-    this.scene.fog = new THREE.Fog(HORIZON, 900, 3200);
+    this.scene.fog = new THREE.Fog(HORIZON, this.quality.fog[0], this.quality.fog[1]);
 
     this.camera = new THREE.PerspectiveCamera(68, 1, 0.1, 4000);
 
@@ -146,7 +171,7 @@ export class SceneRenderer {
        built from geometry alone, and the scatter needs the circuit it
        came from — but a circuit with nothing to pass has no speed in
        it, so in practice this is always supplied. */
-    if (circuit) this.scene.add(buildScenery(circuit));
+    if (circuit) this.scene.add(buildScenery(circuit, this.quality.sceneryDensity));
     this.buildCar();
 
     // Both hang off the car, so neither needs its own transform maths —
@@ -154,7 +179,7 @@ export class SceneRenderer {
     this.carGroup.add(this.bodyGroup);
     this.carGroup.add(this.cockpit.group);
     this.scene.add(this.carGroup);
-    this.smoke = new TyreSmoke(this.scene);
+    this.smoke = new TyreSmoke(this.scene, this.quality.smokePool);
     this.applyCameraMode();
     this.resize();
     window.addEventListener('resize', () => this.resize());
@@ -255,11 +280,15 @@ export class SceneRenderer {
 
     const sun = new THREE.DirectionalLight(0xfff3dd, 2.2);
     sun.position.set(60, 90, 40);
-    sun.castShadow = true;
+    /* A shadow map is a whole extra pass over every caster in the
+       scene. On the low tier it is the first thing to go — the car
+       reads as landed because it is on a road with markings, not
+       because of the shadow under it. */
+    sun.castShadow = this.quality.shadows;
     // Half the resolution the soft shadows needed: a hard edge at 1024
     // is crisper than a blurred one at 2048, and it is a quarter of the
     // memory and fill.
-    sun.shadow.mapSize.set(1024, 1024);
+    sun.shadow.mapSize.set(this.quality.shadowMapSize, this.quality.shadowMapSize);
     const d = 30;
     sun.shadow.camera.left = -d;
     sun.shadow.camera.right = d;
@@ -540,6 +569,25 @@ export class SceneRenderer {
     // Centre the dome on the eye so its far edge is unreachable.
     this.sky?.position.copy(this.camera.position);
     this.renderer.render(this.scene, this.camera);
+
+    /* And the frame that has just been drawn pays for the next one.
+       Sampled after the draw call rather than before it so a device that
+       has fallen behind is measured on the work it actually did. */
+    if (this.scaler.sample(frameDt * 1000) !== null) this.applyPixelRatio();
+  }
+
+  /**
+   * Set the framebuffer resolution from the tier's ceiling and whatever
+   * the scaler has decided the device can hold.
+   *
+   * `setPixelRatio` reallocates the drawing buffer, so it is called only
+   * when the scale has actually moved — which the scaler guarantees by
+   * quantising and by refusing to report a change that rounds to the
+   * value already in force.
+   */
+  private applyPixelRatio(): void {
+    const dpr = typeof devicePixelRatio === 'number' ? devicePixelRatio : 1;
+    this.renderer.setPixelRatio(Math.min(dpr, this.quality.maxPixelRatio) * this.scaler.scale);
   }
 
   /**
@@ -664,7 +712,15 @@ export class SceneRenderer {
     this.camera.updateProjectionMatrix();
   }
 
-  private resize(): void {
+  /**
+   * Re-measure and re-size the framebuffer.
+   *
+   * Public because a phone needs to be told: `window`'s resize event
+   * fires before either platform can report the new size after a
+   * rotation, so `ui/screen.ts` re-measures over the following half
+   * second and calls this each time.
+   */
+  resize(): void {
     const w = this.canvas.clientWidth;
     const h = this.canvas.clientHeight;
     if (w === 0 || h === 0) return;

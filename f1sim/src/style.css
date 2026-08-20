@@ -16,13 +16,28 @@
 
 html,
 body {
+  /* Three heights, most specific last. `--app-height` is measured from
+     `visualViewport` by `ui/screen.ts` and is the only one that is right
+     on a phone: mobile Safari sizes `vh` against the viewport with the
+     URL bar retracted, so a page laid out in `100%` or `100vh` is taller
+     than the space it is shown in for as long as the bar is out — and a
+     game never scrolls, so the bar never retracts. */
   height: 100%;
+  height: 100dvh;
+  height: var(--app-height, 100dvh);
   overflow: hidden;
+  /* No rubber-band, no pull-to-refresh. A steering drag that starts near
+     the top of the screen is otherwise a page refresh on Android
+     Chrome — which loses the session. */
+  overscroll-behavior: none;
   background: var(--bg);
   color: var(--text);
   font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
   -webkit-user-select: none;
   user-select: none;
+  /* A long press on the canvas otherwise raises the iOS callout menu
+     mid-corner. */
+  -webkit-touch-callout: none;
 }
 
 #view {
@@ -31,6 +46,30 @@ body {
   width: 100%;
   height: 100%;
   display: block;
+  /* The single most important line in this file for a phone.
+     `user-scalable=no` in the viewport meta has been ignored by iOS
+     Safari since iOS 10, so without this the browser keeps panning,
+     pinch-zooming and double-tap-zooming a canvas whose whole surface is
+     the controls. `preventDefault` on pointerdown does not cover it:
+     the browser decides whether a gesture is its own before the first
+     event is dispatched, and `touch-action` is how that decision is
+     told. */
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* The pads themselves are drawn here — see `ui/touchpads.ts`. Above the
+   road, below every panel, and never in the way of a touch. */
+.touch-pads {
+  position: fixed;
+  inset: 0;
+  /* Above the HUD and the panels, below the title card and the rotate
+     prompt. A pad is only ever on screen while a thumb is on the glass,
+     and while that is true it is the most important thing on it — a
+     steering pad half-hidden behind a telemetry panel is worse than no
+     pad, because the centre mark is the half that gets covered. */
+  z-index: 6;
+  pointer-events: none;
 }
 
 #overlay {
@@ -489,7 +528,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-height: calc(100vh - 28px);
+  max-height: calc(var(--app-height, 100dvh) - 28px);
   overflow-y: auto;
   overflow-x: hidden;
   pointer-events: auto;
@@ -776,6 +815,9 @@ body {
 #touch-buttons button {
   width: 74px;
   height: 52px;
+  /* `touch-action: none` below stops the browser gesturing; this stops
+     the 300 ms wait for a possible double-tap that used to make every
+     on-screen control feel a third of a second behind the keyboard. */
   border-radius: 12px;
   border: 1px solid var(--line);
   background: rgba(14, 18, 23, 0.9);
@@ -799,6 +841,19 @@ body {
 /* A phone gets the road, the HUD and the buttons. The tuning sliders,
    the setup readout and the traction circle are bench instruments; on a
    390 px screen they do not shrink, they just cover the road. */
+/*
+ * A note on the breakpoints below, because getting this wrong is what
+ * most of the phone layout bugs were.
+ *
+ * A phone in landscape is 667–932 px WIDE. Every `max-width: 720px` rule
+ * written for "a phone" therefore stopped applying the moment the player
+ * did the one thing the game asks them to do, which is turn the device
+ * sideways — so the minimap went back to full size on top of the buttons,
+ * the start card went back to desktop type on a 390 px-tall viewport, and
+ * the compact HUD reverted. A phone in landscape is not narrow. It is
+ * SHORT. `(pointer: coarse)` says which device it is, and `max-height`
+ * says how much room there is; width says almost nothing.
+ */
 @media (pointer: coarse), (max-width: 900px) {
   #btn-aero,
   #btn-overtake,
@@ -813,11 +868,26 @@ body {
   /* Steering feel is the exception. It is not a bench instrument — it
      is the setting a phone player most needs, because a thumb on glass
      is the input it exists to compensate for. */
-  .sliders.steering { display: block; max-width: 210px; }
+  body.bench #overlay .stack.right > .sliders.steering {
+    display: block;
+    max-width: 210px;
+  }
 
   #overlay { padding: 8px; gap: 8px; justify-content: flex-start; }
   #overlay .stack { gap: 8px; }
+  /*
+   * The right column held the setup readout, the aids and the steering
+   * sliders, and this used to hide the whole column — which took the
+   * steering sliders with it. The comment two rules down has claimed
+   * since it was written that steering feel is the exception a phone
+   * keeps, because a thumb on glass is the input it exists to
+   * compensate for; the rule that was supposed to keep it could not,
+   * because a `display: block` child of a `display: none` parent is
+   * still not on screen. Hide the contents instead.
+   */
   #overlay .stack.right { display: none; }
+  body.bench #overlay .stack.right { display: flex; }
+  body.bench #overlay .stack.right > * { display: none; }
 
   .timing, .session { width: 168px; }
   .panel { padding: 7px 9px; }
@@ -839,8 +909,24 @@ body {
 
 /* Landscape on a phone is short, not narrow: keep the road visible. */
 @media (pointer: coarse) and (orientation: landscape) {
-  .timing .times, .session .rows { display: none; }
+  .session .rows { display: none; }
   .hud .revs { display: none; }
+
+  /*
+   * The lap times, trimmed rather than dropped.
+   *
+   * This hid `.times` outright, which on a phone means always — a
+   * landscape phone is the orientation the game asks to be held in — and
+   * `.times` is where the best lap lives. A timing panel that cannot
+   * show you what you are chasing is not a timing panel. The lap number
+   * goes because the session panel above already counts laps, and the
+   * optimal goes because it is a bench figure; last and best stay.
+   */
+  .timing .times { font-size: 9px; gap: 1px 8px; }
+  .timing .times dt:nth-of-type(1),
+  .timing .times .lapno,
+  .timing .times dt:nth-of-type(4),
+  .timing .times .optimal { display: none; }
 }
 
 /* ---------------- fullscreen and orientation ---------------- */
@@ -1025,6 +1111,62 @@ body {
   text-shadow: 0 1px 8px rgba(0, 0, 0, 0.8);
 }
 
+/* Shown only on iOS in a tab, where there is no Fullscreen API and this
+   is the way to a full screen. Brighter than the control hint it
+   replaces because it is an instruction rather than a reminder. */
+#install-hint {
+  color: var(--text);
+  max-width: 300px;
+}
+#install-hint b { color: #fff; }
+
+/*
+ * The start card on a phone held sideways.
+ *
+ * At desktop type this card is about 345 px tall: a 46 px title, the
+ * circuit picker, a 22 px START inside 32 px of padding, and two lines
+ * of hint. A phone in landscape has 390 px of screen and the browser
+ * keeps 45 of it, so the card overflowed a centred flex column — which
+ * clips at BOTH ends and cannot be scrolled — and the thing that went
+ * off the bottom was START. The game was unstartable in the orientation
+ * it asks you to hold the phone in.
+ *
+ * Everything below is that card at two-thirds scale, which fits in
+ * roughly 210 px. The auto margins on the pseudo-elements do the
+ * centring instead of `justify-content`, so if it ever overflows again
+ * the overflow is reachable rather than clipped.
+ */
+@media (max-height: 560px) {
+  #start-card {
+    justify-content: flex-start;
+    overflow-y: auto;
+    gap: 4px;
+    padding: 12px;
+  }
+  #start-card::before { content: ''; margin-top: auto; }
+  #start-card::after { content: ''; margin-bottom: auto; }
+
+  #start-card h1 { font-size: 27px; }
+  #start-card .by { margin-top: 3px; font-size: 10px; }
+  #circuit-picker { margin: 10px 0 2px; gap: 6px; }
+  #circuit-picker button { padding: 7px 13px; font-size: 11px; }
+  #start-card .cta {
+    margin-top: 12px;
+    font-size: 17px;
+    padding: 12px 40px;
+    border-width: 2.5px;
+    box-shadow: 4px 4px 0 #000;
+  }
+  #start-card .cta:active { transform: translate(4px, 4px); }
+  #start-card small { font-size: 10px; line-height: 1.5; max-width: 320px; }
+}
+
+/* The rotate prompt is asking you to stop looking at the screen, so it
+   can afford to be small when the screen is small. */
+@media (max-height: 420px) {
+  #rotate-prompt .phone { width: 34px; height: 58px; }
+}
+
 #rotate-prompt b {
   font-size: 13px;
   letter-spacing: 0.06em;
@@ -1047,20 +1189,6 @@ body {
   #rotate-prompt .phone { animation: none; transform: rotate(-90deg); }
 }
 
-/* Landscape on a phone is short. Give the road the height back. */
-@media (pointer: coarse) and (orientation: landscape) {
-  #btn-fullscreen { display: none; }
-  .hud { bottom: max(10px, env(safe-area-inset-bottom)); gap: 4px; }
-  .hud .dials { padding: 3px 14px; }
-  .hud .gear b { font-size: 24px; }
-  .hud .speed b { font-size: 20px; }
-  .hud .mode { padding: 2px 8px 4px; min-width: 74px; }
-  #touch-buttons {
-    bottom: max(14px, env(safe-area-inset-bottom));
-    flex-direction: row;
-  }
-  #touch-buttons button { width: 62px; height: 44px; }
-}
 
 /* ------------------------------------------------------------------
    Position, and the flag.
@@ -1328,7 +1456,7 @@ body {
   transition: opacity 90ms ease-out, transform 160ms cubic-bezier(0.2, 1.6, 0.4, 1);
 }
 
-@media (max-width: 720px) {
+@media (max-width: 720px), (max-height: 560px) {
   .start-lights .gantry { gap: 8px; padding: 10px 12px; }
   .start-lights .gantry i { width: 28px; height: 28px; }
   .start-lights .go { font-size: 32px; }
@@ -1468,7 +1596,7 @@ body:not(.bench) .stack.right { display: none; }
   color: #04150b;
 }
 
-@media (max-width: 720px) {
+@media (pointer: coarse), (max-width: 720px) {
   .hud-mode,
   .easy-mode { font-size: 10px; padding: 7px 10px; }
   .easy-mode { top: 50px; }
@@ -1498,7 +1626,111 @@ body:not(.bench) .stack.right { display: none; }
 }
 
 /* The touch buttons live on this edge, so on a phone the map moves up
-   out of the way of the thumb rather than sitting under it. */
-@media (max-width: 720px) {
+   out of the way of the thumb rather than sitting under it.
+   Portrait only: a 667 px landscape phone is under 720 px wide too, and
+   this rule sits after the landscape block, so without the orientation
+   term it silently put the map back on top of the buttons on exactly
+   the smallest screen that could least afford it. */
+@media (max-width: 720px) and (orientation: portrait) {
   .minimap { width: 104px; height: 104px; bottom: auto; top: 58px; }
+}
+
+
+/* ==================================================================
+   A PHONE HELD SIDEWAYS
+
+   Last on purpose. Everything above declares a component *and* where
+   it sits, and several of those — `.minimap`, `.hud-mode`,
+   `.easy-mode` — are declared near the bottom of the file. A media
+   query written next to the component it overrides therefore loses to
+   a base rule of equal specificity that happens to come later, which
+   is how the map ended up pinned to two corners at once and the easy
+   mode button ended up drawn on top of it. Phone layout is the last
+   word, so it goes last.
+   ================================================================== */
+/* Landscape on a phone is short. Give the road the height back. */
+@media (pointer: coarse) and (orientation: landscape) {
+  #btn-fullscreen { display: none; }
+  .hud { bottom: max(10px, env(safe-area-inset-bottom)); gap: 4px; }
+  .hud .dials { padding: 3px 14px; }
+  .hud .gear b { font-size: 24px; }
+  .hud .speed b { font-size: 20px; }
+  .hud .mode { padding: 2px 8px 4px; min-width: 74px; }
+
+  /*
+   * Two rows in the bottom-right corner rather than one long one.
+   *
+   * A single row of five 62 px buttons is 350 px wide, which on an
+   * 844 px landscape phone reaches almost to the middle of the screen —
+   * so the strip `input/zones.ts` has to reserve out of the pedals is
+   * nearly half of them, and the right thumb has almost nowhere left to
+   * land. Stacked two-and-three it is 190 px wide and 100 px tall, and
+   * the pedal zone keeps the whole of the area a thumb can actually
+   * reach without letting go of the phone.
+   *
+   * The zone is measured from these elements at runtime, so this layout
+   * and the dead zone cannot disagree — see `zones.ts`.
+   */
+  #touch-buttons {
+    bottom: max(10px, env(safe-area-inset-bottom));
+    right: max(10px, env(safe-area-inset-right));
+    flex-direction: row;
+    flex-wrap: wrap-reverse;
+    justify-content: flex-end;
+    width: 196px;
+    gap: 6px;
+  }
+  /* 44 px is the smallest target either platform's guidelines allow, and
+     a car on its roof is not the moment to miss RESET. */
+  #touch-buttons button { width: 60px; height: 44px; font-size: 10px; }
+
+  /*
+   * The map goes to the top-right, and the reasoning is worth keeping
+   * because two obvious places are both wrong.
+   *
+   * It was pinned bottom-right, in the same corner as the buttons, and
+   * being `pointer-events: none` it covered them without taking their
+   * taps — the worst of both. Bottom-LEFT is worse still: in landscape
+   * that is not spare space, it is where the left thumb lives, so the
+   * map sat on top of the steering pad and under the position panel at
+   * the same time.
+   *
+   * The bottom of a landscape phone belongs to the thumbs. Everything
+   * that is only *looked* at belongs in the top strip.
+   */
+  .minimap {
+    left: auto;
+    bottom: auto;
+    right: max(8px, env(safe-area-inset-right));
+    top: max(8px, env(safe-area-inset-top));
+    width: 84px;
+    height: 84px;
+    padding: 4px;
+    border-width: 2px;
+    border-radius: 9px;
+    box-shadow: 3px 3px 0 #000;
+  }
+
+  /* And the two settings buttons move left of it, still in the strip
+     the index finger can reach without letting go of the phone. */
+  .hud-mode { top: max(8px, env(safe-area-inset-top)); right: calc(max(8px, env(safe-area-inset-right)) + 96px); }
+  .easy-mode { top: calc(max(8px, env(safe-area-inset-top)) + 34px); right: calc(max(8px, env(safe-area-inset-right)) + 96px); }
+
+  /*
+   * The left column, compacted.
+   *
+   * Three stacked panels at phone sizes came to 265 px of a 390 px
+   * screen, which left the left thumb driving through the bottom of the
+   * position panel. None of the numbers got smaller than they need to
+   * be to be read at arm's length; what went is the air around them.
+   */
+  #overlay { padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right))
+    max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
+  #overlay .stack { gap: 5px; }
+  .timing, .session { width: 146px; }
+  .panel { padding: 5px 8px; }
+  .timing .clock b { font-size: 17px; }
+  .session-head .clock { font-size: 13px; }
+  .panel.position .place { font-size: 22px; }
+  .panel.position .gap { font-size: 14px; }
 }

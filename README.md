@@ -21,9 +21,9 @@ Then open <http://localhost:5173>.
 
 | Action        | Keyboard              | Touch                        |
 | ------------- | --------------------- | ---------------------------- |
-| Throttle      | `↑` / `W`             | right side, lower half       |
-| Brake         | `↓` / `S`             | right side, upper half       |
-| Steer         | `←` `→` / `A` `D`     | left side                    |
+| Throttle      | `↑` / `W`             | right thumb, drag up         |
+| Brake         | `↓` / `S`             | right thumb, drag down       |
+| Steer         | `←` `→` / `A` `D`     | left thumb, drag across      |
 | Gears         | `Q` `E`               | automatic                    |
 | Straight-line | `F`                   | AERO                         |
 | Overtake mode | `Shift`               | BOOST                        |
@@ -35,6 +35,37 @@ Then open <http://localhost:5173>.
 body can finish up on its roof or a long way off the map, and the
 simulation is not wrong about either — but a session should not end
 there.
+
+## On a phone
+
+Both touch controls are *relative*: wherever your thumb goes down
+becomes the centre, because a phone is held differently every time and a
+fixed centre means fighting the controls. Both are analogue by travel —
+how far up the pad your thumb is sets how much throttle — because an
+on-off pedal makes a 1000 bhp car undriveable on glass. Both draw
+themselves under your thumb, so full lock is a distance you can see
+rather than a number you have to have learnt.
+
+The pedals stop at the on-screen buttons, whose footprint is measured
+from the elements themselves rather than written down twice, so moving
+a button in the stylesheet moves its dead zone with it
+(`src/input/zones.ts`).
+
+Landscape, and the game asks for it. Android is put into fullscreen and
+locked to landscape on START. **iOS Safari has no Fullscreen API at
+all**, so there the honest instruction is the other one — *공유 → 홈
+화면에 추가* — and the title card says so instead of drawing a
+fullscreen button that cannot work. A home-screen app runs chrome-free
+in the orientation `public/manifest.webmanifest` asks for, which is
+everything the fullscreen button was for.
+
+`src/render/quality.ts` decides what the device can afford before
+anything is built — the forest, the shadow map, the multisample buffer —
+and errs downward on touch, because a phone that guesses high runs at
+twelve frames a second and a scaler cannot un-place a forest. Resolution
+is the exception: it is the one dial that can move mid-race, so a closed
+loop moves it from measured frame times. `?quality=low|medium|high`
+pins the tier, which is how a bug report is made.
 
 ## What is simulated
 
@@ -50,7 +81,7 @@ far. Drag scales with the same wing settings that produce the
 downforce, which is what makes the Monza and Monaco trims genuinely
 different cars rather than a slider.
 
-`tests/` holds 154 tests over the tyre model, the thermal model, the
+`tests/` holds 272 tests over the tyre model, the thermal model, the
 2026 power unit rules, the circuit geometry, the racing line and the
 field.
 
