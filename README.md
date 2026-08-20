@@ -118,7 +118,20 @@ far. Drag scales with the same wing settings that produce the
 downforce, which is what makes the Monza and Monaco trims genuinely
 different cars rather than a slider.
 
-`tests/` holds 297 tests over the tyre model, the thermal model, the
+Almost nothing here is left to the contact solver. The wheels are
+raycasts, the wall is a force, the other cars are pairs of circles —
+the only rigid contact in the whole simulation is one box around the
+chassis, and it is a backstop for a car that has ended up on its roof
+rather than a part of the car. It has to keep clear of the road
+through the whole of suspension travel and through the roll a corner
+actually asks for, because a 798 kg box overlapping a static triangle
+mesh gets pushed out at whatever speed that takes, and that speed is
+not a number this simulation chose. It used to touch, and running wide
+at a corner threw the car sixteen metres into the air;
+`tests/vehicle.test.ts` now holds both halves of that shut — the
+clearance as arithmetic, and a sweep of the corner it happened on.
+
+`tests/` holds 299 tests over the tyre model, the thermal model, the
 2026 power unit rules, the circuit geometry, the racing line and the
 field.
 
