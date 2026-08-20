@@ -45,6 +45,16 @@ export interface ChassisParams {
   halfExtents: Vec3;
   /** Collider offset from the centre of mass (m). */
   colliderOffsetY: number;
+  /**
+   * The aerodynamic floor, below the CG (m).
+   *
+   * Not the collision box. The two used to be the same number — the
+   * reference plane for ground effect was read off the underside of the
+   * collider — and that tied a question about downforce to a question
+   * about what the car may bump into. They are separate now because the
+   * box had to move and the aerodynamics must not.
+   */
+  floorY: number;
   wheelbase: number;
   trackFront: number;
   trackRear: number;
@@ -67,13 +77,27 @@ export interface ChassisParams {
 export const defaultChassisParams = (): ChassisParams => ({
   mass: 798,
   inertia: vec3(1000, 1100, 150),
-  // The collider must clear the road at every point in suspension
-  // travel. If its underside can touch, the car rests on the box and the
-  // springs stop carrying load — downforce then never reaches the tyres.
-  // At the 0.30 m static ride height this leaves 60 mm of clearance,
-  // which is exactly the suspension's travel.
+  /* The collider must clear the road at every point in suspension
+   * travel, *and* through the roll the car actually runs. If its
+   * underside can touch, two things go wrong: the car rests on the box
+   * so the springs stop carrying load and downforce never reaches the
+   * tyres — and, far worse, the solver has a 798 kg box overlapping a
+   * static triangle mesh and pushes it out at whatever speed that takes.
+   *
+   * The old box sat 60 mm off the road at the 0.30 m static ride
+   * height, which the comment here called "exactly the suspension's
+   * travel". It was not: the travel is 80 mm, so the box was already
+   * 20 mm into the road at full bump before the car had leaned at all,
+   * and four degrees of roll buried a corner of it even sitting at its
+   * static height. That is what threw the car off the circuit at a
+   * corner — see the launch test in `tests/vehicle.test.ts`.
+   *
+   * Centred on the CG, the underside sits 140 mm down: 160 mm of
+   * clearance at the static ride height, 80 mm at full bump, which is
+   * five degrees of roll across the box's 0.9 m half-width. */
   halfExtents: vec3(0.9, 0.14, 2.5),
-  colliderOffsetY: -0.1,
+  colliderOffsetY: 0,
+  floorY: -0.24,
   wheelbase: 3.6,
   trackFront: 1.6,
   trackRear: 1.55,
@@ -105,6 +129,23 @@ export const defaultVehicleParams = (): VehicleParams => ({
 
 /** Below this speed slip ratio and slip angle are ill-conditioned. */
 const SLIP_SPEED_FLOOR = 3.0;
+
+/**
+ * How square a surface must be to the suspension to carry the car.
+ *
+ * The cosine of eighty degrees — see `castWheelRay` for why a wheel that
+ * finds ground sideways must carry nothing.
+ *
+ * Set from the mesh rather than from taste. Sweeping every triangle of
+ * every circuit, the steepest face inside the barriers is 71 degrees:
+ * the verges are drawn by dropping stations a few centimetres over a
+ * one-centimetre gap, which leaves slivers a wheel can genuinely cross.
+ * Sixty degrees was tried first and cut those slivers out from under the
+ * car — enough to spin the assisted car in `tests/easy.test.ts`. Eighty
+ * clears them by nine degrees and still leaves no way to stand on a
+ * wall.
+ */
+const GROUND_FACING = 0.17;
 
 /**
  * Tyre relaxation length (m).
@@ -419,11 +460,11 @@ export class Vehicle {
     }
 
     // Floor height above the road at each axle, for ground effect. The
-    // reference plane sits under the chassis; the wheel radius plus the
-    // extended suspension length gives the hardpoint height, and the
-    // collider's underside is a fixed offset below that.
-    const floorOffset =
-      chassis.colliderOffsetY - chassis.halfExtents.y - chassis.hardpointY;
+    // wheel radius plus the extended suspension length gives the
+    // hardpoint height, and the floor is a fixed offset below that —
+    // `chassis.floorY`, which is the aerodynamic reference plane and
+    // deliberately not the underside of the collision box.
+    const floorOffset = chassis.floorY - chassis.hardpointY;
     const floorHeight = (w: Wheel): number =>
       chassis.wheelRadius + (suspension.restLength - w.compression) + floorOffset;
 
@@ -761,6 +802,25 @@ export class Vehicle {
       this.body
     );
     if (!hit) return null;
+
+    /* Ground the wheel could actually stand on, or a wall it has been
+     * pushed against?
+     *
+     * The ray goes wherever the car is pointing, and a car that has been
+     * turned onto its side aims it along the road rather than at it. The
+     * hit is real either way, but the spring is not: it pushes along the
+     * car's own up axis, so a wheel that "finds ground" sideways gets a
+     * corner load of up to `MAX_CORNER_FORCE` fired parallel to the
+     * road. Four of those is forty g, and the car leaves.
+     *
+     * A suspension carries load along its axis and nowhere else, so the
+     * surface has to face that way: past `GROUND_FACING` the wheel is
+     * leaning on the surface, not resting on it, and carries nothing.
+     * The normal comes back oriented against the ray, so this is a plain
+     * dot product with the car's up. */
+    const facing = hit.normal.x * up.x + hit.normal.y * up.y + hit.normal.z * up.z;
+    if (facing < GROUND_FACING) return null;
+
     return {
       distance: hit.timeOfImpact,
       point: vec3(
