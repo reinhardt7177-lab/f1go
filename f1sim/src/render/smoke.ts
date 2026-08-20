@@ -4,9 +4,11 @@
  * The simulation already knows when a tyre has stopped rolling and
  * started sliding — every wheel carries a slip ratio, and a locked
  * front or a spinning rear is a number well outside the range the tyre
- * makes grip in. Until now that only showed up as a figure on the
- * telemetry panel, which is no use to someone whose eyes are on the
- * corner: you felt the car stop responding without seeing why.
+ * makes grip in. That number used to be readable only on an instrument
+ * panel, which is no use to someone whose eyes are on the corner — and
+ * the instrument panel has since been deleted, so this is now the whole
+ * of how a driver learns a tyre has let go: you felt the car stop
+ * responding without seeing why.
  *
  * A puff of smoke off the wheel that is sliding is the whole
  * explanation, delivered where the mistake happened. It is the cheapest

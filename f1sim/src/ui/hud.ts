@@ -1,11 +1,11 @@
 /**
  * Driver HUD.
  *
- * The telemetry panel is for tuning; this is for driving. It carries the
- * four things you look at while your eyes are mostly on the road — gear,
- * speed, which way the wings are set, and how much Overtake Mode you
- * have left — big enough to read peripherally, and it is the only part
- * of the interface that survives on a phone.
+ * This is for driving, and since the instrument panel was deleted it is
+ * the only readout there is. It carries the four things you look at while
+ * your eyes are mostly on the road — gear, speed, which way the wings are
+ * set, and how much Overtake Mode you have left — big enough to read
+ * peripherally, which is what the numbers it replaced were not.
  */
 import { KMH, clamp } from '../core/math';
 import type { VehicleState } from '../sim/types';
