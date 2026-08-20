@@ -20,7 +20,17 @@ import * as THREE from 'three';
 
 import type { Vec3 } from '../core/math';
 
-/** Puffs alive at once. Two locked wheels use about forty. */
+/**
+ * Puffs alive at once. Two locked wheels use about forty.
+ *
+ * A ceiling rather than a fixed size since the quality tiers arrived: a
+ * phone gets a smaller pool, which shortens the plume under a long
+ * lockup rather than dropping it, because slots are recycled
+ * oldest-first. The particles themselves are one draw call either way —
+ * what a smaller pool actually saves is overdraw, and a large
+ * transparent sprite covering a quarter of a phone screen is the most
+ * expensive thing in this file.
+ */
 const POOL = 160;
 
 /** Seconds a puff lasts. Long enough to be left behind at speed. */
@@ -73,13 +83,14 @@ const puffTexture = (): THREE.CanvasTexture => {
 };
 
 export class TyreSmoke {
-  private readonly positions = new Float32Array(POOL * 3);
-  private readonly velocities = new Float32Array(POOL * 3);
+  private readonly pool: number;
+  private readonly positions: Float32Array;
+  private readonly velocities: Float32Array;
   /** Seconds left on each puff. Zero means the slot is free. */
-  private readonly life = new Float32Array(POOL);
-  private readonly seed = new Float32Array(POOL);
-  private readonly alpha = new Float32Array(POOL);
-  private readonly scale = new Float32Array(POOL);
+  private readonly life: Float32Array;
+  private readonly seed: Float32Array;
+  private readonly alpha: Float32Array;
+  private readonly scale: Float32Array;
 
   private readonly geometry = new THREE.BufferGeometry();
   private readonly points: THREE.Points;
@@ -88,7 +99,15 @@ export class TyreSmoke {
   /** Fractional puffs owed, so a low slip still emits at the right rate. */
   private readonly owed: number[] = [];
 
-  constructor(scene: THREE.Scene) {
+  constructor(scene: THREE.Scene, pool = POOL) {
+    this.pool = Math.max(8, Math.min(POOL, Math.round(pool)));
+    this.positions = new Float32Array(this.pool * 3);
+    this.velocities = new Float32Array(this.pool * 3);
+    this.life = new Float32Array(this.pool);
+    this.seed = new Float32Array(this.pool);
+    this.alpha = new Float32Array(this.pool);
+    this.scale = new Float32Array(this.pool);
+
     this.geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
     this.geometry.setAttribute('aAlpha', new THREE.BufferAttribute(this.alpha, 1));
     this.geometry.setAttribute('aScale', new THREE.BufferAttribute(this.scale, 1));
@@ -156,7 +175,7 @@ export class TyreSmoke {
 
     while (due-- > 0) {
       const i = this.cursor;
-      this.cursor = (this.cursor + 1) % POOL;
+      this.cursor = (this.cursor + 1) % this.pool;
       const p = i * 3;
 
       this.positions[p] = at.x + (Math.random() - 0.5) * 0.3;
@@ -178,7 +197,7 @@ export class TyreSmoke {
   update(dt: number): void {
     let alive = 0;
 
-    for (let i = 0; i < POOL; i++) {
+    for (let i = 0; i < this.pool; i++) {
       const remaining = this.life[i]!;
       if (remaining <= 0) {
         this.alpha[i] = 0;

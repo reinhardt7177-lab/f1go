@@ -35,7 +35,9 @@ import { SetupStatusPanel } from './ui/setup-status';
 import { TelemetryPanel } from './ui/telemetry';
 import { TimingPanel } from './ui/timing';
 import { SlidersPanel, TuningPanel } from './ui/tuning';
-import { ViewportManager } from './ui/viewport';
+import { KeepAwake, ViewportWatcher } from './ui/screen';
+import { TouchPads } from './ui/touchpads';
+import { ViewportManager, isCoarsePointer } from './ui/viewport';
 
 const boot = async (): Promise<void> => {
   const status = document.getElementById('status')!;
@@ -56,10 +58,41 @@ const boot = async (): Promise<void> => {
   const circuitId = askedCircuit && askedCircuit in CIRCUIT_SPECS ? askedCircuit : 'oval';
   const world = new SimWorld(params, { circuitId });
   const renderer = new SceneRenderer(canvas, world.geometry, params, world.circuit);
-  // The touch layer listens on the canvas so drags never fight the
-  // panels, which keep their own pointer events.
-  const input = new InputManager(window, {}, canvas);
+  /* The touch layer listens on the canvas so drags never fight the
+     panels, which keep their own pointer events. The on-screen buttons
+     are handed to it so it can keep the pedals out of their footprint —
+     measured from these elements rather than declared as a constant, so
+     the dead zone follows them through the portrait-to-landscape
+     reflow. See `input/zones.ts`. */
+  const reserve = [
+    'touch-buttons',
+    'btn-fullscreen'
+  ]
+    .map((id) => document.getElementById(id))
+    .filter((el): el is HTMLElement => el !== null);
+
+  const input = new InputManager(window, {}, canvas, { reserve });
   const hud = new Hud(document.body);
+
+  /* Which device this is, said out loud on the body, so a panel can ask
+     without every one of them re-running a media query. */
+  document.body.classList.toggle('touch', isCoarsePointer());
+
+  /* The pads a phone player steers and brakes with. The touch layer has
+     reported where each thumb landed since it was written and nothing
+     had ever drawn it, so a relative steering pad had no centre on
+     screen and an analogue throttle had no travel on screen. */
+  const touchPads = new TouchPads(document.body);
+
+  /* A phone dims and locks after a minute of two thumbs the OS cannot
+     see, and reports the wrong viewport size for a fifth of a second
+     after every rotation. Both are handled here rather than by the
+     renderer, which should not have to know what a URL bar is. */
+  new KeepAwake();
+  new ViewportWatcher(() => {
+    renderer.resize();
+    touchPads.resize();
+  });
 
   // Left column stacks telemetry over the timing tower; the setup panel
   // sits on the right.
@@ -558,6 +591,10 @@ const boot = async (): Promise<void> => {
       startLights.update(session, now);
       overtakeNotice.update(place, field, now, session.phase === 'green');
       speedLines.update(Math.abs(snapshot.speed) * 3.6);
+      touchPads.update(
+        input.touch?.steerPad() ?? null,
+        input.touch?.pedalPad() ?? null
+      );
       rivalLabels.update(field.rivals, (point) => renderer.worldToScreen(point));
       sessionPanel.update(session, world.timer);
     }

@@ -26,6 +26,34 @@ export const isCoarsePointer = (): boolean =>
 
 export const isPortrait = (): boolean => window.innerHeight > window.innerWidth;
 
+/**
+ * True when the page is running as an installed app rather than in a
+ * browser tab.
+ *
+ * This is the whole answer to fullscreen on an iPhone, where there is no
+ * Fullscreen API at all: Safari will not let a page hide its own chrome,
+ * but it *will* run a page added to the home screen with no chrome at
+ * all, in the orientation the manifest asks for. So on iOS the honest
+ * instruction is not "press this to go fullscreen" — there is no such
+ * button — it is "add this to your home screen", and knowing which mode
+ * we are in is what lets the interface say the right one.
+ */
+export const isStandalone = (): boolean => {
+  const displayMode =
+    typeof matchMedia === 'function' &&
+    (matchMedia('(display-mode: standalone)').matches ||
+      matchMedia('(display-mode: fullscreen)').matches);
+  // The iOS-only flag, which predates the standard query and is still
+  // the only one Safari sets for a home-screen app.
+  const legacy = (navigator as { standalone?: boolean }).standalone === true;
+  return displayMode || legacy;
+};
+
+/** True where a page can hide the browser's chrome by asking. */
+export const canFullscreen = (): boolean =>
+  typeof document !== 'undefined' &&
+  document.documentElement.requestFullscreen !== undefined;
+
 /** True when the document is showing fullscreen right now. */
 export const isFullscreen = (): boolean => document.fullscreenElement !== null;
 
@@ -43,6 +71,16 @@ export const enterImmersive = async (): Promise<void> => {
     // Fullscreen refused; carry on and still try the orientation.
   }
 
+  try {
+    const orientation = screen.orientation as ScreenOrientationWithLock | undefined;
+    await orientation?.lock?.('landscape');
+  } catch {
+    // No lock on this platform. The portrait prompt covers it.
+  }
+};
+
+/** Ask for landscape on its own, for when fullscreen is already held. */
+export const lockLandscape = async (): Promise<void> => {
   try {
     const orientation = screen.orientation as ScreenOrientationWithLock | undefined;
     await orientation?.lock?.('landscape');
@@ -87,6 +125,20 @@ export class ViewportManager {
     // desktop player needs both of those just as much.
     this.start.classList.remove('hidden');
 
+    /* A button that cannot do anything is worse than no button. An
+       iPhone in Safari has no Fullscreen API, so the toggle was drawn,
+       tapped, and silently did nothing — and it sat over the middle of
+       the sky while it did. It is hidden where it cannot work, and where
+       the page is already running without chrome there is nothing left
+       for it to hide. */
+    if (!canFullscreen() || isStandalone()) this.toggle.classList.add('hidden');
+
+    /* And in its place, on the one platform that has the other route:
+       iOS runs a home-screen app chrome-free and landscape-locked, which
+       is everything the fullscreen button was for. Saying so is the only
+       way anyone finds out. */
+    this.showInstallHint();
+
     /* One button rather than the whole card.
      *
      * The card used to start the session wherever you touched it, which
@@ -108,11 +160,33 @@ export class ViewportManager {
     const sync = (): void => this.syncRotatePrompt();
     window.addEventListener('resize', sync);
     window.addEventListener('orientationchange', sync);
+    window.visualViewport?.addEventListener('resize', sync);
     document.addEventListener('fullscreenchange', () => {
       this.toggle.classList.toggle('on', isFullscreen());
+      /* Android grants the orientation lock only while the document is
+         fullscreen, and drops it silently on the way out. Re-asking on
+         the way *in* covers the case where the first request lost the
+         race against the fullscreen transition — which it does on a
+         cold load often enough to matter. */
+      if (isFullscreen()) void lockLandscape();
       sync();
     });
     sync();
+  }
+
+  /**
+   * Tell an iOS browser user about Add to Home Screen.
+   *
+   * Only there, and only in a tab: on Android the fullscreen button
+   * works, and in a home-screen app the advice has already been taken.
+   * It replaces the control hint rather than joining it, because a
+   * screen that says three things says none of them.
+   */
+  private showInstallHint(): void {
+    if (!isCoarsePointer() || canFullscreen() || isStandalone()) return;
+    const hint = document.getElementById('install-hint');
+    hint?.classList.remove('hidden');
+    document.getElementById('touch-hint')?.classList.add('hidden');
   }
 
   private syncRotatePrompt(): void {

@@ -9,6 +9,7 @@ import { approach, clamp } from '../core/math';
 import { neutralControls } from '../sim/types';
 import type { ControlState } from '../sim/types';
 import { TouchControls } from './touch';
+import type { TouchOptions } from './touch';
 
 export interface InputOptions {
   /** Seconds for the keyboard to reach full steering lock. */
@@ -80,10 +81,11 @@ export class InputManager {
   constructor(
     target: EventTarget = window,
     options: Partial<InputOptions> = {},
-    touchSurface: HTMLElement | null = null
+    touchSurface: HTMLElement | null = null,
+    touchOptions: Partial<TouchOptions> = {}
   ) {
     this.options = { ...defaultOptions(), ...options };
-    this.touch = touchSurface ? new TouchControls(touchSurface) : null;
+    this.touch = touchSurface ? new TouchControls(touchSurface, touchOptions) : null;
 
     target.addEventListener('keydown', (raw) => {
       const e = raw as KeyboardEvent;
@@ -132,9 +134,24 @@ export class InputManager {
     const gp = this.gamepad();
     this.touch?.update(dt);
 
-    // Touch wins while a finger is down; otherwise the keyboard is free
-    // to drive, so a tablet with a keyboard attached works either way.
-    if (this.touch?.active && (this.touch.throttle > 0 || this.touch.brake > 0 || this.touch.steer !== 0)) {
+    /* Touch wins while a finger is down; otherwise the keyboard is free
+       to drive, so a tablet with a keyboard attached works either way.
+       `holding` is in the test because a thumb held still on the pedals
+       asks for nothing measurable and must still keep the touch path —
+       without it, coasting handed the car back to a keyboard that is not
+       there, and with it the gearbox goes on shifting through a corner
+       taken off the throttle. The two on-screen latches count for the
+       same reason: AERO and BOOST are touch input even when no finger is
+       on a pad. */
+    if (
+      this.touch?.active &&
+      (this.touch.holding ||
+        this.touch.throttle > 0 ||
+        this.touch.brake > 0 ||
+        this.touch.steer !== 0 ||
+        this.touch.straightMode ||
+        this.touch.overtake)
+    ) {
       c.throttle = this.touch.throttle;
       c.brake = this.touch.brake;
       c.steer = shapeSteer(this.touch.steer, this.options);

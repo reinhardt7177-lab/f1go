@@ -199,8 +199,17 @@ const instance = (
  * and everything is set back past the run-off, so nothing a car can
  * reach at racing speed has a tree in it.
  */
-export const buildScenery = (circuit: Circuit): THREE.Group => {
+export const buildScenery = (circuit: Circuit, density = 1): THREE.Group => {
   const group = new THREE.Group();
+  /* Thinned rather than shrunk, and thinned *deterministically*.
+     `hash(seed)` already decides whether a station gets a tree; raising
+     the threshold it is compared against removes trees from a phone
+     without moving any of the ones that remain. A player who learns to
+     brake at a tree on a laptop finds the same tree in the same place
+     on a phone — there are simply fewer of its neighbours. Scaling them
+     smaller instead, or dropping every other one, would both break
+     that. */
+  const keep = Math.min(1, Math.max(0, density));
   const outline = outlineMaterial(2.0);
 
   const [coniferTrunk, coniferCanopy] = buildConifer() as [
@@ -233,7 +242,7 @@ export const buildScenery = (circuit: Circuit): THREE.Group => {
       /* A gap in the trees every so often, because an unbroken hedge
          both sides is a corridor — and it is the gaps that let you see
          the corner after the one you are in. */
-      if (roll > 0.72) continue;
+      if (roll > 0.72 * keep) continue;
 
       const out = edge + hash(seed * 7 + 1) * DEPTH;
       const along = (hash(seed * 13 + 2) - 0.5) * SPACING;
@@ -257,7 +266,7 @@ export const buildScenery = (circuit: Circuit): THREE.Group => {
 
     /* A marker post every fifth station, alternating sides — close to
        the road, where the eye actually uses it to judge distance. */
-    if (i % 5 === 0) {
+    if (i % (keep < 0.6 ? 10 : 5) === 0) {
       const side = i % 10 === 0 ? -1 : 1;
       const out = circuit.halfWidthAt(s) + circuit.kerbWidth + 1.6;
       posts.push({
