@@ -1,0 +1,376 @@
+using UnityEngine;
+using MumuF1;
+
+namespace MumuF1.Game
+{
+    /// <summary>
+    /// The car: a rigid body held up by four raycasts.
+    /// </summary>
+    /// <remarks>
+    /// Almost nothing here decides anything. Every number that matters —
+    /// what the tyre does with a slip angle, what the floor does at a
+    /// ride height, what a spring carries at a compression — comes from
+    /// <c>MumuF1.Core</c>, which has no Unity in it and is tested on its
+    /// own. This file is the wiring: it asks the engine where the road
+    /// is, hands the answers to the model, and applies what comes back.
+    ///
+    /// That split is deliberate and it is the whole reason the port is
+    /// safe. A <c>WheelCollider</c> would have been fewer lines and would
+    /// have thrown the model away with them — the handling would then be
+    /// PhysX's opinion rather than the one that was tuned and tested.
+    /// Four raycasts and <c>AddForceAtPosition</c> is exactly the shape
+    /// the TypeScript already had, so the behaviour comes across intact.
+    /// </remarks>
+    [RequireComponent(typeof(Rigidbody))]
+    public class CarController : MonoBehaviour
+    {
+        // Indices, matching the core's convention.
+        public const int FL = 0, FR = 1, RL = 2, RR = 3;
+
+        [Header("Chassis")]
+        public float Mass = 798f;
+        public Vector3 Inertia = new Vector3(1000f, 1100f, 150f);
+        public float Wheelbase = 3.6f;
+        public float TrackFront = 1.6f;
+        public float TrackRear = 1.55f;
+        public float FrontWeightBias = 0.45f;
+        public float HardpointY = 0.16f;
+        public float WheelRadius = 0.36f;
+        public float WheelInertia = 1.8f;
+        public float MaxSteerAngleDeg = 20f;
+        public float SteerSpeedFactor = 0.45f;
+
+        /// <summary>
+        /// The aerodynamic floor, below the centre of mass (m).
+        /// Deliberately not the collision box — see the note on the box
+        /// below, and the web version's `floorY`.
+        /// </summary>
+        public float FloorY = -0.24f;
+
+        [Header("Which layers count as road")]
+        public LayerMask GroundMask = ~0;
+
+        // The model, shared with the tests and with the web version.
+        private readonly TireParams _tire = new TireParams();
+        private readonly TireThermalParams _thermal = new TireThermalParams();
+        private readonly AeroParams _aero = new AeroParams();
+        private readonly SuspensionParams _suspension = new SuspensionParams();
+        private readonly Drivetrain _drivetrain = new Drivetrain();
+
+        private Rigidbody _body;
+        private readonly Wheel[] _wheels = new Wheel[4];
+
+        private double _rideHeightFront = 0.05;
+        private double _rideHeightRear = 0.05;
+
+        /// <summary>Driver input for this step, written by whatever is driving.</summary>
+        public Controls Controls;
+
+        /// <summary>Read-only view for the camera, the HUD and the sound.</summary>
+        public double SpeedMs { get; private set; }
+        public double EngineRpm => _drivetrain.Rpm;
+        public int Gear => _drivetrain.Gear;
+        public double Downforce { get; private set; }
+
+        private sealed class Wheel
+        {
+            public Vector3 Hardpoint;
+            public bool Steered;
+            public bool Driven;
+            public bool Front;
+            public double Omega;
+            public double Compression;
+            public double LastCompression;
+            public double SteerAngle;
+            public double RelaxedSlipAngle;
+            public bool Grounded;
+            public double Load;
+            public double SlipRatio;
+            public double SlipAngle;
+            public double SurfaceGrip = 1.0;
+            public TireCondition Condition;
+            public Vector3 ContactPoint;
+        }
+
+        private void Awake()
+        {
+            _body = GetComponent<Rigidbody>();
+            _body.mass = Mass;
+            _body.linearDamping = 0f;
+            _body.angularDamping = 0.08f;
+            _body.inertiaTensor = Inertia;
+            _body.inertiaTensorRotation = Quaternion.identity;
+            _body.interpolation = RigidbodyInterpolation.Interpolate;
+            _body.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+            _body.automaticInertiaTensor = false;
+            _body.automaticCenterOfMass = false;
+            _body.centerOfMass = Vector3.zero;
+
+            /* Front axle sits ahead of the CG by the distance the weight
+               bias implies: more weight on the front means the CG is
+               closer to it. Forward is +Z in Unity, where the web version
+               used -Z, so the signs are mirrored here and nowhere else. */
+            float front = Wheelbase * (1f - FrontWeightBias);
+            float rear = -Wheelbase * FrontWeightBias;
+
+            _wheels[FL] = Make(-TrackFront / 2f, front, true, false, true);
+            _wheels[FR] = Make(TrackFront / 2f, front, true, false, true);
+            _wheels[RL] = Make(-TrackRear / 2f, rear, false, true, false);
+            _wheels[RR] = Make(TrackRear / 2f, rear, false, true, false);
+        }
+
+        private Wheel Make(float x, float z, bool steered, bool driven, bool isFront) =>
+            new Wheel
+            {
+                Hardpoint = new Vector3(x, HardpointY, z),
+                Steered = steered,
+                Driven = driven,
+                Front = isFront,
+                Condition = TireThermal.Fresh(_thermal)
+            };
+
+        /// <summary>Put the car back on the road, upright and stopped.</summary>
+        public void Reset(Vector3 position, float headingDeg)
+        {
+            transform.SetPositionAndRotation(position, Quaternion.Euler(0f, headingDeg, 0f));
+            _body.linearVelocity = Vector3.zero;
+            _body.angularVelocity = Vector3.zero;
+            _drivetrain.Reset();
+            foreach (Wheel w in _wheels)
+            {
+                w.Omega = 0;
+                w.Compression = 0;
+                w.LastCompression = 0;
+                w.RelaxedSlipAngle = 0;
+            }
+        }
+
+        private void FixedUpdate()
+        {
+            double dt = Time.fixedDeltaTime;
+            Vector3 up = transform.up;
+            Vector3 forward = transform.forward;
+            Vector3 velocity = _body.linearVelocity;
+
+            double speedAlongForward = Vector3.Dot(velocity, forward);
+            SpeedMs = speedAlongForward;
+
+            // --- aerodynamics -----------------------------------------
+            AeroMode mode = Controls.StraightMode ? AeroMode.Straight : AeroMode.Corner;
+            AeroForces air = Aero.Solve(
+                _aero, System.Math.Abs(speedAlongForward), mode,
+                _rideHeightFront, _rideHeightRear);
+            Downforce = air.Downforce;
+
+            float frontZ = Wheelbase * (1f - FrontWeightBias);
+            float rearZ = -Wheelbase * FrontWeightBias;
+            _body.AddForceAtPosition(-up * (float)air.DownforceFront,
+                transform.TransformPoint(new Vector3(0f, 0f, frontZ)));
+            _body.AddForceAtPosition(-up * (float)air.DownforceRear,
+                transform.TransformPoint(new Vector3(0f, 0f, rearZ)));
+
+            float speedMag = velocity.magnitude;
+            if (speedMag > 0.1f)
+            {
+                _body.AddForce(velocity * (float)(-air.Drag / speedMag));
+            }
+
+            // --- steering, with lock reduced as speed rises ------------
+            double kmh = System.Math.Abs(speedAlongForward) * MathUtil.Kmh;
+            double lockScale = 1.0 - (1.0 - SteerSpeedFactor) * MathUtil.Clamp(kmh / 300.0, 0, 1);
+            double steerAngle = Controls.Steer * MaxSteerAngleDeg * MathUtil.Rad * lockScale;
+
+            // --- suspension: cast every ray before applying anything ---
+            double maxRay = _suspension.RestLength + WheelRadius + _suspension.MaxTravel;
+
+            foreach (Wheel w in _wheels)
+            {
+                w.SteerAngle = w.Steered ? steerAngle : 0.0;
+                Vector3 origin = transform.TransformPoint(w.Hardpoint);
+                w.LastCompression = w.Compression;
+
+                if (Physics.Raycast(origin, -up, out RaycastHit hit, (float)maxRay,
+                        GroundMask, QueryTriggerInteraction.Ignore))
+                {
+                    /* Ground the wheel could stand on, or a wall it has
+                       been pushed against? A car turned onto its side
+                       aims the ray along the road rather than at it, and
+                       a spring pushing off a wall is a catapult — four
+                       corners at the ceiling is forty g. Eighty degrees
+                       off the suspension axis carries nothing. */
+                    if (Vector3.Dot(hit.normal, up) < GroundFacing)
+                    {
+                        w.Grounded = false;
+                        w.Compression = -_suspension.MaxTravel;
+                        continue;
+                    }
+
+                    w.Grounded = true;
+                    w.ContactPoint = hit.point;
+                    w.Compression = _suspension.RestLength - (hit.distance - WheelRadius);
+                    w.SurfaceGrip = SurfaceGripAt(hit);
+                }
+                else
+                {
+                    w.Grounded = false;
+                    w.Compression = -_suspension.MaxTravel;
+                }
+            }
+
+            // Floor height at each axle, for ground effect.
+            double floorOffset = FloorY - HardpointY;
+            _rideHeightFront = System.Math.Max(0,
+                (FloorHeight(_wheels[FL], floorOffset) + FloorHeight(_wheels[FR], floorOffset)) / 2);
+            _rideHeightRear = System.Math.Max(0,
+                (FloorHeight(_wheels[RL], floorOffset) + FloorHeight(_wheels[RR], floorOffset)) / 2);
+
+            double arbFront = Suspension.AntiRoll(
+                _suspension.AntiRollFront, _wheels[FL].Compression, _wheels[FR].Compression);
+            double arbRear = Suspension.AntiRoll(
+                _suspension.AntiRollRear, _wheels[RL].Compression, _wheels[RR].Compression);
+
+            // --- drivetrain -------------------------------------------
+            DriveTorques drive = _drivetrain.Step(
+                Controls.Throttle, Controls.ShiftUp, Controls.ShiftDown, Controls.Overtake,
+                _wheels[RL].Omega, _wheels[RR].Omega, dt);
+            _drivetrain.BrakeTorques(Controls.Brake, out double brakeFront, out double brakeRear);
+
+            // --- per wheel --------------------------------------------
+            for (int i = 0; i < 4; i++)
+            {
+                Wheel w = _wheels[i];
+                if (!w.Grounded)
+                {
+                    w.Load = 0;
+                    // An airborne tyre still cools in the airstream.
+                    TireThermal.Step(_thermal, w.Condition, 0, speedMag, dt, false);
+                    continue;
+                }
+
+                double compressionVelocity = (w.Compression - w.LastCompression) / dt;
+                double stiffness = w.Front ? _suspension.StiffnessFront : _suspension.StiffnessRear;
+                double damping = w.Front ? _suspension.DampingFront : _suspension.DampingRear;
+
+                double load = Suspension.Force(
+                    stiffness, damping, w.Compression, compressionVelocity, _suspension.MaxTravel);
+                double arb = w.Front ? arbFront : arbRear;
+                load += (i == FL || i == RL) ? arb : -arb;
+                load = System.Math.Max(0, load);
+                w.Load = load;
+
+                _body.AddForceAtPosition(up * (float)load, w.ContactPoint);
+
+                // Contact patch kinematics.
+                Vector3 patch = _body.GetPointVelocity(w.ContactPoint);
+                Vector3 local = transform.InverseTransformDirection(patch);
+                double cos = System.Math.Cos(w.SteerAngle);
+                double sin = System.Math.Sin(w.SteerAngle);
+                double vLong = local.z * cos + local.x * sin;
+                double vLat = local.x * cos - local.z * sin;
+
+                double denom = System.Math.Max(System.Math.Abs(vLong), SlipSpeedFloor);
+                double geometric = System.Math.Atan2(vLat, denom);
+
+                /* Relaxation: the carcass takes about half a metre of
+                   rolling to build its cornering force, so the effective
+                   slip angle chases the geometric one at a rate set by
+                   distance travelled rather than by time. */
+                double relax = MathUtil.Clamp(
+                    (System.Math.Abs(vLong) * dt) / RelaxationLength, 0, 1);
+                w.RelaxedSlipAngle += (geometric - w.RelaxedSlipAngle) * relax;
+                w.SlipAngle = w.RelaxedSlipAngle;
+
+                double gripScale = w.SurfaceGrip
+                    * TireThermal.ConditionGrip(_thermal, w.Condition);
+
+                // Wheel spin, sub-stepped: a wheel carries very little
+                // inertia against thousands of newton-metres, so at the
+                // outer step the slip ratio can jump clean past the grip
+                // peak and run away into permanent wheelspin.
+                const int sub = 8;
+                double subDt = dt / sub;
+                double sumLong = 0, sumLat = 0;
+
+                for (int s = 0; s < sub; s++)
+                {
+                    double rolling = w.Omega * WheelRadius;
+                    double slipRatio = (rolling - vLong)
+                        / System.Math.Max(System.Math.Abs(vLong), SlipSpeedFloor);
+                    slipRatio = MathUtil.Clamp(slipRatio, -4, 4);
+
+                    TireForces f = Tire.Solve(_tire, slipRatio, w.SlipAngle, load, gripScale);
+                    sumLong += f.Long;
+                    sumLat += f.Lat;
+
+                    double torque = w.Driven ? (i == RL ? drive.Left : drive.Right) : 0.0;
+                    double brake = w.Front ? brakeFront : brakeRear;
+                    double applied = torque
+                        - System.Math.Sign(w.Omega) * brake
+                        - f.Long * WheelRadius;
+                    w.Omega += (applied / WheelInertia) * subDt;
+                    w.SlipRatio = slipRatio;
+                }
+
+                double fLong = sumLong / sub;
+                double fLat = sumLat / sub;
+
+                Vector3 wheelForward = transform.TransformDirection(
+                    new Vector3((float)sin, 0f, (float)cos));
+                Vector3 wheelRight = transform.TransformDirection(
+                    new Vector3((float)cos, 0f, (float)-sin));
+
+                _body.AddForceAtPosition(
+                    wheelForward * (float)fLong + wheelRight * (float)fLat, w.ContactPoint);
+
+                // Heat and wear from what the patch is actually sliding.
+                double slideSpeed = MathUtil.Hypot(
+                    vLat, (w.Omega * WheelRadius) - vLong);
+                double frictionPower = System.Math.Abs(
+                    MathUtil.Hypot(fLong, fLat) * slideSpeed);
+                TireThermal.Step(_thermal, w.Condition, frictionPower, speedMag, dt, true);
+            }
+        }
+
+        private double FloorHeight(Wheel w, double floorOffset)
+            => WheelRadius + (_suspension.RestLength - w.Compression) + floorOffset;
+
+        /// <summary>
+        /// Grip under a wheel. The web version reads this from the
+        /// circuit's own lateral profile; until the circuit is ported the
+        /// surface is read off the collider's material name, which the
+        /// track builder sets.
+        /// </summary>
+        private static double SurfaceGripAt(RaycastHit hit)
+        {
+            var surface = hit.collider.GetComponent<SurfaceGrip>();
+            return surface != null ? surface.Grip : 1.0;
+        }
+
+        /// <summary>Cosine of eighty degrees — see the note in the ray loop.</summary>
+        private const double GroundFacing = 0.17;
+
+        /// <summary>Below this speed slip is ill-conditioned.</summary>
+        private const double SlipSpeedFloor = 3.0;
+
+        /// <summary>Tyre relaxation length (m).</summary>
+        private const double RelaxationLength = 0.5;
+    }
+
+    /// <summary>Normalised driver input for one step.</summary>
+    public struct Controls
+    {
+        public double Throttle;
+        public double Brake;
+        public double Steer;
+        public bool ShiftUp;
+        public bool ShiftDown;
+        public bool StraightMode;
+        public bool Overtake;
+    }
+
+    /// <summary>Marks a collider as a surface with a grip multiplier.</summary>
+    public class SurfaceGrip : MonoBehaviour
+    {
+        public double Grip = 1.0;
+    }
+}
