@@ -377,8 +377,8 @@ describe('a full lap', () => {
       // Same traction limiting the vehicle tests use — without a right
       // foot, half throttle in first gear is still a burnout.
       const drivenSlip = Math.max(
-        Math.abs(state.wheels[RL]!.slipRatio),
-        Math.abs(state.wheels[RR]!.slipRatio)
+        Math.abs(state.wheels[RL].slipRatio),
+        Math.abs(state.wheels[RR].slipRatio)
       );
 
       world.car.controls = {

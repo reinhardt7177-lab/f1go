@@ -224,8 +224,8 @@ export class Driver {
     this.shiftArmed = !wantShift;
 
     const drivenSlip = Math.max(
-      Math.abs(state.wheels[RL]!.slipRatio),
-      Math.abs(state.wheels[RR]!.slipRatio)
+      Math.abs(state.wheels[RL].slipRatio),
+      Math.abs(state.wheels[RR].slipRatio)
     );
 
     // Traction control is what stops the car spinning its wheels off the

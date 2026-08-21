@@ -490,8 +490,8 @@ const boot = async (): Promise<void> => {
       const state = previous;
 
       const drivenSlip = Math.max(
-        Math.abs(state.wheels[RL]!.slipRatio),
-        Math.abs(state.wheels[RR]!.slipRatio)
+        Math.abs(state.wheels[RL].slipRatio),
+        Math.abs(state.wheels[RR].slipRatio)
       );
 
       // The AI emits the same ControlState the keyboard does, so nothing

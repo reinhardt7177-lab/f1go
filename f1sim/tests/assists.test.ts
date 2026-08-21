@@ -185,7 +185,7 @@ const restingState = (over: Partial<VehicleState> = {}): VehicleState => {
     overtakeCharge: 0,
     overtakeDeploying: false,
     ...over
-  } as VehicleState;
+  };
 };
 
 describe('sideslip', () => {

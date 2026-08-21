@@ -355,7 +355,7 @@ export class SceneRenderer {
       geometry,
       toonMaterial(0xffffff)
     );
-    (surface.material as THREE.MeshToonMaterial).vertexColors = true;
+    (surface.material).vertexColors = true;
     surface.receiveShadow = true;
     this.scene.add(surface);
 
