@@ -78,6 +78,30 @@ jobs:
         with:
           path: dist-site
 
+  # The Unity port's simulation half, compiled and tested without Unity.
+  #
+  # This job is the answer to a real problem: the port is being written
+  # on a machine with no editor, no .NET and no way to install either, so
+  # nothing about it can be checked where it is written. It can be
+  # checked here. The simulation has no `UnityEngine` in it by design, so
+  # a plain SDK compiles it and runs the ported tests — no editor, no
+  # licence, twenty seconds.
+  #
+  # What this does NOT cover is everything that touches the engine: the
+  # MonoBehaviour glue, the scene, shaders, input. That half needs the
+  # editor, and a licence to build here.
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Test the ported simulation
+        run: dotnet test dotnet/MumuF1.Core.Tests --nologo --verbosity normal
+
   deploy:
     needs: check
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'

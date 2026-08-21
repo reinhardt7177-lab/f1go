@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The ported tests, run without Unity.
+
+    Same arrangement as the library: the files live with the Unity
+    package so the editor's Test Runner finds them, and this project
+    compiles them from there. NUnit is pinned to 3.x rather than 4
+    because that is what Unity ships — a test written against NUnit 4's
+    API would pass here and fail to compile in the editor, which is
+    exactly the class of surprise this whole setup exists to prevent.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../../unity/Packages/com.mumu.f1core/Tests/**/*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="NUnit" Version="3.14.0" />
+    <PackageReference Include="NUnit3TestAdapter" Version="4.6.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../MumuF1.Core/MumuF1.Core.csproj" />
+  </ItemGroup>
+
+</Project>

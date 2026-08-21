@@ -1,0 +1,8 @@
+{
+  "name": "com.mumu.f1core",
+  "version": "0.1.0",
+  "displayName": "mumuF1 Core",
+  "description": "The simulation, with no engine in it. Tyres, aerodynamics, suspension, drivetrain, circuit geometry, the racing line, timing and ghosts — ported from f1sim/src and deliberately free of UnityEngine, so the same source compiles as a plain .NET library and can be tested without the editor.",
+  "unity": "2022.3",
+  "author": { "name": "불곰코끼리그리거" }
+}
