@@ -60,12 +60,7 @@ namespace MumuF1.Game
 
         private static void Colour(GameObject go, Color colour)
         {
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit")
-                ?? Shader.Find("Standard");
-            var material = new Material(shader);
-            if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", colour);
-            material.color = colour;
-            go.GetComponent<MeshRenderer>().sharedMaterial = material;
+            go.GetComponent<MeshRenderer>().sharedMaterial = Paint.Flat(colour);
         }
     }
 }

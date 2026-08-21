@@ -105,7 +105,10 @@ namespace MumuF1.Game
             filter.sharedMesh = mesh;
 
             var renderer = gameObject.AddComponent<MeshRenderer>();
-            renderer.sharedMaterial = VertexColourMaterial();
+            /* No outline on the road. The hull is a silhouette line and
+               a road has no silhouette — pushing one out of a 3 km ribbon
+               puts a black band down the middle of every straight. */
+            renderer.sharedMaterial = Paint.FromVertices(outline: 0f);
 
             var collider = gameObject.AddComponent<MeshCollider>();
             collider.sharedMesh = mesh;
@@ -156,21 +159,6 @@ namespace MumuF1.Game
                 lefts.Add(Vector3.Cross(Vector3.up, tangent).normalized);
             }
             return points;
-        }
-
-        /// <summary>
-        /// Flat colour straight from the vertices — the same idea the web
-        /// version's toon renderer uses, and the reason the circuit needs
-        /// no textures at all.
-        /// </summary>
-        private static Material VertexColourMaterial()
-        {
-            Shader shader = Shader.Find("Universal Render Pipeline/Unlit")
-                ?? Shader.Find("Unlit/Color")
-                ?? Shader.Find("Standard");
-            var material = new Material(shader) { name = "Circuit" };
-            if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", Color.white);
-            return material;
         }
     }
 }
