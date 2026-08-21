@@ -131,7 +131,21 @@ at a corner threw the car sixteen metres into the air;
 `tests/vehicle.test.ts` now holds both halves of that shut — the
 clearance as arithmetic, and a sweep of the corner it happened on.
 
-`tests/` holds 299 tests over the tyre model, the thermal model, the
+## Sound
+
+Nothing here is a recording. Six sound files would be six downloads and
+a lot of megabytes, and a sample pitched up and down does not answer to
+a throttle — so the car is synthesised from the same state the renderer
+draws. The note is the firing rate of a V6: a four-stroke fires each
+cylinder once every two revolutions, so `rpm / 60 * 3`, which over this
+engine's 4,000 to 15,000 rpm is 200 Hz to 750 Hz. Lifting off is
+audible because the harmonic series flattens with load rather than
+because the volume drops. Tyre scrub uses the same thresholds the smoke
+does, so a tyre that is heard sliding is the tyre that is seen sliding,
+and the kerbs are read from the grip under each wheel rather than from
+a surface name.
+
+`tests/` holds 316 tests over the tyre model, the thermal model, the
 2026 power unit rules, the circuit geometry, the racing line and the
 field.
 

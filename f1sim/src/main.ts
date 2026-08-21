@@ -45,6 +45,8 @@ import { AidsPanel, SlidersPanel, TuningPanel } from './ui/tuning';
 import { KeepAwake, ViewportWatcher } from './ui/screen';
 import { TouchPads } from './ui/touchpads';
 import { ViewportManager, isCoarsePointer } from './ui/viewport';
+import { CarAudio } from './audio/sound';
+import { MuteButton } from './ui/mute';
 
 const boot = async (): Promise<void> => {
   const status = document.getElementById('status')!;
@@ -123,7 +125,15 @@ const boot = async (): Promise<void> => {
      Constructed after the session rather than before it because that
      tap is the session's own beginning: until someone has asked to
      play, the grid stays held and the lights stay dark. */
-  new ViewportManager(() => session.begin());
+  /* Sound needs a real gesture to exist at all — every browser refuses
+     to make noise before one, and refuses silently — so it is built on
+     the same click that starts the session. */
+  const audio = new CarAudio();
+  new MuteButton(audio);
+  new ViewportManager(() => {
+    audio.start();
+    session.begin();
+  });
 
   // Session first: which session is running and how much of it is left is
   // the context everything below is read against.
@@ -750,6 +760,7 @@ const boot = async (): Promise<void> => {
       renderer.showcase = !session.hasBegun ? 'menu' : session.onGrid ? 'grid' : null;
       renderer.render(alpha, frameDt);
       const snapshot = world.car.getState();
+      audio.update(snapshot, world.car.controls.throttle);
       const battery = world.car.drivetrain.ersStore / params.drivetrain.ersCapacity;
       hud.update(snapshot, params.drivetrain.redlineRpm, battery);
 

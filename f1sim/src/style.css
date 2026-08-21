@@ -138,7 +138,8 @@ body.titlecard .minimap,
 body.titlecard #touch-buttons,
 body.titlecard #help,
 body.titlecard .settings-toggle,
-body.titlecard .easy-mode {
+body.titlecard .easy-mode,
+body.titlecard .mute-toggle {
   display: none;
 }
 
@@ -1314,7 +1315,8 @@ body:not(.settings) #help {
 body:not(.settings) .stack.right { display: none; }
 
 .settings-toggle,
-.easy-mode {
+.easy-mode,
+.mute-toggle {
   position: fixed;
   top: 12px;
   right: 12px;
@@ -1335,7 +1337,8 @@ body:not(.settings) .stack.right { display: none; }
 /* The house press: shadow to nothing and the button moves into it, so
    a finger gets a physical answer rather than a colour change. */
 .settings-toggle:active,
-.easy-mode:active {
+.easy-mode:active,
+.mute-toggle:active {
   box-shadow: 0 0 0 #000;
   transform: translate(3px, 3px);
 }
@@ -1354,15 +1357,26 @@ body:not(.settings) .stack.right { display: none; }
   color: #04150b;
 }
 
+/* And the sound under that. Muted is the state worth marking, because a
+   game that is silent when it should not be is the one people give up
+   on without ever finding the button. */
+.mute-toggle { top: 104px; }
+.mute-toggle.off {
+  background: #2a3138;
+  color: #cfd8e2;
+}
+
 @media (pointer: coarse), (max-width: 720px) {
   /* Smaller type, but not a smaller target. 44 px is the floor both
-     platforms' guidelines set, and these two sat at 32 — reliably
-     missable with a thumb, on the two controls that decide whether the
-     car is being helped and whether the instruments are up. The type
-     shrinks; the button does not. */
+     platforms' guidelines set, and these sat at 32 — reliably missable
+     with a thumb, on the controls that decide whether the car is being
+     helped, whether the settings are up, and whether there is any
+     sound. The type shrinks; the button does not. */
   .settings-toggle,
-  .easy-mode { font-size: 10px; padding: 7px 12px; min-height: 44px; }
+  .easy-mode,
+  .mute-toggle { font-size: 10px; padding: 7px 12px; min-height: 44px; }
   .easy-mode { top: 62px; }
+  .mute-toggle { top: 116px; }
 }
 
 /* ---------------- delta to the ghost ---------------- */
@@ -1708,6 +1722,7 @@ body.timetrial .panel.position { display: none; }
      the index finger can reach without letting go of the phone. */
   .settings-toggle { top: max(8px, env(safe-area-inset-top)); right: calc(max(8px, env(safe-area-inset-right)) + 96px); }
   .easy-mode { top: calc(max(8px, env(safe-area-inset-top)) + 50px); right: calc(max(8px, env(safe-area-inset-right)) + 96px); }
+  .mute-toggle { top: calc(max(8px, env(safe-area-inset-top)) + 100px); right: calc(max(8px, env(safe-area-inset-right)) + 96px); }
 
   /*
    * The left column, compacted.
