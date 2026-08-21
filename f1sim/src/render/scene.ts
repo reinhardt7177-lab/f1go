@@ -76,7 +76,39 @@ export class SceneRenderer {
   private prevWheels: Vec3[] = [];
   private currWheels: Vec3[] = [];
 
-  private smoothedCamPos = new THREE.Vector3(0, 5, 12);
+  /**
+   * Where the camera sits relative to the car, in the car's own frame.
+   *
+   * Not a world position. A camera that chases a world point carries a
+   * standing error of speed over follow-rate — at 300 km/h and a rate
+   * of 24 that is three and a half metres — and everything about that
+   * error is wrong. It makes the distance to the car a function of how
+   * fast you are going, so the car surges away under acceleration and
+   * back towards you when you lift, over two metres of a seven and a
+   * half metre shot. And because the error is large and standing, every
+   * wobble in the frame clock moves the camera by a share of it: on a
+   * machine sitting right on the sixty-hertz budget, measured over a
+   * lap of the oval, the shot shook four times as much as it did on a
+   * steady clock.
+   *
+   * Mounted on the car instead, the target for this offset is a
+   * constant except at the moment a camera changes — so the filter has
+   * nothing to lag behind, and the shot cannot shake no matter what the
+   * display does. Changing camera still costs a smooth move rather than
+   * a cut, which is the one thing the old arrangement was good at.
+   */
+  private readonly camOffset = new THREE.Vector3(0, 2.3, 7.5);
+  /**
+   * The bearing the camera sits on, chasing the car's.
+   *
+   * This one *is* allowed to lag, because the lag is the whole effect:
+   * it is what swings the camera round behind the car through a corner
+   * instead of pivoting with the nose. Its standing error is
+   * proportional to yaw rate rather than speed, which is small, and it
+   * moves the shot sideways rather than along the lens.
+   */
+  private camYaw = 0;
+  private camPlaced = false;
   private sky: THREE.Mesh | null = null;
 
   /** The ink line, shared by the player's car so resize reaches it. */
@@ -633,26 +665,6 @@ export class SceneRenderer {
     const q = new THREE.Quaternion(rot.x, rot.y, rot.z, rot.w);
     const carPos = new THREE.Vector3(pos.x, pos.y, pos.z);
 
-    if (this.showcase === 'grid') {
-      /* Held on the grid, looking up the road at the cars in front.
-       *
-       * This is the shot the start deserves and the cockpit cannot
-       * give: from inside the car the grid is nine cars you cannot see
-       * because they are all in front of you and below the nose. From
-       * behind and above, the stagger reads, the lights are legible,
-       * and the moment the field launches is something you watch
-       * happen rather than something you find out about from the
-       * speedometer. */
-      const back = new THREE.Vector3(0, 4.2, 11).applyQuaternion(q).add(carPos);
-      const k = 1 - Math.exp(-frameDt * 6);
-      this.smoothedCamPos.lerp(back, k);
-      this.camera.position.copy(this.smoothedCamPos);
-      this.camera.lookAt(carPos.x, carPos.y + 1.4, carPos.z);
-      this.camera.fov = 44;
-      this.camera.updateProjectionMatrix();
-      return;
-    }
-
     if (this.showcase === 'menu') {
       /* A slow walk around the car on its grid box.
        *
@@ -674,10 +686,13 @@ export class SceneRenderer {
       this.camera.lookAt(carPos.x, carPos.y + 0.35, carPos.z);
       this.camera.fov = 34;
       this.camera.updateProjectionMatrix();
+      /* The next shot starts from wherever the car is pointing rather
+         than from a bearing left over before the title card. */
+      this.camPlaced = false;
       return;
     }
 
-    if (this.cameraMode === 'cockpit') {
+    if (this.cameraMode === 'cockpit' && this.showcase === null) {
       // The one shared eye position: the cockpit is laid out around this
       // point, so the camera has to use the same constant or the halo
       // and wheel end up in the wrong place relative to the view.
@@ -688,27 +703,94 @@ export class SceneRenderer {
       // pushes the apex out towards the edge of the frame, where the
       // distortion is worst and judging turn-in is hardest.
       this.camera.fov = 72;
-    } else if (this.cameraMode === 'chase') {
-      const want = new THREE.Vector3(0, 2.3, 7.5).applyQuaternion(q).add(carPos);
-      // Exponential follow. The rate has to be high: a first-order filter
-      // lags by roughly speed/rate, so at 85 m/s a rate of 9 would trail
-      // the car by nearly ten metres and shrink it to a dot.
-      const k = 1 - Math.exp(-frameDt * 24);
-      this.smoothedCamPos.lerp(want, k);
-      this.camera.position.copy(this.smoothedCamPos);
-      this.camera.lookAt(carPos.x, carPos.y + 0.6, carPos.z);
-      this.camera.fov = 62;
-    } else {
+      this.camera.updateProjectionMatrix();
+      this.camPlaced = false;
+      return;
+    }
+
+    /* Every remaining shot is the car seen from somewhere fixed
+       relative to it, so they differ only in where that somewhere is,
+       how quickly the bearing follows, what the lens is, and what the
+       camera is pointed at. */
+    let wantX = 0;
+    let wantY = 2.3;
+    let wantZ = 7.5;
+    let yawRate: number;
+    let aim: number;
+
+    if (this.showcase === 'grid') {
+      /* Held on the grid, looking up the road at the cars in front.
+       *
+       * This is the shot the start deserves and the cockpit cannot
+       * give: from inside the car the grid is nine cars you cannot see
+       * because they are all in front of you and below the nose. From
+       * behind and above, the stagger reads, the lights are legible,
+       * and the moment the field launches is something you watch
+       * happen rather than something you find out about from the
+       * speedometer. */
+      wantY = 4.2;
+      wantZ = 11;
+      yawRate = 6;
+      aim = 1.4;
+      this.camera.fov = 44;
+    } else if (this.cameraMode === 'trackside') {
       // A television camera: off to one side, high, holding the car in
       // frame. Fixed world coordinates would be useless on a seven
-      // kilometre circuit.
-      const offset = new THREE.Vector3(26, 9, 14).applyQuaternion(q).add(carPos);
-      const k = 1 - Math.exp(-frameDt * 2.5);
-      this.smoothedCamPos.lerp(offset, k);
-      this.camera.position.copy(this.smoothedCamPos);
-      this.camera.lookAt(carPos);
+      // kilometre circuit, so it travels with the car and only the
+      // bearing is slow.
+      wantX = 26;
+      wantY = 9;
+      wantZ = 14;
+      yawRate = 2.5;
+      aim = 0;
       this.camera.fov = 38;
+    } else {
+      // Chase, including the cockpit driver watching the grid shot.
+      yawRate = 9;
+      aim = 0.6;
+      this.camera.fov = 62;
     }
+
+    const yaw = Math.atan2(
+      2 * (rot.w * rot.y + rot.x * rot.z),
+      1 - 2 * (rot.y * rot.y + rot.z * rot.z)
+    );
+
+    if (!this.camPlaced) {
+      this.camPlaced = true;
+      this.camYaw = yaw;
+      this.camOffset.set(wantX, wantY, wantZ);
+    } else {
+      /* Shortest way round, or the camera takes the long way home every
+         time the car crosses due south. */
+      let d = (yaw - this.camYaw) % (Math.PI * 2);
+      if (d > Math.PI) d -= Math.PI * 2;
+      if (d < -Math.PI) d += Math.PI * 2;
+      this.camYaw += d * (1 - Math.exp(-frameDt * yawRate));
+
+      /* The offset only ever moves when the shot changes, so this
+         filter spends the whole race converged and contributes nothing
+         to what the player sees. Four per second makes changing camera
+         a move rather than a cut. */
+      const k = 1 - Math.exp(-frameDt * 4);
+      this.camOffset.x += (wantX - this.camOffset.x) * k;
+      this.camOffset.y += (wantY - this.camOffset.y) * k;
+      this.camOffset.z += (wantZ - this.camOffset.z) * k;
+    }
+
+    /* Bearing only, deliberately: rotating the offset by the whole
+       attitude has the camera rise and dip with the car's pitch, which
+       under braking and acceleration is the same surge this was written
+       to remove, and tilts with roll on a banked corner. A camera on a
+       boom stays where it is put. */
+    const sin = Math.sin(this.camYaw);
+    const cos = Math.cos(this.camYaw);
+    this.camera.position.set(
+      carPos.x + this.camOffset.x * cos + this.camOffset.z * sin,
+      carPos.y + this.camOffset.y,
+      carPos.z - this.camOffset.x * sin + this.camOffset.z * cos
+    );
+    this.camera.lookAt(carPos.x, carPos.y + aim, carPos.z);
     this.camera.updateProjectionMatrix();
   }
 

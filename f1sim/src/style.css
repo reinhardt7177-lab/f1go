@@ -1,6 +1,23 @@
 :root {
   --bg: #0b0e12;
-  --panel: rgba(14, 18, 23, 0.86);
+  /* Flat and opaque, and the ink is black.
+   *
+   * The renderer is one idea applied consistently: flat colour inside a
+   * heavy black line, with a hard offset shadow and no gradients
+   * anywhere. The title card, the start lights and the name labels over
+   * the cars were all drawn that way. The panels you actually read while
+   * driving were not — they were translucent grey cards with a
+   * one-pixel hairline at nine per cent white and an eight-pixel
+   * backdrop blur, which is a different design language altogether and
+   * the one every browser UI kit has shipped since about 2015. Two
+   * languages on one screen and the softer one loses.
+   *
+   * The blur was not free either. `backdrop-filter` makes the compositor
+   * re-blur the region behind each panel every frame, and there were
+   * seven of them over a canvas that is already drawing every mesh twice
+   * for its outline. */
+  --panel: #12171d;
+  --ink: #000;
   --line: rgba(255, 255, 255, 0.09);
   --text: #e9eef3;
   --muted: #8794a1;
@@ -96,12 +113,33 @@ body {
 
 .panel {
   background: var(--panel);
-  border: 1px solid var(--line);
+  border: 2.5px solid var(--ink);
   border-radius: 10px;
   padding: 12px;
-  backdrop-filter: blur(8px);
+  /* Offset, no blur — the house style, and the only kind of shadow that
+     survives being drawn over flat colour. */
+  box-shadow: 3px 3px 0 var(--ink);
   pointer-events: auto;
   font-variant-numeric: tabular-nums;
+}
+
+/*
+ * While the title card is up, it is the only thing on screen.
+ *
+ * Everything below reports on a session, and before START there is no
+ * session to report on — so the tower showed an empty lap board, the
+ * position panel read P10 and +8 m, and the speedometer sat at 0 behind
+ * a card asking whether you would like to begin. `ui/viewport.ts` puts
+ * the class on and takes it off with the card.
+ */
+body.titlecard #overlay,
+body.titlecard .hud,
+body.titlecard .minimap,
+body.titlecard #touch-buttons,
+body.titlecard #help,
+body.titlecard .settings-toggle,
+body.titlecard .easy-mode {
+  display: none;
 }
 
 /* ---------------- timing tower ---------------- */
@@ -218,6 +256,21 @@ body {
 .timing .log li i { font-style: normal; font-size: 9px; color: var(--green); letter-spacing: 0.1em; }
 .timing .log li.invalid { color: var(--muted); text-decoration: line-through; }
 .timing .log li.invalid i { color: var(--red); }
+
+/* The settings and easy-mode buttons are `position: fixed` in the top
+   right corner and know nothing about this column, so the column has to
+   know about them: without the reserve the aids panel slid up under both
+   of them and the first row of it was unreadable. */
+#overlay .stack.right {
+  padding-top: 84px;
+  /* And stop short of the map and the button column rather than running
+     on underneath them: the setup drawer is taller than the screen, so
+     its last rows were behind the map. Height rather than padding —
+     padding inside a scroll container adds room to scroll into, it does
+     not move the bottom edge of the box. The column already scrolls, so
+     nothing is lost. */
+  max-height: calc(var(--app-height, 100dvh) - 28px - 156px);
+}
 
 #overlay .stack {
   display: flex;
@@ -343,10 +396,10 @@ body {
   align-items: baseline;
   gap: 18px;
   background: var(--panel);
-  border: 1px solid var(--line);
+  border: 2.5px solid var(--ink);
   border-radius: 10px;
   padding: 6px 20px;
-  backdrop-filter: blur(8px);
+  box-shadow: 3px 3px 0 var(--ink);
 }
 
 .hud .gear b { font-size: 38px; font-weight: 800; line-height: 1; }
@@ -392,14 +445,26 @@ body {
 
 /* ---------------- touch ---------------- */
 
+/* Left of the map, not on top of it.
+ *
+ * The map hangs off the bottom right and owns that corner up to about
+ * 150 px, and this column started 96 px up inside it — which put the
+ * camera button, and RESET, under the map. The map takes no clicks, so
+ * they stayed pressable; they were just invisible. */
 #touch-buttons {
   position: fixed;
-  right: 14px;
-  bottom: 96px;
+  right: 158px;
+  bottom: 14px;
   display: flex;
   flex-direction: column;
   gap: 10px;
   z-index: 5;
+}
+
+/* A phone held upright moves the map to the top of the screen, so there
+   this column goes back into the corner it left. */
+@media (max-width: 720px) and (orientation: portrait) {
+  #touch-buttons { right: 14px; bottom: 96px; }
 }
 
 /* Aero, boost and pit stand in for keys a desktop already has, so they
@@ -549,36 +614,57 @@ body {
 }
 
 #touch-buttons {
-  right: max(14px, env(safe-area-inset-right));
-  bottom: max(96px, calc(env(safe-area-inset-bottom) + 96px));
+  right: max(158px, calc(env(safe-area-inset-right) + 158px));
+  bottom: max(14px, env(safe-area-inset-bottom));
 }
 
 .hud {
   bottom: max(54px, calc(env(safe-area-inset-bottom) + 54px));
 }
 
+/* Bottom left, which on a desktop is the one corner nothing else wants:
+   the timing tower hangs from the top left, the speedometer sits in the
+   middle of the bottom edge and the map holds the bottom right. It used
+   to be centred on the top edge, alone in the middle of the sky, which
+   is the most conspicuous place on the screen for the least important
+   control there is. */
 #btn-fullscreen {
   position: fixed;
-  top: max(14px, env(safe-area-inset-top));
-  left: 50%;
-  transform: translateX(-50%);
+  bottom: max(14px, env(safe-area-inset-bottom));
+  left: max(14px, env(safe-area-inset-left));
   z-index: 6;
   width: 34px;
   height: 34px;
   border-radius: 8px;
-  border: 1px solid var(--line);
+  border: 2.5px solid var(--ink);
   background: var(--panel);
+  box-shadow: 3px 3px 0 var(--ink);
   color: var(--muted);
   font-size: 15px;
   line-height: 1;
   cursor: pointer;
-  backdrop-filter: blur(6px);
+}
+
+#btn-fullscreen:active {
+  box-shadow: 0 0 0 var(--ink);
+  transform: translate(3px, 3px);
 }
 
 /* Only a touch device ever needs to press this one — a desktop has F11
-   — and only a touch device is bad at pressing a 34 px square. */
+   — and only a touch device is bad at pressing a 34 px square. On a
+   phone held upright the bottom of the screen belongs to the thumbs, so
+   there it stays on the top edge. */
 @media (pointer: coarse) {
-  #btn-fullscreen { width: 44px; height: 44px; font-size: 18px; }
+  #btn-fullscreen {
+    width: 44px;
+    height: 44px;
+    font-size: 18px;
+    top: max(14px, env(safe-area-inset-top));
+    bottom: auto;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  #btn-fullscreen:active { transform: translateX(-50%) translate(3px, 3px); }
 }
 
 #btn-fullscreen:hover { color: var(--text); }
@@ -611,12 +697,18 @@ body {
  * Heavier at the bottom than the top: the horizon and the sky are the
  * part worth seeing, and the text all sits below the middle.
  */
+/* Dark enough through the middle to read against the car.
+ *
+ * The showcase orbit puts a red car dead centre and the card's type sits
+ * on top of it: at a third of a stop the byline and the control hint
+ * were grey text on a grey sidepod. The top stays light because that is
+ * sky and there is nothing to read against it. */
 #start-card {
   background: linear-gradient(
     to bottom,
-    rgba(4, 8, 14, 0.15) 0%,
-    rgba(4, 8, 14, 0.34) 38%,
-    rgba(4, 8, 14, 0.74) 100%
+    rgba(4, 8, 14, 0.22) 0%,
+    rgba(4, 8, 14, 0.62) 42%,
+    rgba(4, 8, 14, 0.82) 100%
   );
 }
 
@@ -675,15 +767,16 @@ body {
 }
 
 #mode-picker button {
-  backdrop-filter: blur(6px);
   min-height: 44px;
   padding: 8px 16px;
   border-radius: 8px;
-  border: 1px solid var(--line);
-  background: rgba(14, 18, 23, 0.9);
+  border: 2.5px solid var(--ink);
+  background: var(--panel);
+  box-shadow: 3px 3px 0 var(--ink);
   color: var(--muted);
   font-family: inherit;
   font-size: 12px;
+  font-weight: 700;
   letter-spacing: 0.12em;
   cursor: pointer;
   touch-action: manipulation;
@@ -691,8 +784,14 @@ body {
 }
 
 #mode-picker button.on {
-  color: var(--text);
-  border-color: var(--red);
+  color: #fff;
+  background: var(--red);
+}
+
+#mode-picker button:active,
+#circuit-picker button:active {
+  box-shadow: 0 0 0 var(--ink);
+  transform: translate(3px, 3px);
 }
 
 @media (max-height: 560px) {
@@ -709,25 +808,26 @@ body {
 }
 
 #circuit-picker button {
-  backdrop-filter: blur(6px);
   /* Choosing a circuit is a one-off, but it is also the first thing
      anyone touches, and a 29 px-tall target is where a first impression
      of "this does not respond" comes from. */
   min-height: 44px;
   padding: 8px 16px;
   border-radius: 8px;
-  border: 1px solid var(--line);
-  background: rgba(14, 18, 23, 0.9);
+  border: 2.5px solid var(--ink);
+  background: var(--panel);
+  box-shadow: 3px 3px 0 var(--ink);
   color: var(--muted);
   font-family: inherit;
   font-size: 12px;
+  font-weight: 700;
   letter-spacing: 0.12em;
   cursor: pointer;
 }
 
 #circuit-picker button.on {
-  color: var(--text);
-  border-color: var(--red);
+  color: #fff;
+  background: var(--red);
 }
 
 /*
@@ -807,45 +907,10 @@ body {
 
   #start-card h1 { font-size: 27px; }
   #start-card .by { margin-top: 3px; font-size: 10px; }
-  /* The mode picker is the circuit picker one row down, and deliberately
-   looks identical: they are the same kind of choice made in the same
-   place, and giving the second one its own treatment would suggest
-   otherwise. */
-#mode-picker {
-  display: flex;
-  gap: 8px;
-  margin: 0 0 4px;
-  flex-wrap: wrap;
-  justify-content: center;
-}
-
-#mode-picker button {
-  backdrop-filter: blur(6px);
-  min-height: 44px;
-  padding: 8px 16px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: rgba(14, 18, 23, 0.9);
-  color: var(--muted);
-  font-family: inherit;
-  font-size: 12px;
-  letter-spacing: 0.12em;
-  cursor: pointer;
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
-}
-
-#mode-picker button.on {
-  color: var(--text);
-  border-color: var(--red);
-}
-
-@media (max-height: 560px) {
+  /* Everything on the card at two-thirds scale. */
   #mode-picker { margin: 0 0 2px; gap: 6px; }
   #mode-picker button { padding: 7px 14px; font-size: 11px; min-height: 44px; }
-}
-
-#circuit-picker { margin: 10px 0 2px; gap: 6px; }
+  #circuit-picker { margin: 10px 0 2px; gap: 6px; }
   #circuit-picker button { padding: 7px 14px; font-size: 11px; min-height: 44px; }
   #start-card .cta {
     margin-top: 12px;
@@ -1309,10 +1374,10 @@ body:not(.settings) .stack.right { display: none; }
  */
 .delta {
   background: var(--panel);
-  border: 1px solid var(--line);
+  border: 2.5px solid var(--ink);
   border-radius: 10px;
   padding: 8px 10px 9px;
-  backdrop-filter: blur(8px);
+  box-shadow: 3px 3px 0 var(--ink);
   pointer-events: none;
   font-variant-numeric: tabular-nums;
   display: flex;
@@ -1378,6 +1443,154 @@ body.timetrial .panel.position { display: none; }
   .delta .v { font-size: 19px; }
 }
 
+/* ---------------- settings drawer ---------------- */
+
+/*
+ * These rules went out with the instrument panel and were never put
+ * back, so every control in here has been drawing at browser defaults
+ * since: labels and sliders on one unbroken line with no gap between
+ * them, native checkboxes hard against their text, and the preset
+ * buttons run together into what reads as one long word. The panels
+ * themselves were styled; everything inside them was not.
+ */
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.panel-head h3 {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.panel-head .collapse {
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 5px 9px;
+  min-height: 28px;
+  color: var(--muted);
+  background: transparent;
+  border: 2px solid var(--ink);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.panel-head .collapse:hover { color: var(--text); }
+
+.panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.panel-body.collapsed { display: none; }
+
+.panel-body h4 {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+/* A row is a name, its value, and the control — in that order, with the
+   name given whatever is left. `minmax(0, …)` rather than `1fr`: a long
+   Korean label would otherwise push the slider off the panel, because a
+   `1fr` track will not shrink below its content. */
+.slider {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.slider .name {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slider .value {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.slider input[type='range'] {
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 22px;
+  margin: 0;
+  accent-color: var(--red);
+  cursor: pointer;
+}
+
+/* A switch is a bigger target than a tick box, and the whole row is the
+   target: on a phone the native checkbox is 13 px square, which is a
+   third of the smallest thing either platform's guidelines allow. */
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 34px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.toggle input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  margin: 0;
+  accent-color: var(--red);
+  cursor: pointer;
+}
+
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.presets button {
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 6px 9px;
+  min-height: 30px;
+  color: var(--muted);
+  background: transparent;
+  border: 2px solid var(--ink);
+  border-radius: 6px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.presets button:hover { color: var(--text); border-color: var(--red); }
+.presets button:active { transform: translate(1px, 1px); }
+
+/* What the sliders above add up to. Not a control, so it is set apart
+   from them rather than lined up with them. */
+.derived {
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 2px solid var(--ink);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.derived b { color: var(--text); font-weight: 700; }
+
 /* ---------------- minimap ---------------- */
 
 .minimap {
@@ -1385,13 +1598,17 @@ body.timetrial .panel.position { display: none; }
   right: 12px;
   bottom: 12px;
   z-index: 5;
-  width: 154px;
-  height: 154px;
+  width: 132px;
+  height: 132px;
   padding: 6px;
-  background: #fff;
-  border: 2.5px solid #000;
+  /* Dark, like the panels. It was a white card, which is the treatment
+     the name labels over the cars use — right for something drawn *on*
+     the world, wrong for a piece of the HUD, and at 154 px square it was
+     the loudest thing on the screen by a distance. */
+  background: var(--panel);
+  border: 2.5px solid var(--ink);
   border-radius: 12px;
-  box-shadow: 4px 4px 0 #000;
+  box-shadow: 3px 3px 0 var(--ink);
   pointer-events: none;
 }
 
@@ -1503,6 +1720,9 @@ body.timetrial .panel.position { display: none; }
   #overlay { padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right))
     max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
   #overlay .stack { gap: 5px; }
+  /* The two corner buttons sit beside the map here rather than above
+     this column, so it does not have to duck under them. */
+  #overlay .stack.right { padding-top: 0; max-height: calc(var(--app-height, 100dvh) - 28px); }
   .timing, .session { width: 146px; }
   .panel { padding: 5px 8px; }
   .timing .clock b { font-size: 17px; }

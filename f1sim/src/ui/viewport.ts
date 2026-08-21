@@ -124,6 +124,13 @@ export class ViewportManager {
     // it now also carries the title and the circuit choice, and a
     // desktop player needs both of those just as much.
     this.start.classList.remove('hidden');
+    /* And say so on the body, because the title card is not the only
+       thing on screen while it is up. The timing tower, the position
+       panel, the speedometer and the map were all drawn over it,
+       reporting a race that had not started — the card said START while
+       the panel behind it said P10, +8 m. Nothing about a session
+       belongs on screen before the session exists. */
+    document.body.classList.add('titlecard');
 
     /* A button that cannot do anything is worse than no button. An
        iPhone in Safari has no Fullscreen API, so the toggle was drawn,
@@ -149,6 +156,7 @@ export class ViewportManager {
     const begin = (): void => {
       void enterImmersive();
       this.start.classList.add('hidden');
+      document.body.classList.remove('titlecard');
       this.onStart();
     };
     document.getElementById('btn-start')?.addEventListener('click', begin);
