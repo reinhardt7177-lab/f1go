@@ -16,21 +16,31 @@
 # Settings → Secrets and variables → Actions:
 #
 #   UNITY_LICENSE    the full contents of your Unity_lic.ulf
+#   UNITY_EMAIL      the address on the Unity account
+#   UNITY_PASSWORD   its password
 #
-# A personal licence is free and that one secret is all it needs. On
-# Windows the file is usually already at
+# All three, even for a personal licence. This was got wrong once here,
+# on the reasoning that a licence file ought to be self-contained — it is
+# not. GameCI signs in with the account and then presents the file, and
+# with only the file it stops before it starts:
+#
+#     No valid license activation strategy could be determined.
+#     Make sure to provide UNITY_EMAIL, UNITY_PASSWORD, and either a
+#     UNITY_SERIAL or UNITY_LICENSE.
+#
+# A personal licence is free. On Windows the file is usually already at
 #
 #     C:\ProgramData\Unity\Unity_lic.ulf
 #
 # and on macOS at `/Library/Application Support/Unity/Unity_lic.ulf`.
 # Open it in a text editor, copy the whole thing, paste. If it is not
-# there — newer Hub versions do not always write it — run the
-# `Unity licence request` workflow, which walks through Unity's manual
-# activation and takes about two minutes.
+# there, the editor will make one: Help → Manage License → Manual
+# activation → Save License Request, then upload that `.alf` at
+# https://license.unity3d.com/manual and paste the `.ulf` it returns.
 #
-# UNITY_EMAIL and UNITY_PASSWORD are read too if they are set, and are
-# needed only for a Professional seat, which activates by serial rather
-# than by licence file. A personal licence needs neither.
+# The jobs below wait for all three rather than for the licence alone, so
+# a half-finished setup skips quietly instead of failing. A red X for a
+# missing password reads as a broken build, and it is not one.
 
 name: Unity
 
@@ -64,14 +74,19 @@ jobs:
     name: Compile and test in the editor
     runs-on: ubuntu-latest
     steps:
-      - name: Is there a licence?
+      - name: Is the licence set up?
         id: licence
-        run: echo "have=${{ env.UNITY_LICENSE != '' }}" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "have=${{ env.UNITY_LICENSE != '' && env.UNITY_EMAIL != '' && env.UNITY_PASSWORD != '' }}" >> "$GITHUB_OUTPUT"
 
       - if: steps.licence.outputs.have == 'false'
         run: |
-          echo "No UNITY_LICENSE secret, so there is nothing to run here."
-          echo "See the header of .github/workflows/unity.yml to turn this on."
+          echo "Unity activation needs all three of UNITY_LICENSE, UNITY_EMAIL"
+          echo "and UNITY_PASSWORD. Set:"
+          echo "  UNITY_LICENSE  ${{ env.UNITY_LICENSE != '' && 'yes' || 'NO' }}"
+          echo "  UNITY_EMAIL    ${{ env.UNITY_EMAIL != '' && 'yes' || 'NO' }}"
+          echo "  UNITY_PASSWORD ${{ env.UNITY_PASSWORD != '' && 'yes' || 'NO' }}"
+          echo "See the header of .github/workflows/unity.yml."
 
       - if: steps.licence.outputs.have == 'true'
         uses: actions/checkout@v4
@@ -115,12 +130,13 @@ jobs:
     needs: editor
     runs-on: ubuntu-latest
     steps:
-      - name: Is there a licence?
+      - name: Is the licence set up?
         id: licence
-        run: echo "have=${{ env.UNITY_LICENSE != '' }}" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "have=${{ env.UNITY_LICENSE != '' && env.UNITY_EMAIL != '' && env.UNITY_PASSWORD != '' }}" >> "$GITHUB_OUTPUT"
 
       - if: steps.licence.outputs.have == 'false'
-        run: echo "No UNITY_LICENSE secret, so there is nothing to build here."
+        run: echo "Unity activation is not fully set up, so there is nothing to build here."
 
       - if: steps.licence.outputs.have == 'true'
         uses: actions/checkout@v4
