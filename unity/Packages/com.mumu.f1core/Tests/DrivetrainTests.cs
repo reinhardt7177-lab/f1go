@@ -116,11 +116,32 @@ namespace MumuF1.Tests
         public void TheDifferentialSendsTorqueToTheSlowerWheel()
         {
             var d = Fresh();
-            // Left spinning faster than right: the locking diff must bias
-            // torque towards the right, which is what stops a rear-drive
+
+            /* 60 rad/s in first is about 10,400 rpm — on the power and
+               well inside the limiter. The first version of this test
+               used 220, which through first gear is 38,000 rpm: the
+               limiter correctly cut the torque to zero and both wheels
+               got nothing, so the test failed on inputs no car could
+               reach rather than on anything being wrong. */
+            DriveTorques t = d.Step(1, false, false, false, 60, 55, 1.0 / 120);
+
+            // Left spinning faster than right, so the locking diff biases
+            // torque towards the right — which is what stops a rear-drive
             // car lighting up the inside tyre on corner exit.
-            DriveTorques t = d.Step(1, false, false, false, 220, 200, 1.0 / 120);
+            Assert.That(t.Left + t.Right, Is.GreaterThan(0), "should be making torque at all");
             Assert.That(t.Right, Is.GreaterThan(t.Left));
+        }
+
+        [Test]
+        public void TheLimiterCutsTorqueRatherThanPullingHarder()
+        {
+            var d = Fresh();
+            // First gear at 220 rad/s is 38,000 rpm. Nothing may come out
+            // of that but zero.
+            DriveTorques t = d.Step(1, false, false, false, 220, 220, 1.0 / 120);
+            Assert.That(t.Left, Is.EqualTo(0.0));
+            Assert.That(t.Right, Is.EqualTo(0.0));
+            Assert.That(d.Rpm, Is.EqualTo(d.Params.RedlineRpm).Within(1e-9));
         }
 
         [Test]
