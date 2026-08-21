@@ -24,6 +24,17 @@ namespace MumuF1
         /// <summary>Metres per second to kilometres per hour.</summary>
         public const double Kmh = 3.6;
 
+        /// <summary>
+        /// Standard gravity (m/s²).
+        /// </summary>
+        /// <remarks>
+        /// Stated here rather than taken from the engine. Everything that
+        /// reads it — tyre load, the corner-speed solution, the aerodynamic
+        /// balance — has to agree with the reference implementation to the
+        /// digit, and an engine's value is a setting somebody can change.
+        /// </remarks>
+        public const double Gravity = 9.81;
+
         public static double Clamp(double v, double lo, double hi)
             => v < lo ? lo : v > hi ? hi : v;
 
