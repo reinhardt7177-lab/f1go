@@ -39,6 +39,15 @@ namespace MumuF1.Game
 
             BuildLighting(root.transform);
             Transform track = TrackBuilder.Build(root.transform);
+
+            /* The scenery is what makes the speed legible. An empty green
+               plane offers nothing to pass, and at three hundred kilometres
+               an hour the only thing moving is a road surface with no
+               texture to move — so the car reads as slow however fast it
+               actually is. */
+            var builder = track.GetComponent<TrackBuilder>();
+            TracksideBuilder.Build(root.transform, builder.Circuit, builder.Geometry);
+
             BuildCar(root.transform, track);
         }
 

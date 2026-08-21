@@ -40,6 +40,16 @@ namespace MumuF1.Game
         /// <summary>The circuit this was built from, for anything that needs (s, t).</summary>
         public Circuit Circuit { get; private set; }
 
+        /// <summary>
+        /// The sweep the road was built from.
+        /// </summary>
+        /// <remarks>
+        /// Kept rather than discarded because the barrier is swept from the
+        /// same vertices. Fitting a wall alongside the road instead of from
+        /// it is how the two end up disagreeing about where the edge is.
+        /// </remarks>
+        public TrackGeometry Geometry { get; private set; }
+
         public static Transform Build(Transform parent)
         {
             var go = new GameObject("Circuit");
@@ -76,6 +86,7 @@ namespace MumuF1.Game
         {
             Circuit = circuit;
             TrackGeometry geometry = TrackMesh.Build(circuit, StationSpacing);
+            Geometry = geometry;
 
             var vertices = new Vector3[geometry.VertexCount];
             var normals = new Vector3[geometry.VertexCount];
