@@ -71,12 +71,16 @@ jobs:
   # `TracksideBuilder`, `CarController` and the toon shader have never
   # been through a compiler that knows what `UnityEngine` is.
   #
-  # It was the test runner and is now a plain build, because the test
-  # runner did not fail usefully: two runs sat for an hour each with no
-  # output at all. A build for the platform the runner already is asks
-  # the least of the machine — no WebAssembly, no graphics — so whatever
-  # is wrong surfaces sooner, and the step after it prints the editor's
-  # log either way rather than trusting the action to surface it.
+  # It was the test runner and is now a plain build, which is still the
+  # right shape: a build for the platform the runner already is asks the
+  # least of the machine — no WebAssembly, no graphics — so whatever is
+  # wrong surfaces soonest.
+  #
+  # The step after it prints the editor's log whatever happens, and that
+  # is the part that earned its place. Several runs were spent guessing
+  # at a silence that was not silence: licence activation was failing and
+  # retrying five times at four-minute intervals, and nothing said so
+  # until this step existed to print it.
   editor:
     name: Compile Assets against UnityEngine
     runs-on: ubuntu-latest

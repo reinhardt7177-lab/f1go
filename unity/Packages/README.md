@@ -5,11 +5,17 @@ down why, because adding it back looks harmless and is not.
 
 Every script here reads the keyboard through the legacy `Input` class —
 `Input.GetKey`, `Input.GetKeyDown` — and nothing anywhere references
-`UnityEngine.InputSystem`. So the package was dead weight. It was also,
-almost certainly, why two CI runs sat for an hour each with no output:
-installing it while the active input handler is still the old one makes
-the editor ask whether to restart, and in batch mode it asks nobody. The
-run does not fail. It waits.
+`UnityEngine.InputSystem`. So the package was dead weight, and that is
+the whole reason it is gone.
+
+It was removed on a second reason as well, and that reason was wrong.
+CI runs were taking a long time and were said here to be hanging on the
+input handler's restart prompt. They were not: the runs were failing to
+activate the Unity licence, retrying five times at four-minute
+intervals, and being cancelled by the next push before they could
+report it. Installing this package while the active input handler is
+the old one *can* put up a modal that batch mode cannot answer, so it is
+still worth knowing about — but it was not happening here.
 
 If the new Input System is ever wanted, it needs
 `ProjectSettings/ProjectSettings.asset` to declare `activeInputHandler`
