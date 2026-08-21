@@ -134,9 +134,7 @@ namespace MumuF1.Game
                 GameObject prefab = FromKit(p.Kind);
                 if (prefab != null)
                 {
-                    GameObject instance = Instantiate(prefab, position, rotation, transform);
-                    instance.transform.localScale = scale;
-                    Repaint(instance, p.Kind);
+                    Seat(prefab, p.Kind, position, rotation, scale);
                     continue;
                 }
 
@@ -167,6 +165,85 @@ namespace MumuF1.Game
         /// </remarks>
         private static GameObject FromKit(PropKind kind) =>
             Resources.Load<GameObject>(KitPath + kind);
+
+        /// <summary>
+        /// Stand a kit model where the generated one would have stood.
+        /// </summary>
+        /// <remarks>
+        /// The model is measured and fitted rather than trusted — see
+        /// <see cref="MumuF1.KitFit"/>. A pack exported in centimetres is a
+        /// hundred times too big and one pivoted on its own middle sinks half
+        /// of itself into the verge, and neither is visible without opening
+        /// the file. Measuring here means whoever dropped the zip in never
+        /// has to.
+        ///
+        /// The holder carries the placement — where on the circuit, which way
+        /// round, how large — and the model sits inside it carrying the fit,
+        /// so the two never have to be composed by hand.
+        /// </remarks>
+        private void Seat(GameObject prefab, PropKind kind, Vector3 position, Quaternion rotation, Vector3 scale)
+        {
+            var holder = new GameObject(kind.ToString());
+            holder.transform.SetParent(transform, false);
+            holder.transform.SetPositionAndRotation(position, rotation);
+            holder.transform.localScale = scale;
+
+            GameObject instance = Instantiate(prefab, holder.transform);
+
+            if (LocalBounds(instance, out Bounds3 measured))
+            {
+                KitTransform fit = KitFit.Fit(measured, KitFit.Reference(kind));
+                instance.transform.localScale = Vector3.one * (float)fit.Scale;
+                instance.transform.localPosition = new Vector3(
+                    (float)fit.Offset.X, (float)fit.Offset.Y, (float)fit.Offset.Z);
+            }
+
+            Repaint(instance, kind);
+        }
+
+        /// <summary>
+        /// The box a model occupies, in its own root's space.
+        /// </summary>
+        /// <remarks>
+        /// Read from the meshes rather than from a renderer, because a
+        /// renderer's bounds are in world space and depend on where the thing
+        /// currently is — which is the answer to a different question. Every
+        /// corner is transformed rather than the two extremes, because a
+        /// child rotated inside the prefab makes min and max meaningless on
+        /// their own.
+        /// </remarks>
+        private static bool LocalBounds(GameObject model, out Bounds3 box)
+        {
+            Vector3 lo = Vector3.positiveInfinity;
+            Vector3 hi = Vector3.negativeInfinity;
+            bool any = false;
+
+            Matrix4x4 toRoot = model.transform.worldToLocalMatrix;
+
+            foreach (MeshFilter filter in model.GetComponentsInChildren<MeshFilter>(true))
+            {
+                Mesh mesh = filter.sharedMesh;
+                if (mesh == null) continue;
+
+                Matrix4x4 into = toRoot * filter.transform.localToWorldMatrix;
+                Bounds local = mesh.bounds;
+
+                for (int corner = 0; corner < 8; corner++)
+                {
+                    var at = new Vector3(
+                        (corner & 1) == 0 ? local.min.x : local.max.x,
+                        (corner & 2) == 0 ? local.min.y : local.max.y,
+                        (corner & 4) == 0 ? local.min.z : local.max.z);
+                    Vector3 p = into.MultiplyPoint3x4(at);
+                    lo = Vector3.Min(lo, p);
+                    hi = Vector3.Max(hi, p);
+                    any = true;
+                }
+            }
+
+            box = new Bounds3(new Vec3(lo.x, lo.y, lo.z), new Vec3(hi.x, hi.y, hi.z));
+            return any;
+        }
 
         /// <summary>
         /// Put a kit model into the house style.
