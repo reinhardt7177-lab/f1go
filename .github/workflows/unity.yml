@@ -63,20 +63,27 @@ env:
   UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
 
 jobs:
-  # Compile and run the tests inside the editor.
+  # Compile Assets/Scripts against a real UnityEngine.
   #
   # This is the more valuable of the two jobs, and not by a little. The
   # simulation is already proven by `ci.yml`; what is unproven is whether
   # `Assets/Scripts` even compiles — `TrackBuilder`, `CarView`,
   # `TracksideBuilder`, `CarController` and the toon shader have never
   # been through a compiler that knows what `UnityEngine` is.
+  #
+  # It was the test runner and is now a plain build, because the test
+  # runner did not fail usefully: two runs sat for an hour each with no
+  # output at all. A build for the platform the runner already is asks
+  # the least of the machine — no WebAssembly, no graphics — so whatever
+  # is wrong surfaces sooner, and the step after it prints the editor's
+  # log either way rather than trusting the action to surface it.
   editor:
-    name: Compile and test in the editor
+    name: Compile Assets against UnityEngine
     runs-on: ubuntu-latest
     # A hung editor does not fail, it waits — and the default is six hours
     # of a runner held by a process nobody can see. Forty-five minutes is
     # comfortably past a cold import and nowhere near a working day.
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
       - name: Is the licence set up?
         id: licence
@@ -110,24 +117,32 @@ jobs:
             Library-
 
       - if: steps.licence.outputs.have == 'true'
-        uses: game-ci/unity-test-runner@v4
+        uses: game-ci/unity-builder@v4
         with:
           projectPath: unity
-          # Without this the API Updater asks whether to rewrite obsolete
-          # calls, and asks it of nobody: batch mode has no console to
-          # answer on, so the editor waits for a keystroke that cannot
-          # arrive and the job hangs until the timeout above.
-          customParameters: -accept-apiupdate
-          # Read from ProjectSettings/ProjectVersion.txt, so the editor
-          # here is the editor the project was written for rather than
-          # whatever is newest.
           unityVersion: auto
-          # EditMode only. The play-mode tests would need a scene, and
-          # this project deliberately has none — everything is built at
-          # runtime by the bootstrap.
-          testMode: EditMode
-          githubToken: ${{ secrets.GITHUB_TOKEN }}
-          checkName: Unity editor tests
+          # Linux rather than WebGL, and that is the whole point of this
+          # job: a Linux player build compiles every script without
+          # spending twenty minutes translating the engine to
+          # WebAssembly. If the C# is wrong it is wrong here, sooner and
+          # more legibly.
+          targetPlatform: StandaloneLinux64
+          buildName: compilecheck
+          customParameters: -accept-apiupdate -nographics
+
+      # Whatever the editor said, in the place it says it. GameCI prints
+      # a summary and swallows the rest; the compile errors are in the
+      # log file, and a hang leaves one too.
+      - if: always() && steps.licence.outputs.have == 'true'
+        name: What the editor said
+        run: |
+          for log in build/*.log unity/*.log /github/workspace/*.log ~/.config/unity3d/Editor.log; do
+            [ -f "$log" ] || continue
+            echo "===== $log ====="
+            grep -nE "error CS|Compilation failed|Shader error|error:|Aborting|Fatal" "$log" | head -60 \
+              || tail -80 "$log"
+          done
+          echo "===== end ====="
 
   # The playable build.
   #
