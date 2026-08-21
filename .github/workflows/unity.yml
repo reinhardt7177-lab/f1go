@@ -1,0 +1,154 @@
+# Build the Unity project, and run the half CI cannot otherwise reach.
+#
+# `ci.yml` already compiles and tests the simulation, because that half
+# has no `UnityEngine` in it and a plain .NET SDK will take it. What it
+# cannot touch is everything that does: `Assets/Scripts`, the shader,
+# the bootstrap, the scene-less startup. Those need the editor, and the
+# editor needs a licence.
+#
+# So this workflow is deliberately dormant until one is provided. Every
+# job checks for the licence first and skips quietly without it, which
+# means the repository stays green for anyone who clones it and does not
+# have a Unity account — rather than showing a permanently red X for a
+# thing that is not broken.
+#
+# To turn it on, add these three repository secrets under
+# Settings → Secrets and variables → Actions:
+#
+#   UNITY_LICENSE    the full contents of your Unity_lic.ulf
+#   UNITY_EMAIL      the address on the Unity account
+#   UNITY_PASSWORD   its password
+#
+# A personal licence is free and is enough for all of this. GameCI's
+# own guide has the steps for producing the .ulf:
+# https://game.ci/docs/github/activation
+
+name: Unity
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'unity/**'
+      - '.github/workflows/unity.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: unity-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+  UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+  UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+
+jobs:
+  # Compile and run the tests inside the editor.
+  #
+  # This is the more valuable of the two jobs, and not by a little. The
+  # simulation is already proven by `ci.yml`; what is unproven is whether
+  # `Assets/Scripts` even compiles — `TrackBuilder`, `CarView`,
+  # `TracksideBuilder`, `CarController` and the toon shader have never
+  # been through a compiler that knows what `UnityEngine` is.
+  editor:
+    name: Compile and test in the editor
+    runs-on: ubuntu-latest
+    steps:
+      - name: Is there a licence?
+        id: licence
+        run: echo "have=${{ env.UNITY_LICENSE != '' }}" >> "$GITHUB_OUTPUT"
+
+      - if: steps.licence.outputs.have == 'false'
+        run: |
+          echo "No UNITY_LICENSE secret, so there is nothing to run here."
+          echo "See the header of .github/workflows/unity.yml to turn this on."
+
+      - if: steps.licence.outputs.have == 'true'
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      # The import is the slow part — twenty minutes cold, under two warm
+      # — so the imported Library is cached on the hash of everything that
+      # can change what it contains.
+      - if: steps.licence.outputs.have == 'true'
+        uses: actions/cache@v4
+        with:
+          path: unity/Library
+          key: Library-WebGL-${{ hashFiles('unity/Assets/**', 'unity/Packages/**', 'unity/ProjectSettings/**') }}
+          restore-keys: |
+            Library-WebGL-
+            Library-
+
+      - if: steps.licence.outputs.have == 'true'
+        uses: game-ci/unity-test-runner@v4
+        with:
+          projectPath: unity
+          # Read from ProjectSettings/ProjectVersion.txt, so the editor
+          # here is the editor the project was written for rather than
+          # whatever is newest.
+          unityVersion: auto
+          # EditMode only. The play-mode tests would need a scene, and
+          # this project deliberately has none — everything is built at
+          # runtime by the bootstrap.
+          testMode: EditMode
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          checkName: Unity editor tests
+
+  # The playable build.
+  #
+  # WebGL because that is what the web version already is: the point of
+  # the port was never to leave the browser, it was to get a real
+  # renderer and a real physics engine underneath it.
+  webgl:
+    name: Build for WebGL
+    needs: editor
+    runs-on: ubuntu-latest
+    steps:
+      - name: Is there a licence?
+        id: licence
+        run: echo "have=${{ env.UNITY_LICENSE != '' }}" >> "$GITHUB_OUTPUT"
+
+      - if: steps.licence.outputs.have == 'false'
+        run: echo "No UNITY_LICENSE secret, so there is nothing to build here."
+
+      - if: steps.licence.outputs.have == 'true'
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - if: steps.licence.outputs.have == 'true'
+        uses: actions/cache@v4
+        with:
+          path: unity/Library
+          key: Library-WebGL-${{ hashFiles('unity/Assets/**', 'unity/Packages/**', 'unity/ProjectSettings/**') }}
+          restore-keys: |
+            Library-WebGL-
+            Library-
+
+      - if: steps.licence.outputs.have == 'true'
+        uses: game-ci/unity-builder@v4
+        with:
+          projectPath: unity
+          unityVersion: auto
+          targetPlatform: WebGL
+          buildName: mumuF1
+
+      - if: steps.licence.outputs.have == 'true'
+        name: Say how big it came out
+        run: |
+          du -sh build/WebGL || true
+          find build -maxdepth 3 -type f -printf '%10s  %p\n' | sort -rn | head -12 || true
+
+      # Uploaded rather than published. Publishing needs a decision about
+      # where it goes — the Pages site is the web version's, and putting a
+      # second game on it is a change to `ci.yml` rather than a step here.
+      # An artifact is downloadable and playable now, and does not risk the
+      # deploy that already works.
+      - if: steps.licence.outputs.have == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mumuF1-webgl
+          path: build/WebGL
+          retention-days: 14
