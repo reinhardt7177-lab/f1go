@@ -73,6 +73,10 @@ jobs:
   editor:
     name: Compile and test in the editor
     runs-on: ubuntu-latest
+    # A hung editor does not fail, it waits — and the default is six hours
+    # of a runner held by a process nobody can see. Forty-five minutes is
+    # comfortably past a cold import and nowhere near a working day.
+    timeout-minutes: 45
     steps:
       - name: Is the licence set up?
         id: licence
@@ -109,6 +113,11 @@ jobs:
         uses: game-ci/unity-test-runner@v4
         with:
           projectPath: unity
+          # Without this the API Updater asks whether to rewrite obsolete
+          # calls, and asks it of nobody: batch mode has no console to
+          # answer on, so the editor waits for a keystroke that cannot
+          # arrive and the job hangs until the timeout above.
+          customParameters: -accept-apiupdate
           # Read from ProjectSettings/ProjectVersion.txt, so the editor
           # here is the editor the project was written for rather than
           # whatever is newest.
@@ -129,6 +138,9 @@ jobs:
     name: Build for WebGL
     needs: editor
     runs-on: ubuntu-latest
+    # Longer than the editor job: this one imports and then builds, and a
+    # first WebGL build compiles the whole engine to WebAssembly.
+    timeout-minutes: 75
     steps:
       - name: Is the licence set up?
         id: licence
@@ -159,6 +171,7 @@ jobs:
           unityVersion: auto
           targetPlatform: WebGL
           buildName: mumuF1
+          customParameters: -accept-apiupdate
 
       - if: steps.licence.outputs.have == 'true'
         name: Say how big it came out
