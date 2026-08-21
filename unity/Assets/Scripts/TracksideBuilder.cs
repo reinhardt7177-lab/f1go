@@ -12,19 +12,20 @@ namespace MumuF1.Game
     /// those placements into objects, and it will take them from either of
     /// two sources.
     ///
-    /// If Kenney's Racing Kit has been unpacked into
-    /// <c>Assets/Resources/Kit/</c> — it is CC0, so it can be — each kind is
-    /// looked up by name and the prefab is used. If it has not, the same
-    /// kinds are built out of primitives in the house style. Both look right
-    /// enough to drive against, so the project has no asset it cannot build
-    /// without, and dropping the pack in is an improvement rather than a
-    /// prerequisite. <c>Assets/Resources/Kit/README.md</c> has the names.
+    /// If a racing kit has been unpacked into
+    /// <c>Assets/Resources/Kit/</c> — Kenney's is CC0, so it can be — each
+    /// kind is looked up by name and that model is used, repainted into the
+    /// house style. If it has not, the shape comes from
+    /// <see cref="MumuF1.PropMesh"/>, which is generated and tested like
+    /// everything else here. Both look right enough to drive against, so the
+    /// project has no asset it cannot build without and dropping a pack in is
+    /// an improvement rather than a prerequisite.
+    /// <c>Assets/Resources/Kit/README.md</c> has the names.
     ///
-    /// The stand-ins are merged, one mesh per kind. Four hundred separate
-    /// tree objects would be four hundred draw calls; merged, a whole forest
-    /// is one. Prefabs from the kit are instantiated individually, because
-    /// they arrive as prefabs and Unity's GPU instancing already handles
-    /// repeats of the same mesh.
+    /// Generated props are merged in chunks along the lap, and kit models are
+    /// instantiated one each — Unity's GPU instancing already handles repeats
+    /// of the same imported mesh, and a prefab may carry components that
+    /// merging would throw away.
     /// </remarks>
     public class TracksideBuilder : MonoBehaviour
     {
@@ -103,11 +104,26 @@ namespace MumuF1.Game
 
         // --- what stands behind it ---------------------------------------
 
+        /// <summary>
+        /// How many props go into one merged mesh.
+        /// </summary>
+        /// <remarks>
+        /// Not all of them, and not one each. One mesh for the whole roadside
+        /// is one draw call and no culling — Monza's four hundred props render
+        /// in full while you are looking at a wall. One object per prop culls
+        /// perfectly and costs four hundred draw calls. Chunking by position
+        /// along the lap gives both: a handful of objects, each a contiguous
+        /// stretch of circuit, so the ones behind you are skipped whole.
+        /// </remarks>
+        private const int ChunkSize = 48;
+
         private void BuildProps(Circuit circuit)
         {
             List<Placement> placements = Trackside.Place(circuit, Density);
+            Dictionary<PropKind, Mesh> shapes = Shapes();
 
-            var standIns = new Dictionary<PropKind, List<CombineInstance>>();
+            var chunk = new List<CombineInstance>();
+            int built = 0;
 
             foreach (Placement p in placements)
             {
@@ -120,29 +136,24 @@ namespace MumuF1.Game
                 {
                     GameObject instance = Instantiate(prefab, position, rotation, transform);
                     instance.transform.localScale = scale;
+                    Repaint(instance, p.Kind);
                     continue;
                 }
 
-                if (!standIns.TryGetValue(p.Kind, out List<CombineInstance> parts))
+                chunk.Add(new CombineInstance
                 {
-                    parts = new List<CombineInstance>();
-                    standIns[p.Kind] = parts;
-                }
+                    mesh = shapes[p.Kind],
+                    transform = Matrix4x4.TRS(position, rotation, scale)
+                });
 
-                foreach (CombineInstance part in StandIn.Parts(p.Kind))
+                if (chunk.Count >= ChunkSize)
                 {
-                    parts.Add(new CombineInstance
-                    {
-                        mesh = part.mesh,
-                        transform = Matrix4x4.TRS(position, rotation, scale) * part.transform
-                    });
+                    Merge(chunk, built++);
+                    chunk.Clear();
                 }
             }
 
-            foreach (KeyValuePair<PropKind, List<CombineInstance>> entry in standIns)
-            {
-                Merge(entry.Key, entry.Value);
-            }
+            if (chunk.Count > 0) Merge(chunk, built);
         }
 
         /// <summary>
@@ -151,160 +162,116 @@ namespace MumuF1.Game
         /// <remarks>
         /// <c>Resources.Load</c> returns null rather than throwing when
         /// nothing is at the path, which is exactly the behaviour wanted: the
-        /// kit is optional and its absence is not an error.
+        /// kit is optional, a partial install is fine, and its absence is not
+        /// an error.
         /// </remarks>
         private static GameObject FromKit(PropKind kind) =>
             Resources.Load<GameObject>(KitPath + kind);
 
-        private void Merge(PropKind kind, List<CombineInstance> parts)
-        {
-            if (parts.Count == 0) return;
-
-            /* Thirty-two bit indices before the combine, not after. A
-               broadleaf stand-in is two spheres and a trunk, a bit over a
-               thousand vertices, and Monza scatters three hundred trees —
-               so this mesh is well past the 65,535 a sixteen-bit buffer
-               holds, and the default would wrap it into confetti. */
-            var mesh = new Mesh
-            {
-                name = kind.ToString(),
-                indexFormat = UnityEngine.Rendering.IndexFormat.UInt32
-            };
-            mesh.CombineMeshes(parts.ToArray(), true, true);
-            mesh.RecalculateNormals();
-            mesh.RecalculateBounds();
-
-            var go = new GameObject(kind.ToString());
-            go.transform.SetParent(transform, false);
-            go.AddComponent<MeshFilter>().sharedMesh = mesh;
-            go.AddComponent<MeshRenderer>().sharedMaterial = Paint.Flat(StandIn.Colour(kind));
-        }
-    }
-
-    /// <summary>
-    /// What each kind looks like when the racing kit is not installed.
-    /// </summary>
-    /// <remarks>
-    /// Primitives, and deliberately crude ones. Nothing here is looked at
-    /// for longer than a fifth of a second at the edge of vision, which is
-    /// the same reason the whole game is drawn in flat colour inside a black
-    /// line: what has to survive is the silhouette, and a cone on a cylinder
-    /// is a tree at two hundred metres.
-    ///
-    /// Each kind returns its parts as meshes with a local transform, so the
-    /// caller can bake hundreds of them into one mesh rather than one object
-    /// each.
-    /// </remarks>
-    public static class StandIn
-    {
-        private static Mesh _cube;
-        private static Mesh _cylinder;
-        private static Mesh _sphere;
-
-        private static Mesh Cube => _cube != null ? _cube : _cube = Primitive(PrimitiveType.Cube);
-        private static Mesh Cylinder => _cylinder != null ? _cylinder : _cylinder = Primitive(PrimitiveType.Cylinder);
-        private static Mesh Sphere => _sphere != null ? _sphere : _sphere = Primitive(PrimitiveType.Sphere);
-
         /// <summary>
-        /// Unity's primitive meshes, taken once.
+        /// Put a kit model into the house style.
         /// </summary>
         /// <remarks>
-        /// <c>CreatePrimitive</c> is the only way to get at them from script,
-        /// and it makes a GameObject to do it — so the object is destroyed
-        /// immediately and the mesh kept. Doing this once per tree rather
-        /// than once per kind would create and destroy four hundred objects
-        /// at load.
+        /// Without this, dropping the pack in makes things worse rather than
+        /// better: an imported model arrives wearing the render pipeline's
+        /// default material, and a photographic grey box standing next to a
+        /// circuit drawn in four flat bands inside a black line reads as a
+        /// bug. The model's shape is what was wanted; its shading was not.
+        ///
+        /// The colour is the stand-in's, so a kit hoarding is the same blue
+        /// as a generated one and the two can stand side by side during a
+        /// partial install.
         /// </remarks>
-        private static Mesh Primitive(PrimitiveType type)
+        private static void Repaint(GameObject instance, PropKind kind)
         {
-            GameObject probe = GameObject.CreatePrimitive(type);
-            Mesh mesh = probe.GetComponent<MeshFilter>().sharedMesh;
-            Object.DestroyImmediate(probe);
-            return mesh;
-        }
-
-        public static Color Colour(PropKind kind)
-        {
-            switch (kind)
+            Material paint = Paint.Flat(Colour(kind));
+            foreach (Renderer r in instance.GetComponentsInChildren<Renderer>(true))
             {
-                case PropKind.Conifer: return new Color(0.184f, 0.420f, 0.227f);
-                case PropKind.Broadleaf: return new Color(0.306f, 0.580f, 0.251f);
-                case PropKind.MarshalPost: return new Color(0.847f, 0.867f, 0.890f);
-                case PropKind.Grandstand: return new Color(0.737f, 0.769f, 0.800f);
-                case PropKind.AdBoard: return new Color(0.129f, 0.353f, 0.678f);
-                case PropKind.Flag: return new Color(0.937f, 0.784f, 0.145f);
-                default: return new Color(0.180f, 0.196f, 0.220f);
+                var materials = new Material[r.sharedMaterials.Length];
+                for (int i = 0; i < materials.Length; i++) materials[i] = paint;
+                r.sharedMaterials = materials;
             }
         }
 
-        public static IEnumerable<CombineInstance> Parts(PropKind kind)
+        /// <summary>The generated shape for each kind, built once.</summary>
+        private static Dictionary<PropKind, Mesh> Shapes()
         {
-            switch (kind)
+            var shapes = new Dictionary<PropKind, Mesh>();
+            foreach (KeyValuePair<PropKind, Mesh3> entry in PropMesh.All())
             {
-                case PropKind.Conifer:
-                    yield return At(Cylinder, new Vector3(0f, 1.1f, 0f), new Vector3(0.6f, 1.1f, 0.6f));
-                    /* Three stacked, narrowing upward. One cone reads as a
-                       traffic marker; three read as a conifer, which is the
-                       whole difference at the distance it is seen from. */
-                    yield return At(Cube, new Vector3(0f, 3.4f, 0f), new Vector3(4.2f, 2.6f, 4.2f));
-                    yield return At(Cube, new Vector3(0f, 5.4f, 0f), new Vector3(3.0f, 2.4f, 3.0f));
-                    yield return At(Cube, new Vector3(0f, 7.0f, 0f), new Vector3(1.7f, 2.0f, 1.7f));
-                    break;
+                Mesh3 source = entry.Value;
+                var vertices = new Vector3[source.VertexCount];
+                var normals = new Vector3[source.VertexCount];
+                var colours = new Color[source.VertexCount];
 
-                case PropKind.Broadleaf:
-                    yield return At(Cylinder, new Vector3(0f, 1.3f, 0f), new Vector3(0.7f, 1.3f, 0.7f));
-                    /* Two overlapping balls rather than one. A single ball
-                       reads as a lollipop; two of different sizes, offset,
-                       read as foliage. */
-                    yield return At(Sphere, new Vector3(0f, 4.6f, 0f), new Vector3(5.0f, 4.4f, 5.0f));
-                    yield return At(Sphere, new Vector3(1.1f, 3.6f, 0.5f), new Vector3(3.6f, 3.2f, 3.6f));
-                    break;
+                for (int v = 0; v < source.VertexCount; v++)
+                {
+                    vertices[v] = new Vector3(
+                        source.Positions[v * 3], source.Positions[v * 3 + 1], source.Positions[v * 3 + 2]);
+                    normals[v] = new Vector3(
+                        source.Normals[v * 3], source.Normals[v * 3 + 1], source.Normals[v * 3 + 2]);
+                    colours[v] = new Color(
+                        source.Colors[v * 3], source.Colors[v * 3 + 1], source.Colors[v * 3 + 2]);
+                }
 
-                case PropKind.MarshalPost:
-                    yield return At(Cylinder, new Vector3(0f, 1.3f, 0f), new Vector3(0.18f, 1.3f, 0.18f));
-                    yield return At(Cube, new Vector3(0f, 2.9f, 0f), new Vector3(1.5f, 1.0f, 0.12f));
-                    break;
-
-                case PropKind.Grandstand:
-                    // The rake, as five steps, then a roof on two columns.
-                    for (int i = 0; i < 5; i++)
-                    {
-                        float h = 1.4f + i * 0.2f;
-                        yield return At(Cube, new Vector3(0f, h * 0.5f, -i * 2.2f), new Vector3(26f, h, 2.2f));
-                    }
-                    yield return At(Cube, new Vector3(0f, 9.4f, -4.4f), new Vector3(27f, 0.5f, 12f));
-                    yield return At(Cube, new Vector3(-12f, 4.7f, 1.2f), new Vector3(0.7f, 9f, 0.7f));
-                    yield return At(Cube, new Vector3(12f, 4.7f, 1.2f), new Vector3(0.7f, 9f, 0.7f));
-                    break;
-
-                case PropKind.AdBoard:
-                    yield return At(Cube, new Vector3(0f, 0.9f, 0f), new Vector3(7.0f, 1.4f, 0.14f));
-                    yield return At(Cube, new Vector3(-3.2f, 0.5f, 0.12f), new Vector3(0.16f, 1.0f, 0.16f));
-                    yield return At(Cube, new Vector3(3.2f, 0.5f, 0.12f), new Vector3(0.16f, 1.0f, 0.16f));
-                    break;
-
-                case PropKind.Flag:
-                    yield return At(Cylinder, new Vector3(0f, 2.6f, 0f), new Vector3(0.12f, 2.6f, 0.12f));
-                    yield return At(Cube, new Vector3(0.9f, 4.6f, 0f), new Vector3(1.8f, 1.1f, 0.06f));
-                    break;
-
-                case PropKind.StartGantry:
-                    /* Legs outside the road, so the thing that spans the
-                       timing line never has anything standing on it. The
-                       twelve metres is the widest half-width any circuit
-                       here uses plus its kerb. */
-                    yield return At(Cube, new Vector3(-12f, 3.4f, 0f), new Vector3(0.8f, 6.8f, 0.8f));
-                    yield return At(Cube, new Vector3(12f, 3.4f, 0f), new Vector3(0.8f, 6.8f, 0.8f));
-                    yield return At(Cube, new Vector3(0f, 7.2f, 0f), new Vector3(24.8f, 1.2f, 1.0f));
-                    break;
+                var mesh = new Mesh { name = entry.Key.ToString() };
+                mesh.SetVertices(vertices);
+                mesh.SetTriangles(source.Indices, 0);
+                mesh.SetNormals(normals);
+                mesh.SetColors(colours);
+                mesh.RecalculateBounds();
+                shapes[entry.Key] = mesh;
             }
+            return shapes;
         }
 
-        private static CombineInstance At(Mesh mesh, Vector3 position, Vector3 scale) =>
-            new CombineInstance
+        private void Merge(List<CombineInstance> chunk, int index)
+        {
+            /* Thirty-two bit indices before the combine, not after. Forty-eight
+               props of up to ninety-six triangles each is fourteen thousand
+               vertices — under the sixteen-bit limit today, and one prop
+               getting more detailed is all it would take to wrap the buffer
+               into confetti. */
+            var mesh = new Mesh
             {
-                mesh = mesh,
-                transform = Matrix4x4.TRS(position, Quaternion.identity, scale)
+                name = $"Props {index}",
+                indexFormat = UnityEngine.Rendering.IndexFormat.UInt32
             };
+            mesh.CombineMeshes(chunk.ToArray(), true, true);
+            mesh.RecalculateBounds();
+
+            var go = new GameObject($"Props {index}");
+            go.transform.SetParent(transform, false);
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+
+            /* One material for the whole roadside. Trunks, canopies,
+               hoardings and flags differ by vertex colour rather than by
+               material, which is the same trick the circuit uses to draw
+               tarmac, kerb, run-off and grass in one call. */
+            go.AddComponent<MeshRenderer>().sharedMaterial = Paint.FromVertices(outline: 2.0f);
+        }
+
+        /// <summary>
+        /// The house colour for a kind, for kit models that arrive without one.
+        /// </summary>
+        /// <remarks>
+        /// The generated shapes carry their colours per vertex — a tree's
+        /// trunk and its canopy are one mesh in two colours — so this is the
+        /// single colour to fall back on when a whole imported model has to
+        /// be painted at once. It is the dominant one.
+        /// </remarks>
+        private static Color Colour(PropKind kind)
+        {
+            switch (kind)
+            {
+                case PropKind.Conifer: return new Color(0.18f, 0.42f, 0.23f);
+                case PropKind.Broadleaf: return new Color(0.31f, 0.58f, 0.25f);
+                case PropKind.MarshalPost: return new Color(0.85f, 0.87f, 0.89f);
+                case PropKind.Grandstand: return new Color(0.74f, 0.77f, 0.80f);
+                case PropKind.AdBoard: return new Color(0.13f, 0.35f, 0.68f);
+                case PropKind.Flag: return new Color(0.94f, 0.78f, 0.15f);
+                default: return new Color(0.18f, 0.20f, 0.22f);
+            }
+        }
     }
 }
