@@ -52,7 +52,7 @@ export const buildTrackInk = (track: TrackGeometry): THREE.BufferGeometry => {
 
   const at = (ring: number, station: number, out: THREE.Vector3): THREE.Vector3 => {
     const i = (ring * across + station) * 3;
-    return out.set(positions[i]!, positions[i + 1]!, positions[i + 2]!);
+    return out.set(positions[i]!, positions[i + 1]!, positions[i + 2]);
   };
 
   const here = new THREE.Vector3();
@@ -73,7 +73,7 @@ export const buildTrackInk = (track: TrackGeometry): THREE.BufferGeometry => {
       at(ring, after, outer);
 
       const n = (ring * across + station) * 3;
-      up.set(normals[n]!, normals[n + 1]!, normals[n + 2]!);
+      up.set(normals[n]!, normals[n + 1]!, normals[n + 2]);
 
       side.subVectors(outer, inner);
       if (side.lengthSq() < 1e-12) side.set(1, 0, 0);
@@ -99,7 +99,7 @@ export const buildTrackInk = (track: TrackGeometry): THREE.BufferGeometry => {
       at(nextRing, before, inner);
       at(nextRing, after, outer);
       const m = (nextRing * across + station) * 3;
-      up.set(normals[m]!, normals[m + 1]!, normals[m + 2]!);
+      up.set(normals[m]!, normals[m + 1]!, normals[m + 2]);
       side.subVectors(outer, inner);
       if (side.lengthSq() < 1e-12) side.set(1, 0, 0);
       side.normalize().multiplyScalar(half);

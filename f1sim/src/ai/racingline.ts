@@ -63,8 +63,8 @@ export class RacingLine {
 
     // Cache the centreline frames once; the smoothing loop touches them
     // hundreds of times.
-    const centre: Vec3[] = new Array(count);
-    const left: Vec3[] = new Array(count);
+    const centre = new Array<Vec3>(count);
+    const left = new Array<Vec3>(count);
     const limit = new Float32Array(count);
 
     for (let i = 0; i < count; i++) {

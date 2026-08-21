@@ -47,7 +47,7 @@ export class LapTimer {
   private travelled = 0;
 
   constructor(private readonly circuit: Circuit) {
-    this.bestSectors = new Array(circuit.sectorSplits.length).fill(Infinity);
+    this.bestSectors = new Array<number>(circuit.sectorSplits.length).fill(Infinity);
   }
 
   /**

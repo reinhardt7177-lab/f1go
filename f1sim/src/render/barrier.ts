@@ -76,7 +76,7 @@ export const buildBarriers = (track: TrackGeometry): THREE.Group => {
 
   const at = (ring: number, station: number, out: THREE.Vector3): THREE.Vector3 => {
     const i = (ring * across + station) * 3;
-    return out.set(positions[i]!, positions[i + 1]!, positions[i + 2]!);
+    return out.set(positions[i]!, positions[i + 1]!, positions[i + 2]);
   };
 
   for (const station of barrierStations) {
@@ -91,7 +91,7 @@ export const buildBarriers = (track: TrackGeometry): THREE.Group => {
       for (const r of [ring, next]) {
         at(r, station, foot);
         const n = (r * across + station) * 3;
-        up.set(normals[n]!, normals[n + 1]!, normals[n + 2]!);
+        up.set(normals[n]!, normals[n + 1]!, normals[n + 2]);
         corners.push(
           foot.clone().addScaledVector(up, FOOT),
           foot.clone().addScaledVector(up, HEIGHT - CAP),
@@ -130,7 +130,7 @@ export const buildBarriers = (track: TrackGeometry): THREE.Group => {
     mesh.receiveShadow = true;
     /* Both faces: the wall is a single plane, and from the far side of
        a corner you are looking at its back. */
-    (mesh.material as THREE.MeshToonMaterial).side = THREE.DoubleSide;
+    (mesh.material).side = THREE.DoubleSide;
     mesh.add(outlineMesh(geometry, outline));
     group.add(mesh);
   }

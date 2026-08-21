@@ -35,7 +35,6 @@
  * cost, not something to check afterwards and hope for.
  */
 import { CIRCUIT_SPECS } from '../src/track/circuits';
-import type { CircuitSpec } from '../src/track/circuit';
 
 const id = process.argv[2]!;
 const targetLength = Number(process.argv[3]!);

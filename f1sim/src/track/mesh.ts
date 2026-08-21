@@ -328,7 +328,7 @@ export const buildTrackGeometry = (circuit: Circuit, stationSpacing = 4): TrackG
   const positions = new Float32Array(rings * across * 3);
   const normals = new Float32Array(rings * across * 3);
   const colors = new Float32Array(rings * across * 3);
-  const surfaces: SurfaceKind[] = new Array(rings * across);
+  const surfaces = new Array<SurfaceKind>(rings * across);
   const indices = new Uint32Array(rings * (across - 1) * 6);
 
   const limits = proximityLimits(circuit, rings);

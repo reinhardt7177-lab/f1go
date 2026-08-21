@@ -56,8 +56,8 @@ const drive = (
     // first gear is a burnout and the car spins — correct behaviour, but
     // it tells you nothing about the rest of the model.
     const drivenSlip = Math.max(
-      Math.abs(state.wheels[RL]!.slipRatio),
-      Math.abs(state.wheels[RR]!.slipRatio)
+      Math.abs(state.wheels[RL].slipRatio),
+      Math.abs(state.wheels[RR].slipRatio)
     );
 
     world.car.controls = {

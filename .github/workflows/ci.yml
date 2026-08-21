@@ -35,11 +35,21 @@ jobs:
           # developed against.
           node-version: '22'
           cache: npm
-          cache-dependency-path: f1sim/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            f1sim/package-lock.json
 
-      - name: Install
+      - name: Install the game
         working-directory: f1sim
         run: npm ci
+
+      # The linter lives at the root with its own TypeScript — see the
+      # header of `eslint.config.js` for why it cannot share the game's.
+      - name: Install the tooling
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
 
       - name: Types
         working-directory: f1sim
