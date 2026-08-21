@@ -94,20 +94,40 @@ namespace MumuF1.Tests
 
         /// <summary>
         /// Otherwise a car crossing the timing line drops through the seam.
-        /// The last ring is stitched to the first, so the two have to be one
-        /// station's spacing apart and no more.
         /// </summary>
+        /// <remarks>
+        /// The bound is geometry rather than a chosen number. A station at
+        /// lateral offset <c>t</c> on a corner of curvature <c>k</c> travels
+        /// <c>spacing * (1 + t * k)</c> while the centreline travels
+        /// <c>spacing</c> — the outside of a corner is simply further round
+        /// it. So a wide verge on a tight corner legitimately stretches its
+        /// quads, and the proving ground does exactly that: 79 m of scenery
+        /// on a 150 m radius makes a 12 m step at the outer grass, which is
+        /// correct and not a hole. What must not happen is a step that
+        /// geometry does not account for, which is what a clamp disagreeing
+        /// between two adjacent rings produces.
+        /// </remarks>
         [TestCaseSource(nameof(Ids))]
         public void WrapsTheLastRingBackOntoTheFirst(string id)
         {
+            var circuit = Circuits.Get(id);
             var g = Build(id);
+            var spacing = circuit.Length / g.Rings;
             var lastRing = (g.Rings - 1) * g.Across;
+
+            var here = circuit.Spline.SampleAt(0);
+            var there = circuit.Spline.SampleAt(spacing * (g.Rings - 1));
+            var kappa = Math.Max(Math.Abs(here.Curvature), Math.Abs(there.Curvature));
 
             for (var k = 0; k < g.Across; k++)
             {
+                var lateral = (Vertex(g, k) - here.Position).Length;
+                var allowed = spacing * (1 + lateral * kappa) + 1.0;
                 var gap = (Vertex(g, k) - Vertex(g, lastRing + k)).Length;
-                Assert.That(gap, Is.LessThan(Spacing * 2.5),
-                    $"{id} leaves a {gap:F1} m step across the timing line at station {k}");
+
+                Assert.That(gap, Is.LessThan(allowed),
+                    $"{id} leaves a {gap:F1} m step across the timing line at station {k}, "
+                    + $"{lateral:F0} m out on a {1 / Math.Max(kappa, 1e-9):F0} m radius");
             }
         }
 

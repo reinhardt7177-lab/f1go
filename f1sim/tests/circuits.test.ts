@@ -68,6 +68,46 @@ describe.each(Object.keys(CIRCUIT_SPECS))('circuit %s', (id) => {
     expect(a.x * b.x + a.y * b.y + a.z * b.z).toBeGreaterThan(0.999);
   });
 
+  /*
+   * The spline may not invent a corner tighter than the layout has.
+   *
+   * This is the check that would have caught the closure bug. The
+   * integration emits a sample and then advances, so the last sample is
+   * one step short of the start — and reading that step as a closure
+   * error and ramping it in by `i / (n - 1)` landed the last control
+   * point exactly on top of the first. A duplicate point in a closed
+   * control polygon is a kink, and a central-difference curvature at a
+   * kink overshoots: the proving ground reported a 78 m radius at its
+   * timing line against a 150 m layout, and the oval 130 m against 250 —
+   * in both cases the tightest curvature anywhere on the lap, on a
+   * straight. Everything downstream reads that number.
+   *
+   * Some overshoot is inherent — a curvature step is estimated over a
+   * four-metre window — but it is a few per cent, not double.
+   */
+  it('never bends tighter than the tightest corner it states', () => {
+    let tightest = Infinity;
+    for (const section of spec.sections) {
+      if (section.radius) tightest = Math.min(tightest, Math.abs(section.radius));
+    }
+    if (!Number.isFinite(tightest)) return;
+
+    let peak = 0;
+    let where = 0;
+    for (let s = 0; s < circuit.length; s += 0.5) {
+      const k = Math.abs(circuit.spline.sampleAt(s).curvature);
+      if (k > peak) {
+        peak = k;
+        where = s;
+      }
+    }
+
+    expect(
+      peak * tightest,
+      `${circuit.sectionAt(where)} bends to ${(1 / peak).toFixed(0)} m against a stated ${tightest} m`
+    ).toBeLessThan(1.25);
+  });
+
   it('has no kink a car could be thrown off', () => {
     let worst = 0;
     for (let s = 0; s < circuit.length; s += 2) {

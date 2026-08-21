@@ -285,7 +285,11 @@ namespace MumuF1
             }
 
             BlurBanking(samples, step);
-            CloseTheLoop(samples);
+
+            /* `x, y, z` is the closing point, not the last sample: the loop
+               above emits a sample and then advances, so it has already
+               stepped past the end of the lap. See CloseTheLoop. */
+            CloseTheLoop(samples, new Vec3(x, y, z));
 
             // Round off the vertical profile — after closing the loop, not
             // before.
@@ -363,17 +367,44 @@ namespace MumuF1
         /// integration will not, because the radii are approximations. Spread
         /// the mismatch over the whole lap so no single corner distorts.
         /// </summary>
-        private static void CloseTheLoop(List<IntegratedSample> samples)
+        /// <param name="closingPoint">
+        /// Where the next sample would have gone — not the last one written.
+        /// Those differ by one step, because the integration emits a sample
+        /// and then advances.
+        /// </param>
+        /// <remarks>
+        /// Measuring against the last sample instead reads a perfectly closed
+        /// layout as being one step out: the oval's four bends sum to a
+        /// revolution by construction, and it still reported a four-metre gap.
+        ///
+        /// That error did not stay in the closure. Ramping it in by
+        /// <c>i / (n - 1)</c> puts the whole of it on the last sample,
+        /// landing it exactly on top of the first — a zero-length segment in
+        /// a control polygon the spline is then told to close and wraps
+        /// across anyway. A duplicate control point is a kink, and a
+        /// central-difference curvature at a kink overshoots: the proving
+        /// ground reported a 78 m radius at its timing line against a 150 m
+        /// layout, and the oval 130 m against 250, in both cases the tightest
+        /// curvature anywhere on the lap, at a point that is a straight.
+        /// Everything downstream reads that number — the mesh clamps the
+        /// cross-section to three quarters of the radius, so the road
+        /// narrowed by twenty metres between two adjacent rings, and the
+        /// racing line would brake for a corner that is not there.
+        ///
+        /// So: the real gap, ramped by <c>i / n</c>, which leaves the closing
+        /// segment carrying its share like every other segment does.
+        /// </remarks>
+        private static void CloseTheLoop(List<IntegratedSample> samples, Vec3 closingPoint)
         {
             var n = samples.Count;
             if (n < 2) return;
 
-            var gap = samples[0].Position - samples[n - 1].Position;
+            var gap = samples[0].Position - closingPoint;
             if (gap.Length <= 0.001) return;
 
             for (var i = 0; i < n; i++)
             {
-                var w = (double)i / (n - 1);
+                var w = (double)i / n;
                 var sample = samples[i];
                 sample.Position = sample.Position + gap * w;
                 samples[i] = sample;

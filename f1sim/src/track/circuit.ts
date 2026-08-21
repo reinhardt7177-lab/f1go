@@ -264,17 +264,42 @@ export const buildCircuit = (spec: CircuitSpec, step = 4): Circuit => {
   };
   blurBanking();
 
-  // Close the loop cleanly. Real circuits return to their start; the
-  // integration will not, because the radii are approximations. Spread
-  // the mismatch over the whole lap so no single corner distorts.
+  /*
+   * Close the loop cleanly. Real circuits return to their start; the
+   * integration will not, because the radii are approximations. Spread
+   * the mismatch over the whole lap so no single corner distorts.
+   *
+   * The mismatch is measured against where the *next* sample would go,
+   * not against the last one written. Those differ by one step, because
+   * the loop above emits a sample and then advances — so `x, y, z` here
+   * is already the closing point. Comparing against the last sample
+   * instead reads a perfectly closed layout as being one step out: the
+   * oval's four bends sum to a revolution by construction, and it still
+   * reported a four-metre gap.
+   *
+   * That error was not harmless, and it did not stay in the closure.
+   * Ramping it in by `i / (n - 1)` puts the whole of it on the last
+   * sample, landing it exactly on top of the first — a zero-length
+   * segment in a control polygon that the spline is then told to close
+   * and wraps across anyway. A duplicate control point is a kink, and
+   * the curvature estimate at a kink overshoots: the proving ground
+   * reported 1/78 m at the timing line and the oval 1/130, in both
+   * cases the tightest curvature anywhere on the lap, at a point that is
+   * a straight. Everything downstream reads that number — the mesh
+   * clamps the cross-section to three quarters of the radius, so the
+   * road narrowed by twenty metres between two adjacent rings, and the
+   * racing line would brake for a corner that is not there.
+   *
+   * So: the real gap, ramped by `i / n`, which leaves the closing
+   * segment carrying its share like every other segment does.
+   */
   const first = samples[0]!.position;
-  const last = samples[samples.length - 1]!.position;
-  const gap = v3sub(first, last);
+  const gap = v3sub(first, vec3(x, y, z));
   const n = samples.length;
 
   if (v3len(gap) > 0.001) {
     for (let i = 0; i < n; i++) {
-      const w = i / (n - 1);
+      const w = i / n;
       const p = samples[i]!.position;
       samples[i]!.position = vec3(p.x + gap.x * w, p.y + gap.y * w, p.z + gap.z * w);
     }

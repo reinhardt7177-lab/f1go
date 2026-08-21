@@ -85,6 +85,49 @@ namespace MumuF1.Tests
             Assert.That(Vec3.Dot(a, b), Is.GreaterThan(0.999));
         }
 
+        /// <summary>
+        /// The spline may not invent a corner tighter than the layout has.
+        /// </summary>
+        /// <remarks>
+        /// This is the check that catches the closure bug described on
+        /// <c>CloseTheLoop</c>: a duplicate control point at the timing line
+        /// had the proving ground reporting a 78 m radius against its stated
+        /// 150, and the oval 130 against 250 — in both cases the tightest
+        /// curvature anywhere on the lap, on a straight.
+        ///
+        /// Some overshoot is inherent, because a curvature step is estimated
+        /// over a four-metre window. It is a few per cent, not double.
+        /// </remarks>
+        [TestCaseSource(nameof(Ids))]
+        public void NeverBendsTighterThanTheTightestCornerItStates(string id)
+        {
+            var spec = Circuits.Specs[id];
+            var circuit = Circuits.Get(id);
+
+            var tightest = double.PositiveInfinity;
+            foreach (var section in spec.Sections)
+            {
+                if (section.Radius != 0) tightest = Math.Min(tightest, Math.Abs(section.Radius));
+            }
+            if (double.IsInfinity(tightest)) return;
+
+            var peak = 0.0;
+            var where = 0.0;
+            for (var s = 0.0; s < circuit.Length; s += 0.5)
+            {
+                var k = Math.Abs(circuit.Spline.SampleAt(s).Curvature);
+                if (k > peak)
+                {
+                    peak = k;
+                    where = s;
+                }
+            }
+
+            Assert.That(peak * tightest, Is.LessThan(1.25),
+                $"{circuit.SectionAt(where)} bends to {1 / peak:F0} m "
+                + $"against a stated {tightest:F0} m");
+        }
+
         [TestCaseSource(nameof(Ids))]
         public void HasNoKinkACarCouldBeThrownOff(string id)
         {
