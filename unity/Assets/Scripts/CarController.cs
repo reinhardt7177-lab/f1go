@@ -66,6 +66,12 @@ namespace MumuF1.Game
         /// <summary>Driver input for this step, written by whatever is driving.</summary>
         public Controls Controls;
 
+        /// <summary>
+        /// The circuit, for the surface under each wheel. Null is allowed —
+        /// see <see cref="SurfaceGripAt"/>.
+        /// </summary>
+        public TrackBuilder Track;
+
         /// <summary>Read-only view for the camera, the HUD and the sound.</summary>
         public double SpeedMs { get; private set; }
         public double EngineRpm => _drivetrain.Rpm;
@@ -90,6 +96,17 @@ namespace MumuF1.Game
             public double SurfaceGrip = 1.0;
             public TireCondition Condition;
             public Vector3 ContactPoint;
+
+            /// <summary>
+            /// Where this wheel was on the centreline last tick.
+            /// </summary>
+            /// <remarks>
+            /// Per wheel rather than per car, and deliberately: at a hairpin
+            /// the inside and outside wheels are metres apart along the lap,
+            /// and it is exactly there that one is on the kerb while the
+            /// other is not.
+            /// </remarks>
+            public double SplineHint;
         }
 
         private void Awake()
@@ -208,7 +225,7 @@ namespace MumuF1.Game
                     w.Grounded = true;
                     w.ContactPoint = hit.point;
                     w.Compression = _suspension.RestLength - (hit.distance - WheelRadius);
-                    w.SurfaceGrip = SurfaceGripAt(hit);
+                    w.SurfaceGrip = SurfaceGripAt(hit, w);
                 }
                 else
                 {
@@ -335,13 +352,27 @@ namespace MumuF1.Game
             => WheelRadius + (_suspension.RestLength - w.Compression) + floorOffset;
 
         /// <summary>
-        /// Grip under a wheel. The web version reads this from the
-        /// circuit's own lateral profile; until the circuit is ported the
-        /// surface is read off the collider's material name, which the
-        /// track builder sets.
+        /// Grip under a wheel.
         /// </summary>
-        private static double SurfaceGripAt(RaycastHit hit)
+        /// <remarks>
+        /// Read from the circuit's own lateral profile, by projecting the
+        /// contact point onto the centreline — which is how the web version
+        /// does it, and the only thing that can work here: tarmac, kerb,
+        /// run-off and grass are one mesh on purpose, so there is no
+        /// per-collider answer to give.
+        ///
+        /// The fallback is for anything that is not the circuit — the ground
+        /// plane, a kerb prop, whatever gets added later. It is not dead
+        /// code; it is what a wheel standing on something the circuit has
+        /// never heard of grips like.
+        /// </remarks>
+        private double SurfaceGripAt(RaycastHit hit, Wheel w)
         {
+            if (Track != null)
+            {
+                return Track.GripAt(hit.point, ref w.SplineHint);
+            }
+
             var surface = hit.collider.GetComponent<SurfaceGrip>();
             return surface != null ? surface.Grip : 1.0;
         }

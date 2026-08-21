@@ -1,104 +1,120 @@
-using System.Collections.Generic;
 using UnityEngine;
 
 namespace MumuF1.Game
 {
     /// <summary>
-    /// The circuit, swept from a centreline at load.
+    /// The circuit, swept from its centreline at load.
     /// </summary>
     /// <remarks>
     /// Generated rather than modelled, which is how the web version does
-    /// it too: a cross-section — tarmac, kerb, run-off, grass — is laid
-    /// out at each station along the centreline and the stations are
-    /// stitched into one mesh. The same triangles feed the renderer and
-    /// the collider, so what you can see and what you can hit cannot
-    /// disagree.
+    /// it too, and the sweep itself is not here: it is
+    /// <see cref="MumuF1.TrackMesh"/>, in the engine-free package, so the
+    /// road the collider uses is the road a plain <c>dotnet test</c> can
+    /// check. This file is the adapter — it turns plain arrays into a
+    /// <c>Mesh</c> and hangs it on a GameObject, and decides nothing about
+    /// the shape of the road.
     ///
-    /// The centreline here is the practice oval: two 250 m corners joined
-    /// by straights, the circuit the web version opens on. It is
-    /// deliberately the simplest one — the spline and the four real
-    /// circuits are the next thing to come across, and this proves the
-    /// sweep, the collider and the surfaces work before they do.
+    /// The same triangles feed the renderer and the collider, so what you
+    /// can see and what you can hit cannot disagree.
+    ///
+    /// Which circuit is a static field rather than an inspector value,
+    /// because there is no scene to set it in: assign
+    /// <see cref="CircuitId"/> before the bootstrap runs and it takes
+    /// effect, and otherwise you get the practice oval, which is where a
+    /// new driver should start.
     /// </remarks>
     public class TrackBuilder : MonoBehaviour
     {
+        /// <summary>
+        /// Which circuit to build: oval, redbullring, interlagos, monza or
+        /// proving.
+        /// </summary>
+        public static string CircuitId = "oval";
+
+        /// <summary>Metres between cross-sections.</summary>
+        private const double StationSpacing = 4;
+
         public Vector3 StartPosition { get; private set; }
         public float StartHeadingDeg { get; private set; }
 
-        /// <summary>Half-width of the tarmac (m).</summary>
-        private const float HalfWidth = 9.5f;
-
-        /// <summary>Metres between cross-sections.</summary>
-        private const float StationSpacing = 4f;
+        /// <summary>The circuit this was built from, for anything that needs (s, t).</summary>
+        public Circuit Circuit { get; private set; }
 
         public static Transform Build(Transform parent)
         {
             var go = new GameObject("Circuit");
             go.transform.SetParent(parent);
             TrackBuilder builder = go.AddComponent<TrackBuilder>();
-            builder.Generate();
+            builder.Generate(Circuits.Get(CircuitId));
             return go.transform;
         }
 
         /// <summary>
-        /// The cross-section, as offsets from the centreline with the
-        /// grip and colour of the surface between each pair.
+        /// Grip under a world position.
         /// </summary>
-        private static readonly (float T, Color Colour, double Grip)[] Section =
+        /// <remarks>
+        /// Projected onto the centreline and read from the circuit's own
+        /// lateral profile, which is how the web version does it. The
+        /// alternative — one grip per collider — cannot work here, because
+        /// tarmac, kerb, run-off and grass are all one mesh: they are one
+        /// draw call on purpose, and splitting them into four colliders to
+        /// label them would cost four times the draw calls to answer a
+        /// question the circuit can already answer exactly.
+        ///
+        /// The hint is the previous answer, which turns the projection from
+        /// a scan of the whole lap into a search of a sixty-metre window.
+        /// A car cannot have moved further than that in a tick.
+        /// </remarks>
+        public double GripAt(Vector3 world, ref double hint)
         {
-            (-(HalfWidth + 12f), new Color(0.33f, 0.56f, 0.28f), 0.42),  // grass
-            (-(HalfWidth + 3f), new Color(0.46f, 0.45f, 0.47f), 0.72),   // run-off
-            (-(HalfWidth + 1.2f), new Color(0.88f, 0.18f, 0.18f), 0.85), // kerb
-            (-HalfWidth, new Color(0.30f, 0.32f, 0.35f), 1.0),           // tarmac
-            (HalfWidth, new Color(0.88f, 0.18f, 0.18f), 0.85),
-            (HalfWidth + 1.2f, new Color(0.46f, 0.45f, 0.47f), 0.72),
-            (HalfWidth + 3f, new Color(0.33f, 0.56f, 0.28f), 0.42),
-            (HalfWidth + 12f, new Color(0.33f, 0.56f, 0.28f), 0.42)
-        };
+            var projection = Circuit.Spline.Project(new Vec3(world.x, world.y, world.z), hint);
+            hint = projection.S;
+            return Circuit.GripAt(projection.S, projection.T);
+        }
 
-        private void Generate()
+        private void Generate(Circuit circuit)
         {
-            List<Vector3> centre = Centreline(out List<Vector3> lefts);
-            int rings = centre.Count;
-            int across = Section.Length;
+            Circuit = circuit;
+            TrackGeometry geometry = TrackMesh.Build(circuit, StationSpacing);
 
-            var vertices = new List<Vector3>(rings * across);
-            var colours = new List<Color>(rings * across);
-            var triangles = new List<int>();
+            var vertices = new Vector3[geometry.VertexCount];
+            var normals = new Vector3[geometry.VertexCount];
+            var colours = new Color[geometry.VertexCount];
 
-            for (int ring = 0; ring < rings; ring++)
+            for (int v = 0; v < geometry.VertexCount; v++)
             {
-                for (int i = 0; i < across; i++)
-                {
-                    /* The verges sit slightly lower than the road, so the
-                       edge reads as an edge rather than as a colour
-                       change. Nothing here is high enough to trip over —
-                       a kerb with height is a launch ramp for a car with
-                       a flat floor. */
-                    float t = Section[i].T;
-                    float drop = Mathf.Abs(t) <= HalfWidth ? 0f
-                        : Mathf.Min(0.12f, (Mathf.Abs(t) - HalfWidth) * 0.02f);
-                    vertices.Add(centre[ring] + lefts[ring] * t + Vector3.down * drop);
-                    colours.Add(Section[i].Colour);
-                }
+                vertices[v] = new Vector3(
+                    geometry.Positions[v * 3],
+                    geometry.Positions[v * 3 + 1],
+                    geometry.Positions[v * 3 + 2]);
+                normals[v] = new Vector3(
+                    geometry.Normals[v * 3],
+                    geometry.Normals[v * 3 + 1],
+                    geometry.Normals[v * 3 + 2]);
+                colours[v] = new Color(
+                    geometry.Colors[v * 3],
+                    geometry.Colors[v * 3 + 1],
+                    geometry.Colors[v * 3 + 2]);
             }
 
-            for (int ring = 0; ring < rings; ring++)
+            /* Thirty-two bit indices, always. Monza sweeps 5,793 m at four
+               metres with twenty-two vertices across, which is 31,861 — a
+               hair under the 65,535 a sixteen-bit buffer holds, and the
+               next circuit added would silently wrap. */
+            var mesh = new Mesh
             {
-                int a = ring * across;
-                int b = ((ring + 1) % rings) * across;   // wraps, so the lap closes
-                for (int i = 0; i < across - 1; i++)
-                {
-                    triangles.Add(a + i); triangles.Add(b + i); triangles.Add(a + i + 1);
-                    triangles.Add(a + i + 1); triangles.Add(b + i); triangles.Add(b + i + 1);
-                }
-            }
-
-            var mesh = new Mesh { name = "Circuit", indexFormat = UnityEngine.Rendering.IndexFormat.UInt32 };
+                name = circuit.Spec.Name,
+                indexFormat = UnityEngine.Rendering.IndexFormat.UInt32
+            };
             mesh.SetVertices(vertices);
-            mesh.SetTriangles(triangles, 0);
+            mesh.SetTriangles(geometry.Indices, 0);
+            /* The sweep's own normals, not RecalculateNormals. Every
+               surface is flat-shaded and the cross-section deliberately
+               puts pairs of vertices a centimetre apart to make a hard
+               edge — averaging across those would round off exactly the
+               edges that are there to be sharp. */
+            mesh.SetNormals(normals);
             mesh.SetColors(colours);
-            mesh.RecalculateNormals();
             mesh.RecalculateBounds();
 
             var filter = gameObject.AddComponent<MeshFilter>();
@@ -106,59 +122,25 @@ namespace MumuF1.Game
 
             var renderer = gameObject.AddComponent<MeshRenderer>();
             /* No outline on the road. The hull is a silhouette line and
-               a road has no silhouette — pushing one out of a 3 km ribbon
+               a road has no silhouette — pushing one out of a 5 km ribbon
                puts a black band down the middle of every straight. */
             renderer.sharedMaterial = Paint.FromVertices(outline: 0f);
 
             var collider = gameObject.AddComponent<MeshCollider>();
             collider.sharedMesh = mesh;
 
-            gameObject.AddComponent<SurfaceGrip>().Grip = 1.0;
+            StartPosition = vertices.Length > 0
+                ? Centre(circuit, 0) + Vector3.up * 0.5f
+                : Vector3.up * 0.5f;
 
-            StartPosition = centre[0] + Vector3.up * 0.5f;
-            Vector3 ahead = centre[1] - centre[0];
+            Vector3 ahead = Centre(circuit, 2) - Centre(circuit, 0);
             StartHeadingDeg = Mathf.Atan2(ahead.x, ahead.z) * Mathf.Rad2Deg;
         }
 
-        /// <summary>
-        /// Two 250 m corners joined by straights — 3.37 km, the practice
-        /// oval's shape. Returns the centreline and, for each station,
-        /// the unit vector pointing left across the road.
-        /// </summary>
-        private static List<Vector3> Centreline(out List<Vector3> lefts)
+        private static Vector3 Centre(Circuit circuit, double s)
         {
-            const float radius = 250f;
-            const float straight = 550f;
-
-            var points = new List<Vector3>();
-            void Straight(Vector3 from, Vector3 dir, float length)
-            {
-                int steps = Mathf.RoundToInt(length / StationSpacing);
-                for (int i = 0; i < steps; i++) points.Add(from + dir * (i * StationSpacing));
-            }
-            void Arc(Vector3 pivot, float startDeg, float sweepDeg)
-            {
-                float arc = Mathf.Abs(sweepDeg) * Mathf.Deg2Rad * radius;
-                int steps = Mathf.RoundToInt(arc / StationSpacing);
-                for (int i = 0; i < steps; i++)
-                {
-                    float a = (startDeg + sweepDeg * i / steps) * Mathf.Deg2Rad;
-                    points.Add(pivot + new Vector3(Mathf.Sin(a), 0f, Mathf.Cos(a)) * radius);
-                }
-            }
-
-            Straight(new Vector3(radius, 0f, -straight / 2f), Vector3.forward, straight);
-            Arc(new Vector3(0f, 0f, straight / 2f), 0f, 180f);
-            Straight(new Vector3(-radius, 0f, straight / 2f), Vector3.back, straight);
-            Arc(new Vector3(0f, 0f, -straight / 2f), 180f, 180f);
-
-            lefts = new List<Vector3>(points.Count);
-            for (int i = 0; i < points.Count; i++)
-            {
-                Vector3 tangent = (points[(i + 1) % points.Count] - points[i]).normalized;
-                lefts.Add(Vector3.Cross(Vector3.up, tangent).normalized);
-            }
-            return points;
+            Vec3 p = circuit.Spline.SampleAt(s).Position;
+            return new Vector3((float)p.X, (float)p.Y, (float)p.Z);
         }
     }
 }

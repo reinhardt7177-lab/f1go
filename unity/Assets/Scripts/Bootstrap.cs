@@ -94,8 +94,9 @@ namespace MumuF1.Game
 
             CarView.Build(car.transform);
 
-            Vector3 start = track.GetComponent<TrackBuilder>().StartPosition;
-            controller.Reset(start, track.GetComponent<TrackBuilder>().StartHeadingDeg);
+            var builder = track.GetComponent<TrackBuilder>();
+            controller.Track = builder;
+            controller.Reset(builder.StartPosition, builder.StartHeadingDeg);
 
             var rig = new GameObject("Camera");
             rig.transform.SetParent(parent);
