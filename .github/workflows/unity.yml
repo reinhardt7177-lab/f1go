@@ -16,12 +16,21 @@
 # Settings → Secrets and variables → Actions:
 #
 #   UNITY_LICENSE    the full contents of your Unity_lic.ulf
-#   UNITY_EMAIL      the address on the Unity account
-#   UNITY_PASSWORD   its password
 #
-# A personal licence is free and is enough for all of this. GameCI's
-# own guide has the steps for producing the .ulf:
-# https://game.ci/docs/github/activation
+# A personal licence is free and that one secret is all it needs. On
+# Windows the file is usually already at
+#
+#     C:\ProgramData\Unity\Unity_lic.ulf
+#
+# and on macOS at `/Library/Application Support/Unity/Unity_lic.ulf`.
+# Open it in a text editor, copy the whole thing, paste. If it is not
+# there — newer Hub versions do not always write it — run the
+# `Unity licence request` workflow, which walks through Unity's manual
+# activation and takes about two minutes.
+#
+# UNITY_EMAIL and UNITY_PASSWORD are read too if they are set, and are
+# needed only for a Professional seat, which activates by serial rather
+# than by licence file. A personal licence needs neither.
 
 name: Unity
 

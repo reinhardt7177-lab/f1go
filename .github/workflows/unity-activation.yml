@@ -1,0 +1,54 @@
+# Ask Unity for a licence file that a runner can use.
+#
+# Run this once, by hand, and only if the licence file is not already on
+# your own machine — it usually is, and copying it is much quicker. On
+# Windows look in:
+#
+#     C:\ProgramData\Unity\Unity_lic.ulf
+#
+# and on macOS in `/Library/Application Support/Unity/Unity_lic.ulf`. If
+# either exists, open it in a text editor, copy the whole thing, and put
+# it in the UNITY_LICENSE secret. You can ignore this workflow entirely.
+#
+# If it is not there — newer Hub versions do not always write it — then
+# this is the way round it, and it is Unity's own documented one:
+#
+#   1. Actions → Unity licence request → Run workflow.
+#   2. When it finishes, download the artifact. Inside is a `.alf`.
+#   3. Go to https://license.unity3d.com/manual and upload that `.alf`.
+#      Pick Personal, and "I don't use Unity in a professional capacity"
+#      unless that is untrue.
+#   4. It hands back a `.ulf`. Open it, copy the whole thing, and put it
+#      in the UNITY_LICENSE secret under Settings → Secrets and variables
+#      → Actions.
+#   5. Delete this workflow's run and its artifact. The `.alf` is tied to
+#      your account and there is no reason to leave it lying about.
+#
+# Then `unity.yml` wakes up on its own.
+#
+# The version below is the project's, from ProjectSettings — a licence
+# file is requested for a specific editor version and one produced for a
+# different version will be refused.
+
+name: Unity licence request
+
+# By hand only. Nothing about this should happen on a push.
+on:
+  workflow_dispatch:
+
+jobs:
+  request:
+    name: Request an activation file
+    runs-on: ubuntu-latest
+    steps:
+      - uses: game-ci/unity-request-activation-file@v2
+        id: request
+        with:
+          unityVersion: 6000.0.23f1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unity-activation-file
+          path: ${{ steps.request.outputs.filePath }}
+          # Long enough to fetch it, short enough not to forget it.
+          retention-days: 1
