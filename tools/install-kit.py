@@ -48,15 +48,29 @@ PREFERENCE = {'.obj': 0, '.fbx': 1}
 # for people rather than for this, so matching is by keyword and the result
 # is printed for you to disagree with.
 RULES = [
-    ('Conifer',     ['tree_pine', 'pine', 'conifer', 'fir', 'spruce', 'tree_tall']),
-    ('Broadleaf',   ['tree_oak', 'oak', 'tree_round', 'tree_fat', 'tree_blocks',
-                     'tree_thin', 'tree_simple', 'tree_default', 'tree', 'bush']),
-    ('Grandstand',  ['tribune', 'grandstand', 'bleacher', 'stadium', 'stand']),
-    ('AdBoard',     ['billboard', 'banner', 'advert', 'sponsor', 'hoarding', 'board']),
+    ('Conifer',     ['tree_pinetall', 'tree_pine', 'pine', 'conifer', 'fir', 'spruce', 'treelarge']),
+    ('Broadleaf',   ['tree_oak', 'oak', 'tree_default', 'tree_round', 'tree_fat',
+                     'tree_blocks', 'tree_simple', 'tree_thin', 'treesmall', 'tree']),
+    ('Grandstand',  ['grandstandcovered', 'grandstand', 'tribune', 'bleacher', 'stadium']),
+    ('AdBoard',     ['billboard', 'bannertower', 'banner', 'advert', 'sponsor', 'hoarding']),
     ('Flag',        ['flagcheckers', 'flag']),
-    ('StartGantry', ['gantry', 'gatelarge', 'gate', 'archway', 'arch', 'startline', 'bridge']),
-    ('MarshalPost', ['signdirection', 'sign', 'marshal', 'marker', 'post']),
+    # `overheadLights` is the start-light gantry, which is exactly the thing.
+    # Nothing here matches "bridge" on purpose: a racing kit's bridges are
+    # road pieces — roadCornerBridgeLarge and friends — and a keyword that
+    # picked one would put a section of tarmac over the timing line.
+    ('StartGantry', ['overheadlights', 'overhead', 'gantry', 'gatelarge', 'archway', 'startline']),
+    # No marshal post in the racing kit, and a light post does the same job:
+    # something close to the road for the eye to judge distance against.
+    ('MarshalPost', ['signdirection', 'sign', 'marshal', 'marker',
+                     'lightpostmodern', 'lightpost', 'pylon', 'post']),
+
+    # The car. Kenney's car kit keeps bodies and wheels apart, which is what
+    # makes it usable here: the wheels have to steer and spin, so a car
+    # modelled as one lump would have to stand still from the axles out.
+    ('Car',         ['race', 'racecarred', 'racecar']),
+    ('Wheel',       ['wheel-racing', 'wheel-default', 'wheel']),
 ]
+
 
 # Everything a matched model might need beside it. Textures are copied even
 # though the game repaints every kit model into its own style, because Unity
@@ -193,19 +207,30 @@ def install():
             with open(target, 'wb') as out:
                 out.write(payload)
 
-            # Anything sitting next to it that Unity will go looking for.
+            # The material file, which is where a pack keeps the colours
+            # that are not in a texture — a tree's bark and its leaves are
+            # two named materials with real diffuse values, and that is
+            # worth keeping.
             folder = os.path.dirname(entry)
             stem = os.path.splitext(os.path.basename(entry))[0]
-            for name in archive.namelist():
-                if os.path.dirname(name) != folder:
-                    continue
-                base, sib = os.path.splitext(os.path.basename(name))
-                if sib.lower() not in SIBLINGS:
-                    continue
-                if sib.lower() == '.mtl' and base != stem:
-                    continue
-                with open(os.path.join(KIT, os.path.basename(name)), 'wb') as out:
-                    out.write(archive.read(name))
+            mtl = f'{folder}/{stem}.mtl' if folder else f'{stem}.mtl'
+            if mtl in archive.namelist():
+                material = archive.read(mtl)
+                with open(os.path.join(KIT, os.path.basename(mtl)), 'wb') as out:
+                    out.write(material)
+
+                # And whatever it points at, keeping the folder it points
+                # through so the relative path still resolves.
+                for ref in set(re.findall(rb'^\s*map_\w+\s+(.+?)\s*$',
+                                          material, re.MULTILINE)):
+                    rel = ref.decode('utf-8', 'replace').replace('\\', '/')
+                    source = os.path.normpath(os.path.join(folder, rel)).replace(os.sep, '/')
+                    if source not in archive.namelist():
+                        continue
+                    target_texture = os.path.join(KIT, *rel.split('/'))
+                    os.makedirs(os.path.dirname(target_texture), exist_ok=True)
+                    with open(target_texture, 'wb') as out:
+                        out.write(archive.read(source))
 
         note = ''
         if ext == '.obj':

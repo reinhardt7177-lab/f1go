@@ -255,18 +255,26 @@ namespace MumuF1.Game
         /// circuit drawn in four flat bands inside a black line reads as a
         /// bug. The model's shape is what was wanted; its shading was not.
         ///
-        /// The colour is the stand-in's, so a kit hoarding is the same blue
-        /// as a generated one and the two can stand side by side during a
-        /// partial install.
+        /// A model's own material colours are kept where it has them — a
+        /// tree's bark and its leaves are two named materials with real
+        /// diffuse values, and flattening those would give it a green trunk.
+        /// Where the colour lives in a palette texture instead, and the
+        /// material is left white, the stand-in's colour is used, so a kit
+        /// hoarding is the same blue as a generated one and the two can stand
+        /// side by side during a partial install.
         /// </remarks>
         private static void Repaint(GameObject instance, PropKind kind)
         {
-            Material paint = Paint.Flat(Colour(kind));
             foreach (Renderer r in instance.GetComponentsInChildren<Renderer>(true))
             {
-                var materials = new Material[r.sharedMaterials.Length];
-                for (int i = 0; i < materials.Length; i++) materials[i] = paint;
-                r.sharedMaterials = materials;
+                var slots = new Material[r.sharedMaterials.Length];
+                for (int i = 0; i < slots.Length; i++)
+                {
+                    Material source = r.sharedMaterials[i];
+                    Color own = source != null ? source.color : Color.white;
+                    slots[i] = Paint.Shared(Paint.Deliberate(own) ? own : Colour(kind));
+                }
+                r.sharedMaterials = slots;
             }
         }
 

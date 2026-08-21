@@ -74,27 +74,95 @@ namespace MumuF1.Tests
 
             Assert.That(seated.Size.X, Is.EqualTo(seated.Size.Y).Within(1e-9));
             Assert.That(seated.Size.Y, Is.EqualTo(seated.Size.Z).Within(1e-9));
-            Assert.That(seated.Longest, Is.EqualTo(target.Longest).Within(1e-9));
         }
 
         /// <summary>
-        /// The longest edge decides the scale, not the height. A grandstand
-        /// is twenty-six metres of width and nine of height; matching its
-        /// height would leave it a third too short along the straight it is
-        /// meant to line.
+        /// The case that changed this rule, with the pack's real numbers.
         /// </summary>
+        /// <remarks>
+        /// Kenney's covered grandstand measures 1.00 by 1.19 by 1.02 — very
+        /// nearly a cube — where the generated one is twenty-seven metres of
+        /// width and under ten of height. Scaling longest edge to longest
+        /// edge would multiply it by twenty-seven and stand a grandstand
+        /// thirty-one metres tall beside the circuit. Fitting it inside the
+        /// box gives eight metres by ten, which is a grandstand.
+        /// </remarks>
         [Test]
-        public void MatchesTheLongestEdgeRatherThanTheHeight()
+        public void DoesNotStandACubeOnEndToMatchAWideBox()
         {
-            var target = Box(26, 9, 12, cy: 4.5);
-            var model = Box(52, 30, 24);               // twice as wide, over three times as tall
+            var target = Box(27, 9.7, 12, cy: 4.85);
+            var model = Box(1.00, 1.19, 1.02);
 
             var fit = KitFit.Fit(model, target);
             var seated = new Bounds3(fit.Apply(model.Min), fit.Apply(model.Max));
 
-            Assert.That(seated.Size.X, Is.EqualTo(26).Within(1e-9));
-            Assert.That(seated.Size.Y, Is.EqualTo(15).Within(1e-9));
+            Assert.That(fit.Scale, Is.EqualTo(9.7 / 1.19).Within(1e-6));
+            Assert.That(seated.Size.Y, Is.EqualTo(9.7).Within(1e-6));
+            Assert.That(seated.Max.Y, Is.LessThanOrEqualTo(target.Max.Y + 1e-6),
+                "it is taller than the shape it replaces");
         }
+
+        /// <summary>
+        /// An axis the generated prop is a plate on cannot decide the scale.
+        /// </summary>
+        /// <remarks>
+        /// A hoarding is seven metres wide and fourteen centimetres thick. A
+        /// modelled one half a metre thick would be crushed to a fifth of a
+        /// metre across if thickness were allowed to bind, so a target axis
+        /// counts for at least a quarter of the longest.
+        /// </remarks>
+        [Test]
+        public void DoesNotLetAPlateThinAxisCrushTheModel()
+        {
+            var target = Box(7.0, 1.8, 0.2, cy: 0.9);
+            var model = Box(1.0, 1.0, 0.48);
+
+            var fit = KitFit.Fit(model, target);
+            var seated = new Bounds3(fit.Apply(model.Min), fit.Apply(model.Max));
+
+            // Height binds at 1.8, not thickness at 0.2 / 0.48.
+            Assert.That(fit.Scale, Is.EqualTo(1.8).Within(1e-9));
+            Assert.That(seated.Size.Y, Is.EqualTo(1.8).Within(1e-9));
+        }
+
+        /// <summary>
+        /// Nothing may come out taller or wider than the shape it replaces —
+        /// the placement rules leave 1.6 m of clearance measured against that
+        /// shape, and a model that overran it would be standing in the road.
+        /// Depth is the one exception, by centimetres, and only where the
+        /// generated prop is a plate.
+        /// </summary>
+        [Test]
+        [TestCaseSource(typeof(KitFitTests), nameof(RealPackSizes))]
+        public void KeepsARealPackInsideTheShapeItReplaces(PropKind kind, double w, double h, double d)
+        {
+            var target = KitFit.Reference(kind);
+            var model = new Bounds3(Vec3.Zero, new Vec3(w, h, d));
+
+            var fit = KitFit.Fit(model, target);
+            var seated = new Bounds3(fit.Apply(model.Min), fit.Apply(model.Max));
+
+            Assert.That(seated.Size.X, Is.LessThanOrEqualTo(target.Size.X + 1e-6), $"{kind} too wide");
+            Assert.That(seated.Size.Y, Is.LessThanOrEqualTo(target.Size.Y + 1e-6), $"{kind} too tall");
+            Assert.That(seated.Min.Y, Is.EqualTo(0).Within(1e-9), $"{kind} not on the ground");
+            Assert.That(seated.Longest, Is.GreaterThan(target.Longest * 0.2), $"{kind} came out tiny");
+        }
+
+        /// <summary>
+        /// Measured out of the packs themselves, so a change to either the
+        /// fit or the generated shapes is checked against real models rather
+        /// than against invented ones.
+        /// </summary>
+        private static readonly object[] RealPackSizes =
+        {
+            new object[] { PropKind.Conifer, 0.39, 1.53, 0.39 },        // tree_pineTallA
+            new object[] { PropKind.Broadleaf, 0.64, 1.23, 0.74 },      // tree_oak
+            new object[] { PropKind.Grandstand, 1.00, 1.19, 1.02 },     // grandStandCovered
+            new object[] { PropKind.AdBoard, 1.00, 1.00, 0.48 },        // billboard
+            new object[] { PropKind.Flag, 0.20, 1.25, 0.04 },           // flagCheckers
+            new object[] { PropKind.StartGantry, 1.26, 0.69, 0.19 },    // overheadLights
+            new object[] { PropKind.MarshalPost, 0.30, 0.41, 0.07 }     // sign
+        };
 
         /// <summary>
         /// Whatever the model, its foot ends up on the ground — that is the
@@ -113,6 +181,30 @@ namespace MumuF1.Tests
             var seated = new Bounds3(fit.Apply(model.Min), fit.Apply(model.Max));
 
             Assert.That(seated.Min.Y, Is.EqualTo(0).Within(1e-9));
+        }
+
+        /// <summary>
+        /// Bottom to bottom, not to zero.
+        /// </summary>
+        /// <remarks>
+        /// Props stand on the ground and their reference boxes start at zero,
+        /// so for them the two are the same. A wheel is different: its box is
+        /// written about the car's origin, so its bottom is minus its radius,
+        /// and seating it on zero would bury the car up to its axles.
+        /// </remarks>
+        [Test]
+        public void SeatsAWheelOnItsHubRatherThanOnTheGround()
+        {
+            // A wheel 0.72 across, hub at the origin.
+            var target = new Bounds3(new Vec3(-0.18, -0.36, -0.36), new Vec3(0.18, 0.36, 0.36));
+            var model = Box(0.40, 0.60, 0.60);
+
+            var fit = KitFit.FitCentred(model, target);
+            var seated = new Bounds3(fit.Apply(model.Min), fit.Apply(model.Max));
+
+            Assert.That(seated.Centre.Y, Is.EqualTo(0).Within(1e-9), "the wheel is off its hub");
+            Assert.That(seated.Min.Y, Is.GreaterThanOrEqualTo(-0.36 - 1e-9));
+            Assert.That(seated.Size.Y, Is.LessThanOrEqualTo(0.72 + 1e-9));
         }
 
         /// <summary>

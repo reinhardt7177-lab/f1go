@@ -1,0 +1,5 @@
+# The archives themselves stay out of history. They are tens of megabytes
+# each, they never change, and what the game needs has already been taken
+# out of them into unity/Assets/Resources/Kit — which is a third of a
+# megabyte and does change. Keep your copies here; git will ignore them.
+*.zip

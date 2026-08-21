@@ -91,10 +91,23 @@ namespace MumuF1
     /// on one axis to fit a box is worse than one that is slightly the wrong
     /// size.
     ///
-    /// The longest edge rather than the height, because the longest edge is
-    /// what a thing reads as: a grandstand is twenty-six metres of width and
-    /// nine of height, and matching its height would leave it a third too
-    /// short along the straight it is supposed to line.
+    /// The rule is the tightest axis rather than the longest edge, and that
+    /// was learned from a real pack. Kenney's covered grandstand is roughly
+    /// cubic — one metre by one point two by one — where the generated one is
+    /// twenty-six metres of width and nine of height. Matching longest edge
+    /// to longest edge scales the model by twenty-six and produces a
+    /// grandstand thirty-one metres tall. Fitting it inside the box instead
+    /// keeps every clearance the placement tests were written against, and
+    /// those tests measure the generated box.
+    ///
+    /// With one qualification: an axis the generated prop is a plate on
+    /// cannot be allowed to decide. A hoarding is seven metres wide and
+    /// fourteen centimetres thick, and a modelled one thicker than that would
+    /// otherwise be crushed to nothing to fit the thickness. So a target axis
+    /// counts for at least a quarter of the longest before the ratio is
+    /// taken. A model may therefore end up slightly deeper than the shape it
+    /// replaces, which is centimetres against the 1.6 m of clearance every
+    /// prop is placed with.
     /// </remarks>
     public static class KitFit
     {
@@ -102,22 +115,62 @@ namespace MumuF1
         /// How to place <paramref name="model"/> so it stands where a prop
         /// occupying <paramref name="target"/> would have.
         /// </summary>
+        /// <summary>How thin a target axis may get before it stops deciding.</summary>
+        private const double PlateFloor = 0.25;
+
         public static KitTransform Fit(Bounds3 model, Bounds3 target)
         {
-            var from = model.Longest;
-            var to = target.Longest;
+            var from = model.Size;
+            var to = target.Size;
+            var floor = target.Longest * PlateFloor;
 
-            /* A model with no size at all is not something to divide by. It
-               is also not something worth drawing, but that is the caller's
-               problem — this returns something harmless rather than a NaN
-               that would put every instance of it at the origin. */
-            var scale = from > 1e-9 && to > 1e-9 ? to / from : 1.0;
+            var scale = double.PositiveInfinity;
+            Consider(from.X, to.X, floor, ref scale);
+            Consider(from.Y, to.Y, floor, ref scale);
+            Consider(from.Z, to.Z, floor, ref scale);
 
+            /* A model with no size at all on any axis is not something to
+               divide by. It is also not something worth drawing, but that is
+               the caller's problem — this returns something harmless rather
+               than a NaN that would put every instance of it at the origin. */
+            if (double.IsInfinity(scale) || scale <= 0) scale = 1.0;
+
+            /* Bottom to bottom rather than to zero. For a prop the target's
+               bottom *is* zero and this is the same thing — but a car body
+               and a wheel are also fitted this way, and their boxes are
+               written about the car's own origin, so a wheel's bottom is
+               minus its radius. Seating those on y = 0 would bury the car up
+               to its axles. */
             var centre = model.Centre;
             return new KitTransform(scale, new Vec3(
                 target.Centre.X - centre.X * scale,
-                -model.Min.Y * scale,
+                target.Min.Y - model.Min.Y * scale,
                 target.Centre.Z - centre.Z * scale));
+        }
+
+        /// <summary>
+        /// The same, but centred on the target rather than stood on its floor.
+        /// </summary>
+        /// <remarks>
+        /// For anything mounted about a hub rather than resting on the
+        /// ground. A wheel is the case: the pack's is 0.6 across where ours
+        /// is 0.72, and standing the smaller one on the larger one's floor
+        /// would hang it below the axle by the difference.
+        /// </remarks>
+        public static KitTransform FitCentred(Bounds3 model, Bounds3 target)
+        {
+            var seated = Fit(model, target);
+            var lift = target.Centre.Y - (model.Centre.Y * seated.Scale + seated.Offset.Y);
+            return new KitTransform(seated.Scale, new Vec3(
+                seated.Offset.X, seated.Offset.Y + lift, seated.Offset.Z));
+        }
+
+        /// <summary>Let one axis have its say, if it has one.</summary>
+        private static void Consider(double from, double to, double floor, ref double scale)
+        {
+            if (from <= 1e-9) return;
+            var ratio = Math.Max(to, floor) / from;
+            if (ratio > 0 && ratio < scale) scale = ratio;
         }
 
         /// <summary>The box a generated prop occupies, for use as the reference.</summary>

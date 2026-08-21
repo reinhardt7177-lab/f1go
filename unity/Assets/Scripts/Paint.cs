@@ -25,6 +25,57 @@ namespace MumuF1.Game
                 ?? Shader.Find("Universal Render Pipeline/Lit")
                 ?? Shader.Find("Standard");
 
+        private static readonly System.Collections.Generic.Dictionary<int, Material> Cache =
+            new System.Collections.Generic.Dictionary<int, Material>();
+
+        /// <summary>
+        /// The same as <see cref="Flat"/>, but one material per colour.
+        /// </summary>
+        /// <remarks>
+        /// The roadside instantiates hundreds of models and each one may have
+        /// several materials on it — a tree is bark and leaves. A fresh
+        /// Material per slot would be a thousand of them, none of which can
+        /// batch with any other, which is the difference between one draw
+        /// call for a forest and one per tree. Colours are quantised to a
+        /// byte per channel before they are looked up, because two greens
+        /// that differ in the eighth decimal place are one green.
+        /// </remarks>
+        public static Material Shared(Color colour, float outline = 2.4f)
+        {
+            int key = (Mathf.RoundToInt(Mathf.Clamp01(colour.r) * 255) << 24)
+                    | (Mathf.RoundToInt(Mathf.Clamp01(colour.g) * 255) << 16)
+                    | (Mathf.RoundToInt(Mathf.Clamp01(colour.b) * 255) << 8)
+                    | Mathf.RoundToInt(Mathf.Clamp01(outline) * 8);
+
+            if (Cache.TryGetValue(key, out Material cached) && cached != null) return cached;
+
+            Material made = Flat(colour, outline);
+            Cache[key] = made;
+            return made;
+        }
+
+        /// <summary>
+        /// Whether a material's colour was chosen or merely left at a default.
+        /// </summary>
+        /// <remarks>
+        /// A pack keeps colour in one of two places. Kenney's nature models
+        /// name their materials and give them real diffuse values — bark is
+        /// brown and leaves are green — and throwing that away to paint a
+        /// whole tree one colour would give it a green trunk. Its racing and
+        /// car models put the colour in a palette texture instead and leave
+        /// the material white, and honouring *that* would paint everything
+        /// white.
+        ///
+        /// White, black and grey are what a model has when its colour lives
+        /// somewhere else, so they are the signal to fall back.
+        /// </remarks>
+        public static bool Deliberate(Color colour)
+        {
+            float high = Mathf.Max(colour.r, Mathf.Max(colour.g, colour.b));
+            float low = Mathf.Min(colour.r, Mathf.Min(colour.g, colour.b));
+            return high > 0.08f && high - low > 0.06f;
+        }
+
         /// <summary>Flat colour inside a black line.</summary>
         public static Material Flat(Color colour, float outline = 2.4f)
         {
