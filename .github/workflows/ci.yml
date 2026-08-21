@@ -1,0 +1,83 @@
+# Check every change, and publish the ones that pass.
+#
+# The repository had no automation at all: `main` was whatever was last
+# pushed to it, and the deployed site was whatever `main` happened to
+# be. Nothing stood between a commit that did not compile and the URL
+# people play on.
+#
+# So `deploy` needs `check`. A red build is a build that does not go
+# out, which is the only reason this file is worth having.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # So a deploy can be re-run by hand without an empty commit.
+  workflow_dispatch:
+
+# One at a time. Two pushes in quick succession would otherwise race to
+# publish, and the loser could be the newer one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Vite 8 wants 22.12 or newer; this is what the project is
+          # developed against.
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: f1sim/package-lock.json
+
+      - name: Install
+        working-directory: f1sim
+        run: npm ci
+
+      - name: Types
+        working-directory: f1sim
+        run: npm run typecheck
+
+      - name: Tests
+        working-directory: f1sim
+        run: npm run test
+
+      # The same two commands the host runs, in the same order, so a
+      # build that only breaks when the site is assembled breaks here
+      # rather than on the way to production.
+      - name: Build the site
+        run: npm --prefix f1sim run build && node tools/build-site.js
+
+      - name: Check the build produced something to serve
+        run: |
+          test -f dist-site/index.html
+          test -f dist-site/manifest.webmanifest
+          test -d dist-site/assets
+          echo "dist-site: $(du -sh dist-site | cut -f1), $(find dist-site -type f | wc -l) files"
+
+      - uses: actions/upload-pages-artifact@v3
+        # Only what is going to be published needs uploading.
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        with:
+          path: dist-site
+
+  deploy:
+    needs: check
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
