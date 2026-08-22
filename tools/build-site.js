@@ -218,6 +218,35 @@ const addUnity = async () => {
     return;
   }
 
+  /* The page has to be at the top, and an archive can easily arrive with
+     it one level down: GameCI nests its output under the build name, so
+     packing the directory above it produces exactly that. The workflow
+     packs from the page's own directory now, and this is the belt to
+     that pair of braces — an archive shaped either way is served the
+     same, and a future change to the build name cannot quietly turn the
+     whole thing into a 404 that every individual step reports as a
+     success. */
+  if (!fs.existsSync(path.join(into, 'index.html'))) {
+    const entries = fs.readdirSync(into, { withFileTypes: true });
+    const only = entries.length === 1 && entries[0].isDirectory() ? entries[0].name : null;
+
+    if (only && fs.existsSync(path.join(into, only, 'index.html'))) {
+      /* Lifted rather than re-extracted. Renaming into place would
+         collide with the directory it is being lifted out of, so it goes
+         via a name nothing else uses. */
+      const nested = path.join(into, only);
+      const staging = `${into}.lift`;
+      fs.renameSync(nested, staging);
+      fs.rmdirSync(into);
+      fs.renameSync(staging, into);
+      console.log(`  /unity/  lifted out of ${only}/ — the archive was nested`);
+    } else {
+      console.log('  /unity/  skipped — no index.html in the archive');
+      fs.rmSync(into, { recursive: true, force: true });
+      return;
+    }
+  }
+
   console.log(
     `  /unity/  the Unity build — ${files} files, ` +
     `${(size(into) / 1024 / 1024).toFixed(1)} MB`
