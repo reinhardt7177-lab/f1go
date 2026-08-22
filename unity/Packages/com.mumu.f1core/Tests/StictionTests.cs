@@ -18,8 +18,9 @@ namespace MumuF1.Tests
         private const double Mass = 798.0;
         private const double Load = Mass * 9.81 / 4.0;
 
-        private static double Peak(double load) =>
-            Tire.PeakForce(new TireParams(), load);
+        private static readonly TireParams Rubber = new TireParams();
+
+        private static double Peak(double load) => Tire.PeakForce(Rubber, load);
 
         /// <summary>
         /// A patch that is not sliding is not pushing. Anything else would

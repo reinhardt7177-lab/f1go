@@ -15,8 +15,8 @@ namespace MumuF1
     /// builds any. A car parked on a cambered road therefore had no friction
     /// at all and slid down the crossfall, turning as it went, with the
     /// instrumentation reporting <c>f 0 N</c> the whole way. It was measured
-    /// at one and a half metres of drift and three degrees of rotation over
-    /// nine seconds on the grid, with nothing pressed.
+    /// at 1.96 m of drift and 2.8 degrees of rotation over 9.2 seconds on
+    /// the grid, with nothing pressed.
     ///
     /// This is the missing regime. Below a crawl a tyre is not sliding, it is
     /// *stuck*: the rubber grips the road and the carcass deflects, so the
