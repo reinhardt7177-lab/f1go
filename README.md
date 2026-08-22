@@ -40,11 +40,18 @@ editor needs a licence, so it is checked by `unity.yml` rather than by
 
 There is no scene to speak of. `Bootstrap` builds the entire world in
 `RuntimeInitializeOnLoadMethod` — the circuit is swept from a spline,
-the scenery placed from a hash, the car assembled from primitives — so
-the one scene file is deliberately empty. A scene would be a list of
-objects that code creates anyway, plus a hundred GUID references that
-can silently rot, and the machine this was written on has no editor to
-click in.
+the scenery placed from a hash, the car lofted from a table of
+cross-sections — so the one scene file is deliberately empty. A scene
+would be a list of objects that code creates anyway, plus a hundred GUID
+references that can silently rot, and the machine this was written on
+has no editor to click in.
+
+It runs *after* that scene loads, and the difference is not cosmetic. It
+ran before, and nothing built there was ever registered with the physics
+engine: a collider belongs to the scene it is created in, and at
+`BeforeSceneLoad` there is no scene to belong to. The car hung motionless
+at exactly its spawn height with every suspension ray coming back empty,
+and both workflows stayed green throughout.
 
 ## Where the numbers came from
 
@@ -82,9 +89,16 @@ npm run site
 | Brake         | `↓` / `S`         | right thumb, drag down  |
 | Steer         | `←` `→` / `A` `D` | left thumb, drag across |
 | Gears         | `Q` `E`           | automatic               |
+| Traction control | `T`            | always on               |
 | Straight-line | `F`               | —                       |
 | Overtake mode | `Shift`           | —                       |
 | Reset         | `R`               | —                       |
+
+Traction control is on to begin with, and it is not a concession. First
+gear asks the road for 29,281 N and the rear tyres can take 7,708 — the
+engine can out-torque the grip nearly four times over, so full throttle
+from a standstill lights the rears and holds them lit, and a keyboard
+pedal has no quarter-throttle to hold instead. `T` turns it off.
 
 Steering is a relative drag: put your thumb down wherever is
 comfortable and that becomes centre. The pedals are analogue by travel,

@@ -45,6 +45,9 @@ const urls = (html) => {
   return found;
 };
 
+/** Append the build's stamp, so a changed player is a changed URL. */
+const stamped = (url, version) => (version ? `${url}?v=${version}` : url);
+
 /**
  * The page.
  *
@@ -52,7 +55,7 @@ const urls = (html) => {
  * a 17 MB wasm has arrived, so a font or a stylesheet from somewhere
  * else would be a second thing to wait for and a second thing to fail.
  */
-const page = (u) => `<!DOCTYPE html>
+const page = (u, version) => `<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="utf-8">
@@ -183,9 +186,9 @@ const page = (u) => `<!DOCTYPE html>
      — eight million pixels for a scene that does not need them — so it
      is capped. The engine's own quality tier scales further from there. */
   var config = {
-    dataUrl: ${JSON.stringify(u.data)},
-    frameworkUrl: ${JSON.stringify(u.framework)},
-    codeUrl: ${JSON.stringify(u.code)},
+    dataUrl: ${JSON.stringify(stamped(u.data, version))},
+    frameworkUrl: ${JSON.stringify(stamped(u.framework, version))},
+    codeUrl: ${JSON.stringify(stamped(u.code, version))},
     streamingAssetsUrl: 'StreamingAssets',
     companyName: 'mumu',
     productName: '무무 F1',
@@ -197,7 +200,7 @@ const page = (u) => `<!DOCTYPE html>
   };
 
   var script = document.createElement('script');
-  script.src = ${JSON.stringify(u.loader)};
+  script.src = ${JSON.stringify(stamped(u.loader, version))};
 
   script.onerror = function () {
     say('플레이어를 불러오지 못했습니다. 새로고침해 주세요.', true);

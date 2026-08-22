@@ -24,6 +24,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const zlib = require('node:zlib');
 const shell = require('./shell.js');
 
@@ -174,7 +175,20 @@ const build = async () => {
     process.exit(1);
   }
 
-  const files = untar(zlib.gunzipSync(Buffer.from(await response.arrayBuffer())), out);
+  const archive = Buffer.from(await response.arrayBuffer());
+
+  /* A stamp for the player, taken from the player itself.
+     Unity names its output `mumuF1.wasm` and does not hash it, and the
+     host is told to cache everything under /Build/ for a year and treat
+     it as immutable — which is correct for a hashed name and a trap for
+     a fixed one. A browser that has been to the site once is told never
+     to ask again, so it goes on running last week's game after a deploy
+     that succeeded in every other respect. Ten hex digits of the archive
+     make the URLs change exactly when the build does, which is what
+     `immutable` was always promising. */
+  const version = crypto.createHash('sha1').update(archive).digest('hex').slice(0, 10);
+
+  const files = untar(zlib.gunzipSync(archive), out);
   if (files === 0) {
     console.error('The archive was empty.');
     process.exit(1);
@@ -212,7 +226,7 @@ const build = async () => {
      because there is no editor here to write one. So it is replaced
      here, from the four build URLs read back out of it. */
   const index = path.join(out, 'index.html');
-  fs.writeFileSync(index, shell.page(shell.urls(fs.readFileSync(index, 'utf8'))));
+  fs.writeFileSync(index, shell.page(shell.urls(fs.readFileSync(index, 'utf8')), version));
 
   /* Unity's template art goes with its template. Leaving it would ship
      a Unity logo, two progress bars and a favicon nothing points at. */
@@ -221,6 +235,7 @@ const build = async () => {
   const kept = fs.readdirSync(out, { recursive: true }).length;
   console.log(`dist-site ready — ${kept} files, ${(size(out) / 1024 / 1024).toFixed(1)} MB` +
     ` (${files - kept} of Unity's template files dropped)`);
+  console.log(`  player ${version}`);
   console.log('  /  the game');
 };
 
