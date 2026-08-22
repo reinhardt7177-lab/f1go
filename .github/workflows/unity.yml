@@ -298,7 +298,23 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tar czf mumuF1-webgl.tar.gz -C build/WebGL .
+          # Packed from wherever index.html actually is, rather than from
+          # the build directory. GameCI nests its output one level down,
+          # under the build name, so `-C build/WebGL .` produces an archive
+          # whose every path starts `./mumuF1/` — and the site then serves
+          # the player at /unity/mumuF1/ while /unity/ is a 404. Finding the
+          # page and packing its directory is also immune to the build name
+          # changing, which a hard-coded path is not.
+          page=$(find build/WebGL -name index.html | head -1)
+          if [ -z "$page" ]; then
+            echo "No index.html under build/WebGL — there is no player to publish."
+            exit 1
+          fi
+
+          root=$(dirname "$page")
+          echo "Packing $root"
+          tar czf mumuF1-webgl.tar.gz -C "$root" .
+          tar tzf mumuF1-webgl.tar.gz | head -5
           ls -l mumuF1-webgl.tar.gz
 
           # `create` fails once the tag exists, which is every run after the
