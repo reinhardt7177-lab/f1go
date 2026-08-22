@@ -99,6 +99,14 @@ namespace MumuF1.Game
                texture to move — so the car reads as slow however fast it
                actually is. */
             var builder = track.GetComponent<TrackBuilder>();
+
+            /* The land it stands on, before anything that stands on the
+               land. Without it the road mesh is the whole world: past the
+               verge there is nothing to see and nothing to land on, so the
+               horizon is sky in every direction the circuit does not cover
+               and a car that gets out falls for ever. */
+            Ground.Build(root.transform, builder.Geometry);
+
             TracksideBuilder.Build(root.transform, builder.Circuit, builder.Geometry);
 
             CarController car = BuildCar(root.transform, track);
@@ -115,8 +123,9 @@ namespace MumuF1.Game
                see where the car is. */
             car.gameObject.AddComponent<Autopilot>();
 
-            /* And a way back. The track ends at the outside of the verge,
-               so a car that runs wide enough falls for ever. */
+            /* And a way back, for the cases the wall and the ground cannot
+               answer: landed upside down, or stopped somewhere with no way
+               to drive out. */
             car.gameObject.AddComponent<Recovery>();
 
             RivalView.Build(root.transform, race);

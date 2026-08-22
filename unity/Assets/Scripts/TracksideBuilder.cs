@@ -4,7 +4,8 @@ using UnityEngine;
 namespace MumuF1.Game
 {
     /// <summary>
-    /// Everything beside the road: the wall, and what stands behind it.
+    /// Everything beside the road: the wall that holds the car on it, the
+    /// catch fence over that, and what stands behind both.
     /// </summary>
     /// <remarks>
     /// Where each thing goes is decided by <see cref="MumuF1.Trackside"/> in
@@ -52,23 +53,60 @@ namespace MumuF1.Game
 
         private void Generate(Circuit circuit, TrackGeometry road)
         {
-            BuildBarriers(road);
+            /* Props first, and the order is load-bearing. Each one is
+               dropped onto whatever is under it by a raycast, and the wall
+               is a collider now — a hoarding stands sixty centimetres behind
+               the barrier line, which is barely clear of a wall thirty-two
+               centimetres thick, and the first one that landed on top of it
+               would be a board standing in the air with no way to tell why.
+               Nothing here needs the wall to exist yet. */
             BuildProps(circuit);
+            BuildBarriers(road);
         }
 
         // --- the wall ---------------------------------------------------
 
         private void BuildBarriers(TrackGeometry road)
         {
-            Barriers.Build(road, out Ribbon face, out Ribbon cap);
+            Barriers.Build(road, out Ribbon face, out Ribbon cap, out Ribbon fence);
             if (face.VertexCount == 0) return;
 
-            BuildRibbon(face, "Barrier", new Color(0.93f, 0.945f, 0.957f));
-            BuildRibbon(cap, "BarrierCap", new Color(0.847f, 0.137f, 0.165f));
+            /* The wall is the collider, and this is why it can be one.
+               Frictionless, because a barrier that grips is worse than no
+               barrier at all: a front wheel that catches on one pivots the
+               car about it and throws the back end across the road, and the
+               car is then pointing at the scenery with no speed to steer
+               with. A real one scrubs you along itself and gives the car
+               back. Nor does it bounce — a wall that returns energy fires
+               you across the circuit into the opposite one.
+
+               `Minimum` on both, so it stays frictionless and dead whatever
+               the car's own surface says. Combine modes are a property of
+               the pair, and the higher of the two materials' priorities
+               decides; asking for the minimum from this side means the wall
+               wins regardless. */
+            var wall = new PhysicsMaterial("Barrier")
+            {
+                dynamicFriction = 0f,
+                staticFriction = 0f,
+                bounciness = 0f,
+                frictionCombine = PhysicsMaterialCombine.Minimum,
+                bounceCombine = PhysicsMaterialCombine.Minimum
+            };
+
+            BuildRibbon(face, "Barrier", new Color(0.93f, 0.945f, 0.957f), wall);
+            BuildRibbon(cap, "BarrierCap", new Color(0.847f, 0.137f, 0.165f), wall);
+
+            /* Drawn only. Posts and two rails are the wrong shape to collide
+               with — thin, and full of the gaps that make it a fence — and
+               the wall underneath is what the car actually meets. */
+            BuildRibbon(fence, "CatchFence", new Color(0.35f, 0.38f, 0.42f), null);
         }
 
-        private void BuildRibbon(Ribbon ribbon, string name, Color colour)
+        private void BuildRibbon(Ribbon ribbon, string name, Color colour, PhysicsMaterial surface)
         {
+            if (ribbon.VertexCount == 0) return;
+
             var vertices = new Vector3[ribbon.VertexCount];
             for (int v = 0; v < ribbon.VertexCount; v++)
             {
@@ -85,9 +123,10 @@ namespace MumuF1.Game
             };
             mesh.SetVertices(vertices);
             mesh.SetTriangles(ribbon.Indices, 0);
-            /* The wall is a single plane, so it has no volume to derive
-               normals from the way a solid does — but a flat quad's averaged
-               normal is still the quad's normal, which is what is wanted. */
+            /* Every quad carries its own four vertices, so an averaged normal
+               is still the quad's own normal — which is what flat shading
+               wants, and what makes the top of the wall read as a separate
+               surface from its face. */
             mesh.RecalculateNormals();
             mesh.RecalculateBounds();
 
@@ -95,11 +134,16 @@ namespace MumuF1.Game
             go.transform.SetParent(transform, false);
             go.AddComponent<MeshFilter>().sharedMesh = mesh;
 
-            /* No outline, and no collider. The hull would double a wall that
-               is already two triangles per ring, and the collider is
-               deliberately absent: a thin wall in a trimesh is something a
-               car at 250 km/h goes through or climbs. */
+            /* No outline. The hull would double a mesh that is already the
+               longest thing in the world, to draw a line along an edge the
+               cap colour is already drawing. */
             go.AddComponent<MeshRenderer>().sharedMaterial = Paint.Flat(colour, outline: 0f);
+
+            if (surface == null) return;
+
+            MeshCollider collider = go.AddComponent<MeshCollider>();
+            collider.sharedMesh = mesh;
+            collider.material = surface;
         }
 
         // --- what stands behind it ---------------------------------------
@@ -117,10 +161,25 @@ namespace MumuF1.Game
         /// </remarks>
         private const int ChunkSize = 48;
 
+        /// <summary>How far into the ground a prop is pushed (m).</summary>
+        /// <remarks>
+        /// A tree standing exactly on a surface shows daylight under it the
+        /// moment the surface is not perfectly level, and every surface here
+        /// is swept from a spline and banked.
+        /// </remarks>
+        private const float Sink = 0.2f;
+
         private void BuildProps(Circuit circuit)
         {
             List<Placement> placements = Trackside.Place(circuit, Density);
             Dictionary<PropKind, Mesh> shapes = Shapes();
+
+            /* The road and the land are already built and this is about to
+               ask them questions, so PhysX has to have heard about them
+               first. Colliders are registered when they are added, but their
+               transforms are not synced on their own — `autoSyncTransforms`
+               is off, and a scene query does not trigger a sync. */
+            Physics.SyncTransforms();
 
             var chunk = new List<CombineInstance>();
             int built = 0;
@@ -128,6 +187,7 @@ namespace MumuF1.Game
             foreach (Placement p in placements)
             {
                 var position = new Vector3((float)p.Position.X, (float)p.Position.Y, (float)p.Position.Z);
+                position.y = Settle(position);
                 var rotation = Quaternion.Euler(0f, (float)(p.Yaw * Mathf.Rad2Deg), 0f);
                 var scale = Vector3.one * (float)p.Scale;
 
@@ -152,6 +212,39 @@ namespace MumuF1.Game
             }
 
             if (chunk.Count > 0) Merge(chunk, built);
+        }
+
+        /// <summary>
+        /// The height of whatever is under a prop.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="MumuF1.Trackside"/> places props on the plane of the
+        /// road, forty centimetres down, because that is the only surface it
+        /// knows about — it has the centreline and nothing else, and it
+        /// cannot be given the rest without dragging the whole sweep into a
+        /// file whose job is to decide <em>where</em> things go rather than
+        /// how high.
+        ///
+        /// So the height is measured here, where the surfaces actually
+        /// exist. It matters more than it used to: props stand up to fifty
+        /// metres back, the verge falls a metre across its width and then
+        /// the land falls further, so a forest planted on the road's plane
+        /// hovers over all of it. That is what the trees behind the barrier
+        /// were doing — standing at road height with nothing under them at
+        /// all, because until now there was nothing out there to stand on.
+        ///
+        /// From well above and a long way down, because the land can be far
+        /// below the road at a circuit that climbs. If nothing is found the
+        /// placement's own height stands, which is what it did before.
+        /// </remarks>
+        private static float Settle(Vector3 at)
+        {
+            var from = new Vector3(at.x, at.y + 200f, at.z);
+
+            return Physics.Raycast(from, Vector3.down, out RaycastHit hit, 600f,
+                       ~0, QueryTriggerInteraction.Ignore)
+                ? hit.point.y - Sink
+                : at.y;
         }
 
         /// <summary>

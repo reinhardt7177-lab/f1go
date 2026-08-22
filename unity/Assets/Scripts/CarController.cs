@@ -164,6 +164,27 @@ namespace MumuF1.Game
         public int Gear => _drivetrain.Gear;
         public double Downforce { get; private set; }
 
+        /// <summary>Where the limiter is, so a rev counter has a top.</summary>
+        /// <remarks>
+        /// Reverse has its own, much lower one — a rev bar drawn against the
+        /// forward redline while reversing would sit at a quarter and look
+        /// broken, when the engine is in fact against its stop.
+        /// </remarks>
+        public double Redline => _drivetrain.Gear == 0
+            ? _drivetrain.Params.ReverseRpmLimit
+            : _drivetrain.Params.RedlineRpm;
+
+        /// <summary>The energy store, zero to one.</summary>
+        public double Energy => _drivetrain.ErsStore / _drivetrain.Params.ErsCapacity;
+
+        /// <summary>Whether overtake mode is actually deploying.</summary>
+        /// <remarks>
+        /// The deployment rather than the button. Holding the key with an
+        /// empty store does nothing, and a light that came on anyway would be
+        /// telling the driver the opposite of the truth.
+        /// </remarks>
+        public bool Deploying => _drivetrain.OvertakeDeploying;
+
         /// <summary>What one tyre is doing, for whatever wants to hear it.</summary>
         /// <remarks>
         /// A copy of four numbers rather than the wheel itself. `Wheel` is

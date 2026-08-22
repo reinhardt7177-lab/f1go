@@ -228,17 +228,18 @@ namespace MumuF1.Tests
 
         /// <summary>
         /// The barrier is swept from the road's own vertices, so it has to
-        /// follow the road exactly: one quad per ring per barrier station,
-        /// closed round the lap, and standing on the verge rather than
-        /// hovering over it.
+        /// follow the road exactly: a closed box per ring per barrier
+        /// station, closed round the lap, and standing on the verge rather
+        /// than hovering over it.
         /// </summary>
         [TestCaseSource(nameof(Ids))]
         public void SweepsAWallAlongEveryBarrierStation(string id)
         {
             var track = TrackMesh.Build(Circuits.Get(id), 8);
-            Barriers.Build(track, out var face, out var cap);
+            Barriers.Build(track, out var face, out var cap, out var fence);
 
-            var quads = track.Rings * track.BarrierStations.Length;
+            // Three quads each: the road side, the far side, and a lid.
+            var quads = track.Rings * track.BarrierStations.Length * 3;
             Assert.That(track.BarrierStations.Length, Is.EqualTo(2));
             Assert.That(face.VertexCount, Is.EqualTo(quads * 4));
             Assert.That(face.Indices.Length, Is.EqualTo(quads * 6));
@@ -252,6 +253,10 @@ namespace MumuF1.Tests
             {
                 Assert.That(float.IsNaN(v) || float.IsInfinity(v), Is.False);
             }
+            foreach (var i in fence.Indices)
+            {
+                Assert.That(i, Is.InRange(0, fence.VertexCount - 1));
+            }
         }
 
         /// <summary>
@@ -263,7 +268,7 @@ namespace MumuF1.Tests
         public void StandsTheWallOnTheVergeAtTheHeightItClaims()
         {
             var track = TrackMesh.Build(Circuits.Get("monza"), 8);
-            Barriers.Build(track, out var face, out var cap);
+            Barriers.Build(track, out var face, out var cap, out _);
 
             // Monza is flat, so the mesh heights are the wall's heights.
             var lowest = double.PositiveInfinity;
@@ -286,5 +291,110 @@ namespace MumuF1.Tests
                 Is.EqualTo(Barriers.Height - Barriers.Foot).Within(0.01));
             Assert.That(highestCap, Is.GreaterThan(highestFace), "the cap is under the face");
         }
+
+        /// <summary>
+        /// Both walls face the circuit.
+        /// </summary>
+        /// <remarks>
+        /// This is the test that was missing, and what it was missing cost a
+        /// wall. The sweep used one fixed winding for both barrier stations,
+        /// which cannot be right for both: the two are mirror images about
+        /// the centreline, so the order that puts the left one's face
+        /// towards the road puts the right one's away from it. The base pass
+        /// culls back faces, so one entire side of every circuit was drawn
+        /// inside out — invisible from the driver's seat, and looking from
+        /// the road straight through the wall at the trees behind it.
+        ///
+        /// Checked as a volume rather than face by face, because "wound
+        /// outward" is exactly what a positive signed volume means and it is
+        /// one number for the whole mesh. A wall wound the wrong way
+        /// contributes its volume negatively, so a flipped side very nearly
+        /// cancels the good one. The wall and its cap are counted together
+        /// because between them they are the closed box — the face is open
+        /// at the top and the cap is open at the bottom, along the same two
+        /// edges.
+        /// </remarks>
+        [TestCaseSource(nameof(Ids))]
+        public void WindsBothWallsToFaceTheRoad(string id)
+        {
+            var circuit = Circuits.Get(id);
+            var track = TrackMesh.Build(circuit, 8);
+            Barriers.Build(track, out var face, out var cap, out _);
+
+            var volume = SignedVolume(face) + SignedVolume(cap);
+
+            /* Two walls, each about a lap long, each a slice this thick and
+               this tall. They run outside the centreline round one half of
+               every corner and inside it round the other, so a lap is the
+               right length to expect of each, and the clamp at a hairpin can
+               only shorten them. */
+            var expected = 2 * circuit.Length * Barriers.Thickness * (Barriers.Height - Barriers.Foot);
+
+            Assert.That(volume, Is.GreaterThan(expected * 0.6),
+                "one of the two walls is wound inside out");
+            Assert.That(volume, Is.LessThan(expected * 1.4));
+        }
+
+        /// <summary>
+        /// The catch fence stands on the wall, and is made of posts.
+        /// </summary>
+        /// <remarks>
+        /// Posts rather than a sheet, because that is what tells you at a
+        /// glance that the thing beside the road is a circuit: the uprights
+        /// running away into a corner are the whole read. A solid ribbon at
+        /// the same height would be a second wall.
+        /// </remarks>
+        [Test]
+        public void StandsACatchFenceOnTopOfTheWall()
+        {
+            var track = TrackMesh.Build(Circuits.Get("monza"), 8);
+            Barriers.Build(track, out _, out var cap, out var fence);
+
+            var highestCap = double.NegativeInfinity;
+            for (var v = 0; v < cap.VertexCount; v++)
+            {
+                highestCap = Math.Max(highestCap, cap.Positions[v * 3 + 1]);
+            }
+
+            var lowestFence = double.PositiveInfinity;
+            var highestFence = double.NegativeInfinity;
+            for (var v = 0; v < fence.VertexCount; v++)
+            {
+                lowestFence = Math.Min(lowestFence, fence.Positions[v * 3 + 1]);
+                highestFence = Math.Max(highestFence, fence.Positions[v * 3 + 1]);
+            }
+
+            Assert.That(lowestFence, Is.GreaterThanOrEqualTo(highestCap - 0.01),
+                "the fence starts below the top of the wall");
+            Assert.That(highestFence - highestCap,
+                Is.EqualTo(Barriers.FenceHeight).Within(0.01));
+
+            /* Two rails every ring, and a post every few. Anything that
+               turned the posts into a continuous sheet would show up here as
+               a count that had risen to one a ring. */
+            var sides = track.BarrierStations.Length;
+            var rails = track.Rings * sides * 2;
+            var posts = (track.Rings + Barriers.PostEvery - 1) / Barriers.PostEvery * sides;
+            Assert.That(fence.VertexCount, Is.EqualTo((rails + posts) * 4));
+        }
+
+        /// <summary>Six times the volume enclosed, from the divergence theorem.</summary>
+        private static double SignedVolume(Ribbon ribbon)
+        {
+            var total = 0.0;
+            for (var i = 0; i < ribbon.Indices.Length; i += 3)
+            {
+                var a = At(ribbon, ribbon.Indices[i]);
+                var b = At(ribbon, ribbon.Indices[i + 1]);
+                var c = At(ribbon, ribbon.Indices[i + 2]);
+                total += Vec3.Dot(a, Vec3.Cross(b, c));
+            }
+            return total / 6;
+        }
+
+        private static Vec3 At(Ribbon ribbon, int index) => new Vec3(
+            ribbon.Positions[index * 3],
+            ribbon.Positions[index * 3 + 1],
+            ribbon.Positions[index * 3 + 2]);
     }
 }

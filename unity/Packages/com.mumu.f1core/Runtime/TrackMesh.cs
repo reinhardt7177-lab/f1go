@@ -351,16 +351,22 @@ namespace MumuF1
                which is right, because a white line is paint on tarmac. */
             const double line = 0.12;
 
-            /* The grass apron used to reach fourteen metres past the run-off.
-               It is there to catch a car that has left the circuit entirely —
-               the mesh is the collider, so the edge of it is the edge of the
-               world — and not to be looked at, because the ground plane
-               already paints grass to the horizon in the same colour. Eight
-               metres still catches the car and sweeps a great deal less
-               scenery into the next corner. */
+            /* The grass apron, outside the barrier line.
+               
+               It used to be eight metres, on the stated grounds that "the
+               ground plane already paints grass to the horizon in the same
+               colour" — which was true of the TypeScript version this came
+               from and was not true here, because nothing had ever built one.
+               What that left was a circuit whose scenery ended in mid-air
+               eight metres past the wall, with the sky showing through the
+               gap and the trees on the far side of it apparently floating.
+               There is a ground plane now, so the claim holds; the apron is
+               wide enough to meet it convincingly rather than merely to
+               catch a car, and the clamps below pull it in wherever the lap
+               comes back on itself. */
             var stations = new[]
             {
-                new Station { T = -(w + k + r + 8), Surface = SurfaceKind.Grass, Drop = 0.35 },
+                new Station { T = -(w + k + r + 24), Surface = SurfaceKind.Grass, Drop = 1.0 },
                 new Station { T = -(w + k + r), Surface = SurfaceKind.Grass, Drop = 0.12 },
                 new Station { T = -(w + k + r) + 0.01, Surface = SurfaceKind.Runoff, Drop = 0.1, Ink = 0.34, Barrier = true },
                 new Station { T = -(w + k), Surface = SurfaceKind.Runoff, Drop = 0.04 },
@@ -381,7 +387,7 @@ namespace MumuF1
                 new Station { T = w + k, Surface = SurfaceKind.Runoff, Drop = 0.04 },
                 new Station { T = w + k + r - 0.01, Surface = SurfaceKind.Runoff, Drop = 0.1, Ink = 0.34, Barrier = true },
                 new Station { T = w + k + r, Surface = SurfaceKind.Grass, Drop = 0.12 },
-                new Station { T = w + k + r + 8, Surface = SurfaceKind.Grass, Drop = 0.35 }
+                new Station { T = w + k + r + 24, Surface = SurfaceKind.Grass, Drop = 1.0 }
             };
 
             ClampToCurvature(stations, curvature);
