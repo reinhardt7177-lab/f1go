@@ -119,7 +119,6 @@ namespace MumuF1.Game
         /// </remarks>
         private RaceDirector _race;
         private float _steer;
-        private bool _shiftArmed = true;
         private Texture2D _ring;
 
         private void Awake() => _car = GetComponent<CarController>();
@@ -202,17 +201,15 @@ namespace MumuF1.Game
                margin is enough that it picks one and stays there. */
             if (_race == null) _race = GetComponent<RaceDirector>();
 
-            double kmh = System.Math.Abs(_car.SpeedMs) * MathUtil.Kmh;
-            bool wantUp = kmh > _car.Gear * 42;
-            bool wantDown = _car.Gear > 1 && kmh < (_car.Gear - 1) * 42 * 0.85;
+            Gearbox.Choose(_car.Gear, _car.SpeedMs, out bool shiftUp, out bool shiftDown);
 
             _car.Controls = new Controls
             {
                 Throttle = throttle,
                 Brake = brake,
                 Steer = _steer,
-                ShiftUp = wantUp && _shiftArmed,
-                ShiftDown = wantDown && _shiftArmed,
+                ShiftUp = shiftUp,
+                ShiftDown = shiftDown,
                 StraightMode = false,
 
                 /* No button, and there is not going to be one. The layout is
@@ -221,8 +218,6 @@ namespace MumuF1.Game
                    driving earns and the throttle spends. See MumuF1.Booster. */
                 Overtake = _race != null && _race.Booster.Deploying
             };
-
-            _shiftArmed = !(wantUp || wantDown);
         }
 
         /// <summary>Take this frame's touches, claiming and releasing roles.</summary>

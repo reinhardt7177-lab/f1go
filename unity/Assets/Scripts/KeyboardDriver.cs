@@ -31,7 +31,6 @@ namespace MumuF1.Game
         private RaceDirector _race;
         private TouchDriver _touch;
         private float _steer;
-        private bool _shiftArmed = true;
 
         private void Awake()
         {
@@ -62,20 +61,23 @@ namespace MumuF1.Game
             bool throttle = Key(KeyCode.W) || Key(KeyCode.UpArrow);
             bool brake = Key(KeyCode.S) || Key(KeyCode.DownArrow);
 
-            /* Automatic upshifts on road speed rather than on rpm: during
-               wheelspin the engine sits on the limiter while the car is
-               barely moving, and an rpm-triggered shift would run through
-               all eight gears in the first half second. */
-            double kmh = System.Math.Abs(_car.SpeedMs) * MumuF1.MathUtil.Kmh;
-            bool wantShift = kmh > _car.Gear * 42;
+            /* The same automatic gearbox the touch controls get, from the
+               same place. It used to be a copy of half of one: this shifted
+               up and never down, so a lap that braked for a corner finished
+               it in the gear the straight had left. */
+            MumuF1.Gearbox.Choose(_car.Gear, _car.SpeedMs,
+                out bool shiftUp, out bool shiftDown);
 
             _car.Controls = new Controls
             {
                 Throttle = throttle ? 1.0 : 0.0,
                 Brake = brake ? 1.0 : 0.0,
                 Steer = _steer,
-                ShiftUp = (wantShift && _shiftArmed) || KeyDown(KeyCode.E),
-                ShiftDown = KeyDown(KeyCode.Q),
+                /* Manual keys still work and are ORed in, because a keyboard
+                   has room for them and somebody testing the drivetrain
+                   wants a gear on demand. */
+                ShiftUp = shiftUp || KeyDown(KeyCode.E),
+                ShiftDown = shiftDown || KeyDown(KeyCode.Q),
                 StraightMode = Key(KeyCode.F),
                 /* Shift still forces it, because a keyboard has room for a
                    key and somebody testing wants it on demand. The earned
@@ -84,7 +86,6 @@ namespace MumuF1.Game
                 Overtake = Key(KeyCode.LeftShift) || Key(KeyCode.RightShift)
                     || (_race != null && _race.Booster.Deploying)
             };
-            _shiftArmed = !wantShift;
 
             /* One key for the aids, because a driver who wants the car to
                bite has to be able to switch them off, and one who does not
