@@ -68,20 +68,38 @@ namespace MumuF1
          * that there is only the clamp. Between 3.1 and about 5 a tyre that
          * starts cold settles correctly and a tyre that has already been
          * cooked never comes back, which is worse than either — you lose the
-         * car once and it stays lost. At 5 the hot solution disappears
-         * entirely and there is one stable point for any history, which is
-         * the property worth having, so the number is chosen for that rather
-         * than fitted to a measurement.
+         * car once and it stays lost. So 5 was the first attempt, chosen for
+         * being past that: one stable answer whatever the tyre has been
+         * through.
          *
-         * What it gives: about 90 °C flat out from cold, inside the working
-         * window; low thirties ambling about, which is cold and slow and
-         * should be; and a tyre you have overheated recovers if you back
-         * off. The out-lap matters again and the tenth lap is not a
-         * different car.
+         * Driving it said 5 was not enough. A flat-out lap settled at
+         * 154 °C, thirty degrees outside the window, and then kept climbing
+         * to 190 as the car slowed and lost the airflow it was cooling with.
+         * Working backwards from that plateau, a driven tyre at racing speed
+         * is dissipating about 42 kW, not the 11 the first estimate assumed —
+         * so the coefficient was solving the right equation with the wrong
+         * load, and 9 is what that load actually needs.
+         *
+         * Which is worth stating as physics rather than as a fitted number.
+         * The model routes every watt of contact-patch friction into the
+         * tyre, and a real contact patch loses a great deal of it into the
+         * road it is pressed against. There is no conduction term here and
+         * this is standing in for one, which is also why scaling it with
+         * airspeed is not merely convenient: both the convection and the
+         * conduction it stands for rise with how fast the patch is moving
+         * over fresh tarmac.
+         *
+         * What it gives, and the shape matters more than the numbers: about
+         * 100 °C flat out, which is the middle of the working window; low
+         * thirties ambling, which is cold and slow and should be; and
+         * genuinely cooked — past 200 °C — only from wheelspin at low speed,
+         * where there is no airflow to carry it away. You ruin tyres doing
+         * burnouts, not down the straight. An overheated tyre recovers if
+         * you back off, and the tenth lap is not a different car.
          */
 
         /// <summary>Extra convective cooling per m/s of airflow (W/K).</summary>
-        public double CoolingPerSpeed = 5.0;
+        public double CoolingPerSpeed = 9.0;
 
         public double AmbientTemp = 26.0;
 
