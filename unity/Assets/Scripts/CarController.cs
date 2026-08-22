@@ -58,6 +58,14 @@ namespace MumuF1.Game
         private readonly Drivetrain _drivetrain = new Drivetrain();
 
         private Rigidbody _body;
+
+        /* Reused so four casts a tick allocate nothing. Eight is more than a
+           wheel can plausibly see through — the car's own box, the road, and
+           room to spare. RaycastNonAlloc stops at the buffer's length rather
+           than growing it, so this being too small would silently drop the
+           furthest hits; it is never the nearest ones that are lost, and the
+           nearest is what this wants. */
+        private readonly RaycastHit[] _hits = new RaycastHit[8];
         private readonly Wheel[] _wheels = new Wheel[4];
 
         private double _rideHeightFront = 0.05;
@@ -162,6 +170,57 @@ namespace MumuF1.Game
             }
         }
 
+
+        /// <summary>
+        /// The nearest thing under a wheel that is not this car.
+        /// </summary>
+        /// <remarks>
+        /// A plain <c>Physics.Raycast</c> returns the closest hit of any
+        /// kind, and the closest thing under a hardpoint is the car's own
+        /// collision box. The hardpoints sit at y = 0.16 and the box reaches
+        /// 0.14, so every ray hit two centimetres of car before it had left
+        /// the car — which reads as the ground being two centimetres away,
+        /// on all four corners, on the very first tick.
+        ///
+        /// The result was a stationary car firing itself off the grid and
+        /// tumbling down the road, with no error anywhere: the suspension was
+        /// working perfectly on the numbers it was given. It cost a WebGL
+        /// build and a screenshot to see, because nothing about it is visible
+        /// in a test that does not have a rigid body in a world.
+        ///
+        /// Layers would be the usual answer and are not available here — a
+        /// named layer lives in <c>ProjectSettings/TagManager.asset</c>, and
+        /// this project keeps no generated settings files. Sorting the hits
+        /// costs nothing at four wheels and needs no project-wide state.
+        /// </remarks>
+        private bool CastToGround(Vector3 origin, Vector3 direction, float distance, out RaycastHit hit)
+        {
+            hit = default;
+
+            int found = Physics.RaycastNonAlloc(
+                origin, direction, _hits, distance, GroundMask, QueryTriggerInteraction.Ignore);
+
+            var nearest = float.PositiveInfinity;
+            var any = false;
+
+            for (int i = 0; i < found; i++)
+            {
+                /* Ours, whether it is the chassis box or anything else ever
+                   attached to the same body. Comparing rigidbodies rather
+                   than colliders means a second collider added later cannot
+                   quietly reintroduce this. */
+                if (_hits[i].collider.attachedRigidbody == _body) continue;
+
+                if (_hits[i].distance >= nearest) continue;
+
+                nearest = _hits[i].distance;
+                hit = _hits[i];
+                any = true;
+            }
+
+            return any;
+        }
+
         private void FixedUpdate()
         {
             double dt = Time.fixedDeltaTime;
@@ -206,8 +265,7 @@ namespace MumuF1.Game
                 Vector3 origin = transform.TransformPoint(w.Hardpoint);
                 w.LastCompression = w.Compression;
 
-                if (Physics.Raycast(origin, -up, out RaycastHit hit, (float)maxRay,
-                        GroundMask, QueryTriggerInteraction.Ignore))
+                if (CastToGround(origin, -up, (float)maxRay, out RaycastHit hit))
                 {
                     /* Ground the wheel could stand on, or a wall it has
                        been pushed against? A car turned onto its side

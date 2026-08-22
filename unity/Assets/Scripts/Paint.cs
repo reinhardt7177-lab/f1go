@@ -19,9 +19,30 @@ namespace MumuF1.Game
         private static Shader _toon;
 
         /// <summary>The house shader, or the best thing available if it is missing.</summary>
+        /// <remarks>
+        /// Loaded out of <c>Resources</c>, not found by name, and that is the
+        /// whole point. A build only contains shaders something in a build
+        /// scene references, or that live in a <c>Resources</c> folder, or
+        /// that are listed in Graphics Settings — and this project's only
+        /// scene is deliberately empty, so <c>Shader.Find</c> came back null
+        /// in the player while working perfectly in the editor.
+        ///
+        /// What that looked like was not a missing shader. It was a white
+        /// circuit: the fallback ignores vertex colours, so tarmac, kerbs,
+        /// run-off, grass and every painted line came out the same blank
+        /// white, and the trees and grandstands with them. Nothing errored.
+        ///
+        /// Graphics Settings would be the other answer and is not available:
+        /// it lives in a generated <c>ProjectSettings</c> file that refers to
+        /// the shader by GUID, and this project keeps neither.
+        ///
+        /// <c>Shader.Find</c> stays as the fallback, because in the editor it
+        /// works whatever folder the file is in.
+        /// </remarks>
         public static Shader Toon =>
             _toon != null ? _toon : _toon =
-                Shader.Find("mumuF1/Toon")
+                Resources.Load<Shader>("MumuToon")
+                ?? Shader.Find("mumuF1/Toon")
                 ?? Shader.Find("Universal Render Pipeline/Lit")
                 ?? Shader.Find("Standard");
 
