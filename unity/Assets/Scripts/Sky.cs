@@ -41,9 +41,6 @@ namespace MumuF1.Game
 
         public static void Build(Transform parent, Camera camera)
         {
-            RenderSettings.skybox = Dome();
-            RenderSettings.sun = null;
-
             /* Trilight ambient rather than a flat colour, so the underside of
                a car picks up the grass and the top picks up the sky. It is
                the cheapest thing in rendering that makes a flat-shaded object
@@ -62,81 +59,182 @@ namespace MumuF1.Game
             RenderSettings.fogStartDistance = FogStart;
             RenderSettings.fogEndDistance = FogEnd;
 
+            /* No skybox. The first attempt built one out of
+               `Shader.Find("Skybox/Panoramic")` and got a flat grey sky,
+               because a shader reached for by name at runtime is not
+               referenced by anything the build can see and is stripped —
+               precisely the way the toon shader was stripped before it was
+               moved into Resources. Rather than find somewhere to declare a
+               second shader, the sky is a *thing in the world*, drawn with
+               the shader this project already ships. */
+            RenderSettings.skybox = null;
+
             if (camera != null)
             {
-                camera.clearFlags = CameraClearFlags.Skybox;
+                /* Cleared to a solid colour rather than to a skybox that is
+                   not there. The dome below covers every direction the camera
+                   can look, so this shows only on the frame it fails — and a
+                   pale horizon is a much better failure than black. */
+                camera.clearFlags = CameraClearFlags.SolidColor;
                 camera.backgroundColor = Horizon;
             }
+
+            Dome(parent);
         }
 
         /// <summary>
-        /// A gradient skybox, generated.
+        /// A graded sky, as a sphere seen from inside.
         /// </summary>
         /// <remarks>
-        /// Unity's own Procedural skybox wants a sun and produces a
-        /// physically-modelled sky, which is the opposite of what a
-        /// flat-shaded game wants. This paints the three bands into a small
-        /// texture and hands it to the panoramic skybox shader instead —
-        /// which needs no asset, no cubemap, and no import settings, and so
-        /// can be authored as text like everything else here.
+        /// The same shape the web version uses, and for the reason it gives:
+        /// a background is painted flat behind everything and cannot put the
+        /// pale band on the horizon and the deep blue overhead. A dome can,
+        /// because it has an up.
         ///
-        /// Four pixels wide because nothing varies with heading; the height
-        /// is the whole picture.
+        /// Banded rather than blended, to match the shading on everything
+        /// under it — a smooth ramp over a drawn car reads as two different
+        /// pictures in one frame.
+        ///
+        /// It is unlit, unfogged and drawn before everything else. Fogging it
+        /// would be fogging the thing the fog is tinted to.
         /// </remarks>
-        private static Material Dome()
+        private static void Dome(Transform parent)
         {
-            const int h = 256;
-            var texture = new Texture2D(4, h, TextureFormat.RGBA32, false)
-            {
-                name = "SkyGradient",
-                wrapMode = TextureWrapMode.Clamp,
-                filterMode = FilterMode.Bilinear,
-                hideFlags = HideFlags.HideAndDontSave
-            };
+            var go = new GameObject("Sky");
+            go.transform.SetParent(parent);
 
-            var pixels = new Color32[4 * h];
-            for (int y = 0; y < h; y++)
-            {
-                /* Row 0 is the bottom of a Unity texture and the bottom of a
-                   panoramic map is straight down, so the bands are laid out
-                   from the ground up: horizon for the lower half, then the
-                   middle band, then the zenith. Reading the web version's
-                   canvas gradient the other way round — where row 0 is the
-                   top — is how the pale band ends up buried under the ground
-                   and the sky becomes one flat blue meeting the grass at a
-                   hard line. */
-                float up = y / (float)(h - 1);
+            /* Big enough to sit outside the far scenery and inside the
+               camera's far plane, which is 4 km. */
+            const float radius = 3600f;
 
-                Color band = up < 0.58f ? Horizon
-                    : up < 0.74f ? Middle
+            var mesh = new Mesh { name = "SkyDome" };
+
+            const int rings = 24;
+            const int segments = 32;
+
+            var vertices = new Vector3[(rings + 1) * (segments + 1)];
+            var colours = new Color[vertices.Length];
+            var triangles = new int[rings * segments * 6];
+
+            for (int y = 0; y <= rings; y++)
+            {
+                /* From straight down to straight up. */
+                float v = y / (float)rings;
+                float polar = Mathf.PI * (1f - v);
+                float sinP = Mathf.Sin(polar);
+                float cosP = Mathf.Cos(polar);
+
+                /* The bands, in the order they are seen from the ground:
+                   pale to the horizon, then a middle blue, then the zenith.
+                   Repeated at each boundary so the step is hard. */
+                Color band = v < 0.52f ? Horizon
+                    : v < 0.58f ? Middle
+                    : v < 0.74f ? Middle
                     : Zenith;
 
-                for (int x = 0; x < 4; x++) pixels[y * 4 + x] = band;
+                for (int x = 0; x <= segments; x++)
+                {
+                    float u = x / (float)segments;
+                    float azimuth = u * Mathf.PI * 2f;
+
+                    int i = y * (segments + 1) + x;
+                    vertices[i] = new Vector3(
+                        radius * sinP * Mathf.Cos(azimuth),
+                        radius * cosP,
+                        radius * sinP * Mathf.Sin(azimuth));
+                    colours[i] = band;
+                }
             }
 
-            texture.SetPixels32(pixels);
-            texture.Apply();
-
-            Shader panoramic = Shader.Find("Skybox/Panoramic");
-            if (panoramic == null)
+            int t = 0;
+            for (int y = 0; y < rings; y++)
             {
-                /* No skybox shader in the build. Rather than leave the camera
-                   on whatever it had, fall back to a flat horizon fill, which
-                   is still a sky-coloured world rather than a black one. */
-                return null;
+                for (int x = 0; x < segments; x++)
+                {
+                    int a = y * (segments + 1) + x;
+                    int b = a + segments + 1;
+
+                    /* Wound inwards, because this is seen from inside. The
+                       outward winding draws a sphere that is invisible from
+                       every point the camera can ever be. */
+                    triangles[t++] = a;
+                    triangles[t++] = a + 1;
+                    triangles[t++] = b;
+
+                    triangles[t++] = a + 1;
+                    triangles[t++] = b + 1;
+                    triangles[t++] = b;
+                }
             }
 
-            var material = new Material(panoramic) { hideFlags = HideFlags.HideAndDontSave };
-            material.SetTexture("_MainTex", texture);
-            material.SetFloat("_Mapping", 1f);       // latitude-longitude
-            material.SetFloat("_ImageType", 0f);     // 360 degrees
-            material.SetFloat("_Exposure", 1f);
-            return material;
+            mesh.vertices = vertices;
+            mesh.colors = colours;
+            mesh.triangles = triangles;
+            mesh.RecalculateNormals();
+            /* Told its own size rather than made to work it out, because a
+               sphere centred on the origin has no bounds Unity can infer that
+               would not cull it the moment the car drives away from the
+               middle of the circuit. */
+            mesh.bounds = new Bounds(Vector3.zero, Vector3.one * radius * 4f);
+
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+
+            MeshRenderer renderer = go.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = Paint.FromVertices(0f);
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+
+            /* Drawn first, so everything else lands on top of it whatever
+               order the renderer would otherwise pick. */
+            renderer.sharedMaterial.renderQueue = 1000;
+
+            /* Carried with the camera, so a sphere of finite radius never
+               runs out. The circuits are kilometres across and this is
+               3.6 km; without it, driving to the far end of Monza puts the
+               car through the wall of the sky. */
+            go.AddComponent<SkyFollowsCamera>();
         }
 
         private static Color Rgb(int hex) => new Color(
             ((hex >> 16) & 0xFF) / 255f,
             ((hex >> 8) & 0xFF) / 255f,
             (hex & 0xFF) / 255f);
+    }
+
+    /// <summary>
+    /// Keeps the sky centred on whatever is looking at it.
+    /// </summary>
+    /// <remarks>
+    /// A dome of finite radius is a wall if it stays put. These circuits are
+    /// kilometres across and this one is 3.6 km, so driving to the far end of
+    /// Monza would take the car through it. Following the camera in
+    /// <c>LateUpdate</c> — after the chase camera has moved — means the sky is
+    /// always exactly as far away as it was a frame ago, which is what a sky
+    /// is.
+    ///
+    /// Position only. Rotating it would drag the horizon band around with the
+    /// car.
+    /// </remarks>
+    public class SkyFollowsCamera : MonoBehaviour
+    {
+        private Transform _eye;
+
+        private void LateUpdate()
+        {
+            if (_eye == null)
+            {
+                Camera main = Camera.main;
+                if (main == null)
+                {
+                    Camera[] all = Camera.allCameras;
+                    if (all.Length == 0) return;
+                    main = all[0];
+                }
+
+                _eye = main.transform;
+            }
+
+            transform.position = _eye.position;
+        }
     }
 }

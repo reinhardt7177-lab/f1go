@@ -96,6 +96,7 @@ namespace MumuF1.Game
                the grid makes, and the web version learned it the hard way:
                the lights used to count down behind the card, so you tapped
                to find yourself already late off a grid you never saw. */
+            Music.Build(root.transform);
             TitleCard.Build(root.transform, race);
         }
 

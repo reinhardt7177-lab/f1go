@@ -67,13 +67,9 @@ namespace MumuF1.Game
                other. */
             int unit = Mathf.Max(12, Mathf.RoundToInt(Mathf.Min(Screen.width, Screen.height) / 22f));
 
-            _big = new GUIStyle(GUI.skin.label) { fontSize = unit * 2, fontStyle = FontStyle.Bold };
-            _small = new GUIStyle(GUI.skin.label) { fontSize = Mathf.RoundToInt(unit * 0.85f) };
-            _label = new GUIStyle(GUI.skin.label)
-            {
-                fontSize = Mathf.RoundToInt(unit * 0.55f),
-                fontStyle = FontStyle.Bold
-            };
+            _big = Ink.Style(unit * 2, FontStyle.Bold, TextAnchor.UpperLeft);
+            _small = Ink.Style(Mathf.RoundToInt(unit * 0.85f), FontStyle.Normal, TextAnchor.UpperLeft);
+            _label = Ink.Style(Mathf.RoundToInt(unit * 0.55f), FontStyle.Bold, TextAnchor.UpperLeft);
         }
 
         private void OnGUI()

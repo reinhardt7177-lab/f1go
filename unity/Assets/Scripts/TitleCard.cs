@@ -99,13 +99,7 @@ namespace MumuF1.Game
         }
 
         private static GUIStyle Centred(int size, FontStyle weight) =>
-            new GUIStyle(GUI.skin.label)
-            {
-                fontSize = size,
-                fontStyle = weight,
-                alignment = TextAnchor.MiddleCenter,
-                wordWrap = false
-            };
+            Ink.Style(size, weight, TextAnchor.MiddleCenter);
 
         private void OnGUI()
         {
@@ -254,6 +248,12 @@ namespace MumuF1.Game
             /* The one call that starts everything. Until now the session has
                been constructed and inert. */
             if (_race != null && _race.Session != null) _race.Session.Begin();
+
+            /* And the soundtrack, here rather than at startup, because this
+               press is the user gesture every browser insists on before it
+               will let a page make a sound. Called on Awake it gets a
+               suspended audio context and silence for the whole session. */
+            Music.Begin();
         }
 
         private static int IndexOf<T>(T[] all, T value)
