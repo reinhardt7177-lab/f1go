@@ -90,6 +90,7 @@ namespace MumuF1.Game
             DrawSpeed(unit, pad);
             DrawTiming(unit, pad);
             DrawLights(unit);
+            DrawDiagnostics(unit, pad);
         }
 
         // ---- The speed block, bottom left ------------------------------
@@ -201,6 +202,42 @@ namespace MumuF1.Game
                 Fill(new Rect(x + gap * i, y, r * 2f, r * 2f), i < lit ? LampOn : LampOff);
             }
         }
+
+        /// <summary>
+        /// What the car is actually doing, on a key.
+        /// </summary>
+        /// <remarks>
+        /// Added because a build showed a stationary car with the throttle
+        /// held and nothing to say why. Everything a guess would have been
+        /// about is on one line: whether the input arrived, whether the
+        /// engine is making anything of it, whether the wheels are touching
+        /// the road, and what the tyres are being asked to carry.
+        ///
+        /// Off by default and on `F3`, because it is an instrument rather
+        /// than part of the game.
+        /// </remarks>
+        private void DrawDiagnostics(float unit, float pad)
+        {
+            if (Input.GetKeyDown(KeyCode.F3) && Event.current.type == EventType.KeyDown)
+            {
+                _diagnostics = !_diagnostics;
+            }
+
+            if (!_diagnostics) return;
+
+            var line = string.Format(
+                "thr {0:F2}  brk {1:F2}  str {2:+0.00;-0.00; 0.00}  |  " +
+                "rpm {3:F0}  gear {4}  |  grounded {5}/4  load {6:F0} N  slip {7:F2}  |  {8:F1} m/s",
+                _car.Controls.Throttle, _car.Controls.Brake, _car.Controls.Steer,
+                _car.EngineRpm, _car.Gear,
+                _car.GroundedWheels, _car.TotalLoad, _car.DrivenSlip, _car.SpeedMs);
+
+            var box = new Rect(pad, Screen.height - unit * 5.4f, Screen.width - pad * 2, unit * 1.1f);
+            Fill(box, Panel);
+            Text(new Rect(box.x + pad, box.y, box.width, box.height), line, _label, Amber);
+        }
+
+        private bool _diagnostics;
 
         // ---- Drawing ---------------------------------------------------------
 

@@ -161,6 +161,9 @@ namespace MumuF1.Game
 
             CarView.Build(car.transform);
 
+            /* After the wheels exist, because it finds them by name. */
+            car.AddComponent<WheelView>();
+
             var builder = track.GetComponent<TrackBuilder>();
             controller.Track = builder;
             controller.Reset(builder.StartPosition, builder.StartHeadingDeg);

@@ -106,6 +106,71 @@ namespace MumuF1.Game
             public double Load;
         }
 
+        /// <summary>Where one wheel is and which way it is pointing.</summary>
+        public struct WheelPose
+        {
+            /// <summary>Rotation about the axle (rad).</summary>
+            public double Spin;
+
+            /// <summary>Steer angle (rad); zero on the rear pair.</summary>
+            public double Steer;
+
+            /// <summary>Suspension compression, zero fully extended (m).</summary>
+            public double Compression;
+
+            public bool Grounded;
+        }
+
+        /// <summary>Where the wheel at <paramref name="index"/> is.</summary>
+        public WheelPose Pose(int index)
+        {
+            Wheel w = _wheels[Mathf.Clamp(index, 0, 3)];
+            if (w == null) return default;
+
+            return new WheelPose
+            {
+                Spin = w.Spin,
+                Steer = w.SteerAngle,
+                Compression = w.Compression,
+                Grounded = w.Grounded
+            };
+        }
+
+        /// <summary>How many wheels are touching anything.</summary>
+        public int GroundedWheels
+        {
+            get
+            {
+                var n = 0;
+                for (var i = 0; i < 4; i++)
+                {
+                    if (_wheels[i] != null && _wheels[i].Grounded) n++;
+                }
+
+                return n;
+            }
+        }
+
+        /// <summary>Total vertical load through all four contact patches (N).</summary>
+        public double TotalLoad
+        {
+            get
+            {
+                double sum = 0;
+                for (var i = 0; i < 4; i++)
+                {
+                    if (_wheels[i] != null) sum += _wheels[i].Load;
+                }
+
+                return sum;
+            }
+        }
+
+        /// <summary>Largest driven-wheel slip ratio, for the diagnostic line.</summary>
+        public double DrivenSlip =>
+            _wheels[RL] == null ? 0 : System.Math.Max(
+                System.Math.Abs(_wheels[RL].SlipRatio), System.Math.Abs(_wheels[RR].SlipRatio));
+
         /// <summary>What the tyre at <paramref name="index"/> is doing.</summary>
         public TyreSound Tyre(int index)
         {
@@ -128,6 +193,18 @@ namespace MumuF1.Game
             public bool Driven;
             public bool Front;
             public double Omega;
+
+            /// <summary>Total rotation since the car was built (rad).</summary>
+            /// <remarks>
+            /// Accumulated rather than derived, because the only thing that
+            /// wants it is a renderer and a renderer needs an angle, not a
+            /// rate. Kept here rather than in the view so it advances with
+            /// the physics step and not with the frame rate — at 30 fps a
+            /// view integrating its own would show a wheel turning at half
+            /// speed.
+            /// </remarks>
+            public double Spin;
+
             public double Compression;
             public double LastCompression;
             public double SteerAngle;
@@ -420,6 +497,8 @@ namespace MumuF1.Game
                     w.Omega += (applied / WheelInertia) * subDt;
                     w.SlipRatio = slipRatio;
                 }
+
+                w.Spin += w.Omega * dt;
 
                 double fLong = sumLong / sub;
                 double fLat = sumLat / sub;
