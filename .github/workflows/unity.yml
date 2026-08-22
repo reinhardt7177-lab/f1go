@@ -236,6 +236,9 @@ jobs:
     name: Build for WebGL
     needs: editor
     runs-on: ubuntu-latest
+    # To publish the build as a release asset. Everything else here reads.
+    permissions:
+      contents: write
     # Longer than the editor job: this one imports and then builds, and a
     # first WebGL build compiles the whole engine to WebAssembly.
     timeout-minutes: 75
@@ -276,6 +279,36 @@ jobs:
         run: |
           du -sh build/WebGL || true
           find build -maxdepth 3 -type f -printf '%10s  %p\n' | sort -rn | head -12 || true
+
+      # Somewhere the site build can fetch it from.
+      #
+      # Vercel builds the web version on every push and has no Unity in it,
+      # so the player has to arrive from somewhere else. An Actions artifact
+      # needs a token to download; a release asset on a public repository does
+      # not, which is the whole reason this is a release rather than the
+      # artifact directly above.
+      #
+      # One rolling tag rather than one per commit. The URL is then a constant
+      # that `tools/build-site.js` can hold, and the repository does not
+      # accumulate a release per push — and because it is a release asset
+      # rather than a commit, eleven megabytes of player never enters the git
+      # history.
+      - if: steps.licence.outputs.have == 'true'
+        name: Publish it where the site build can reach it
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tar czf mumuF1-webgl.tar.gz -C build/WebGL .
+          ls -l mumuF1-webgl.tar.gz
+
+          # `create` fails once the tag exists, which is every run after the
+          # first, so the failure is expected and the upload is what matters.
+          gh release create webgl \
+            --title 'WebGL build' \
+            --notes 'The current Unity build, republished by CI. Fetched by the site build and served at /unity/.' \
+            2>/dev/null || true
+
+          gh release upload webgl mumuF1-webgl.tar.gz --clobber
 
       # Uploaded rather than published. Publishing needs a decision about
       # where it goes — the Pages site is the web version's, and putting a
