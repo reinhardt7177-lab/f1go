@@ -111,6 +111,28 @@ namespace MumuF1.Game
         public double ThrottleLimit => _assist.ThrottleLimit;
 
         /// <summary>
+        /// Everything multiplying a driven tyre's grip that is not load.
+        /// </summary>
+        /// <remarks>
+        /// The surface under the wheel times what the rubber's temperature
+        /// and wear are worth, which is exactly the product the tyre solver
+        /// is handed as its <c>gripScale</c>. It is on the F3 line because it
+        /// is the one term in the whole force chain that cannot be seen from
+        /// outside: a cold tyre and a wheel that has wandered onto the grass
+        /// look identical from the driver's seat, and both quietly divide
+        /// every longitudinal force by something.
+        /// </remarks>
+        public double DrivenGrip => _wheels[RL] == null
+            ? 0
+            : _wheels[RL].SurfaceGrip * TireThermal.ConditionGrip(_thermal, _wheels[RL].Condition);
+
+        /// <summary>Surface temperature of the left rear (°C).</summary>
+        public double DrivenTemp =>
+            _wheels[RL] == null || _wheels[RL].Condition == null
+                ? 0
+                : _wheels[RL].Condition.SurfaceTemp;
+
+        /// <summary>
         /// The circuit, for the surface under each wheel. Null is allowed —
         /// see <see cref="SurfaceGripAt"/>.
         /// </summary>

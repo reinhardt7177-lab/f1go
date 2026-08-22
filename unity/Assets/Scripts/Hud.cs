@@ -242,7 +242,7 @@ namespace MumuF1.Game
             var line = string.Format(
                 "thr {0:F2}  brk {1:F2}  str {2:+0.00;-0.00; 0.00}  |  " +
                 "rpm {3:F0}  gear {4}  |  grounded {5}/4  load {6:F0} N  slip {7:F2}  " +
-                "tc {15}  |  ray {9:F2}  face {10:F2}  |  down {11:F2}  up {12:F2}  {13}  |  " +
+                "tc {15}  grip {16:F2}  {17:F0}\u00b0C  |  ray {9:F2}  down {11:F2} {13}  |  " +
                 "y {14:F2}  |  {8:F1} m/s",
                 _car.Controls.Throttle, _car.Controls.Brake, _car.Controls.Steer,
                 _car.EngineRpm, _car.Gear,
@@ -250,7 +250,8 @@ namespace MumuF1.Game
                 _car.RayDistance, _car.RayFacing,
                 _car.ProbeDown, _car.ProbeUp, _car.ProbeHit,
                 _car.transform.position.y,
-                _car.TractionControl ? _car.ThrottleLimit.ToString("F2") : "off");
+                _car.TractionControl ? _car.ThrottleLimit.ToString("F2") : "off",
+                _car.DrivenGrip, _car.DrivenTemp);
 
             var box = new Rect(pad, Screen.height - unit * 5.4f, Screen.width - pad * 2, unit * 1.1f);
             Fill(box, Panel);
