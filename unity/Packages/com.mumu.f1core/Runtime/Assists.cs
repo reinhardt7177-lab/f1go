@@ -53,6 +53,51 @@ namespace MumuF1
         public double Floor { get; set; } = 0.08;
     }
 
+    public sealed class YawLimiterParams
+    {
+        /// <summary>Mechanical grip, as lateral acceleration at rest (m/s²).</summary>
+        public double LatAccel { get; set; } = 16.0;
+
+        /// <summary>Downforce's share, which grows with the square of speed.</summary>
+        public double LatAccelPerV2 { get; set; } = 0.00345;
+
+        /// <summary>Distance between axles (m).</summary>
+        public double Wheelbase { get; set; } = 3.6;
+
+        /// <summary>
+        /// Yaw rate allowed past the target before anything acts (rad/s).
+        /// </summary>
+        /// <remarks>
+        /// Additive rather than a multiplier, and that matters: a
+        /// multiplicative margin gives zero tolerance in a straight line,
+        /// where the target is zero, and welds the car to the road. A quarter
+        /// of a radian per second is fourteen degrees a second of free
+        /// rotation at any speed — enough for turn-in overshoot and for the
+        /// half-metre of relaxation lag in the tyre model. A spin is three to
+        /// five times over, not one point three.
+        /// </remarks>
+        public double Band { get; set; } = 0.25;
+
+        /// <summary>Below this road speed yaw means nothing (m/s).</summary>
+        public double MinSpeed { get; set; } = 8;
+
+        /// <summary>Excess at which the correcting torque saturates (rad/s).</summary>
+        public double Span { get; set; } = 1.0;
+
+        /// <summary>
+        /// Strongest moment the assist will ask for (N m).
+        /// </summary>
+        /// <remarks>
+        /// 1100 kg m² of yaw inertia times ten radians per second squared.
+        /// That removes the one and a half rad/s of excess measured in a real
+        /// slide in 0.15 s, against the 0.53 s a fifth of it needed — and
+        /// half a second is longer than the whole event. For scale the rear
+        /// axle at the limit makes about 13,250 N m of yaw moment on its own,
+        /// so this is below the authority the tyres themselves routinely use.
+        /// </remarks>
+        public double Peak { get; set; } = 11_000;
+    }
+
     /// <summary>
     /// Driver aids.
     /// </summary>
@@ -122,6 +167,78 @@ namespace MumuF1
 
             state.ThrottleLimit = MathUtil.Clamp(state.ThrottleLimit, p.Floor, 1);
             return Math.Min(desired, state.ThrottleLimit);
+        }
+
+        /// <summary>
+        /// How much faster the car is rotating than anything could justify.
+        /// </summary>
+        /// <param name="yawRate">measured yaw rate about +Y (rad/s).</param>
+        /// <param name="steerAngle">signed road-wheel angle (rad).</param>
+        /// <param name="speed">road speed (m/s).</param>
+        /// <returns>signed excess yaw rate (rad/s), zero when the car is honest.</returns>
+        /// <remarks>
+        /// This is the reading that stops a spin, and the reason is timing.
+        /// Sideslip is a lagging indicator: in a measured slide it was still
+        /// only eleven degrees — barely past the yaw assist's deadband —
+        /// while the car was already rotating at 1.46 rad/s against the 0.56
+        /// the grip at that speed could hold. Two and a half times over, half
+        /// a second before the angle said anything was wrong.
+        ///
+        /// The target is the smaller of what the steering is asking for and
+        /// what the tyres can deliver, so it is zero on a straight, exactly
+        /// the corner's own rate through a corner, and never more than grip
+        /// allows. Everything beyond it plus a band is excess, and only the
+        /// excess is ever acted on — which is why this cannot resist a turn
+        /// the driver genuinely asked for.
+        /// </remarks>
+        public static double YawExcessOf(
+            double yawRate, double steerAngle, double speed, YawLimiterParams p = null)
+        {
+            p = p ?? new YawLimiterParams();
+            if (Math.Abs(speed) < p.MinSpeed) return 0;
+
+            /* What the steering is asking for. A positive steer is a right
+               turn, and a right turn is a *negative* yaw rate about +Y —
+               rotating the car's -Z nose by a positive yaw swings it towards
+               -X, which is to the left. Hence the minus, and getting it wrong
+               would make the assist add to every corner instead of nothing. */
+            var asked = -speed * Math.Tan(steerAngle) / p.Wheelbase;
+            var grip = (p.LatAccel + p.LatAccelPerV2 * speed * speed) / Math.Abs(speed);
+
+            var target = MathUtil.Clamp(asked, -grip, grip);
+            var error = yawRate - target;
+            return error - MathUtil.Clamp(error, -p.Band, p.Band);
+        }
+
+        /// <summary>
+        /// The moment a real stability program makes with the brakes.
+        /// </summary>
+        /// <remarks>
+        /// Steering and throttle are not enough on their own, and the reason
+        /// is worth writing down: countersteer can only produce as much yaw
+        /// moment as the front tyres have grip left, and a car already
+        /// sideways has very little. Held at full opposite lock with the
+        /// throttle cut, the simulated car still rotated all the way round —
+        /// correctly, because that is what the physics says.
+        ///
+        /// A real car answers this by braking individual wheels, which makes
+        /// a yaw moment out of longitudinal force and needs no cornering grip
+        /// at all. There is no per-wheel brake channel here, so this asks for
+        /// the moment directly. It is a gameplay force and it says so — but
+        /// it is the same force an electronic stability program would make,
+        /// for the same reason, and it is driven by the yaw <em>excess</em>,
+        /// so it is exactly zero whenever the car is doing what its steering
+        /// asked.
+        /// </remarks>
+        public static double StabilityTorque(double yawExcess, YawLimiterParams p = null)
+        {
+            p = p ?? new YawLimiterParams();
+
+            /* Guarded so an honest car reports exactly +0 rather than -0,
+               which is a different number to a bitwise comparison and
+               therefore to a test. */
+            if (yawExcess == 0) return 0;
+            return -MathUtil.Clamp(yawExcess / p.Span, -1, 1) * p.Peak;
         }
     }
 }

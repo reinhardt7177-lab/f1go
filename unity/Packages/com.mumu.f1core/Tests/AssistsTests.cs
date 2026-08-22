@@ -200,5 +200,134 @@ namespace MumuF1.Tests
             Assert.That(state.ThrottleLimit, Is.EqualTo(1).Within(0));
             Assert.That(state.StabilityTorque, Is.EqualTo(0).Within(0));
         }
+
+        // ---- the yaw limiter -------------------------------------------
+
+        private static readonly YawLimiterParams Y = new YawLimiterParams();
+
+        private static double Grip(double v) => (Y.LatAccel + Y.LatAccelPerV2 * v * v) / Math.Abs(v);
+
+        /// <summary>
+        /// The two-term fit is meant to reproduce what this car can actually
+        /// pull, and the figures the comments quote are 18.7 m/s² at
+        /// 100 km/h and 40 at 300. Worth pinning: they are cited elsewhere as
+        /// the reason a 39 m radius is grip-limited, and a drift here would
+        /// quietly move that.
+        /// </summary>
+        [Test]
+        public void FitsTheLateralGripTheCarActuallyHas()
+        {
+            var at100 = Y.LatAccel + Y.LatAccelPerV2 * Math.Pow(100 / MathUtil.Kmh, 2);
+            var at300 = Y.LatAccel + Y.LatAccelPerV2 * Math.Pow(300 / MathUtil.Kmh, 2);
+
+            Assert.That(at100, Is.EqualTo(18.66).Within(0.01));
+            Assert.That(at300, Is.EqualTo(39.96).Within(0.01));
+        }
+
+        [Test]
+        public void SaysNothingAboutYawBelowWalkingPace()
+        {
+            Assert.That(Assists.YawExcessOf(5, 0, 4, Y), Is.EqualTo(0).Within(0));
+            Assert.That(Assists.YawExcessOf(-5, 0.3, 0, Y), Is.EqualTo(0).Within(0));
+        }
+
+        /// <summary>
+        /// The band is additive, and that is the point of it. A
+        /// multiplicative margin gives zero tolerance in a straight line —
+        /// where the target is zero — and welds the car to the road.
+        /// </summary>
+        [Test]
+        public void LeavesAQuarterOfARadianFreeEvenInAStraightLine()
+        {
+            Assert.That(Assists.YawExcessOf(0, 0, 50, Y), Is.EqualTo(0).Within(0));
+            Assert.That(Assists.YawExcessOf(Y.Band, 0, 50, Y), Is.EqualTo(0).Within(1e-12));
+            Assert.That(Assists.YawExcessOf(-Y.Band, 0, 50, Y), Is.EqualTo(0).Within(1e-12));
+            Assert.That(Assists.YawExcessOf(0.30, 0, 50, Y), Is.EqualTo(0.05).Within(1e-9));
+        }
+
+        /// <summary>
+        /// A positive steer is a right turn, and a right turn is a
+        /// <em>negative</em> yaw rate about +Y — the car's nose is -Z, so a
+        /// positive yaw swings it towards -X, which is left. Getting this
+        /// sign wrong would make the assist fight every corner instead of
+        /// none of them, which is the kind of bug that feels like
+        /// understeer.
+        /// </summary>
+        [Test]
+        public void AsksForANegativeYawRateWhenTheDriverTurnsRight()
+        {
+            const double v = 50, steer = 0.05;
+            var asked = -v * Math.Tan(steer) / Y.Wheelbase;
+
+            Assert.That(asked, Is.LessThan(0));
+            Assert.That(asked, Is.EqualTo(-0.6950).Within(0.001));
+
+            // Rotating the way the steering asked, within grip, is honest.
+            Assert.That(Assists.YawExcessOf(-Grip(v), steer, v, Y), Is.EqualTo(0).Within(0));
+
+            // Rotating hard the other way is not.
+            Assert.That(Assists.YawExcessOf(1.5, steer, v, Y), Is.EqualTo(1.7425).Within(0.001));
+        }
+
+        /// <summary>
+        /// Steering cannot ask for more yaw than the tyres can hold, so a
+        /// driver sawing at full lock does not licence a spin.
+        /// </summary>
+        [Test]
+        public void NeverLetsTheSteeringAskForMoreThanGripAllows()
+        {
+            const double v = 50;
+            Assert.That(Assists.YawExcessOf(-Grip(v), 1.2, v, Y), Is.EqualTo(0).Within(1e-9));
+            Assert.That(Assists.YawExcessOf(-Grip(v) - 1.0, 1.2, v, Y), Is.LessThan(0));
+        }
+
+        /// <summary>
+        /// The torque opposes the excess, saturates, and is exactly nothing
+        /// when the car is honest.
+        /// </summary>
+        [Test]
+        public void PushesBackAgainstTheExcessAndNothingElse()
+        {
+            Assert.That(Assists.StabilityTorque(0, Y), Is.EqualTo(0).Within(0));
+            Assert.That(Assists.StabilityTorque(0.5, Y), Is.EqualTo(-5500).Within(1e-9));
+            Assert.That(Assists.StabilityTorque(1.0, Y), Is.EqualTo(-Y.Peak).Within(1e-9));
+            Assert.That(Assists.StabilityTorque(9.0, Y), Is.EqualTo(-Y.Peak).Within(1e-9));
+            Assert.That(Assists.StabilityTorque(-1.0, Y), Is.EqualTo(Y.Peak).Within(1e-9));
+            Assert.That(Assists.StabilityTorque(-9.0, Y), Is.EqualTo(Y.Peak).Within(1e-9));
+        }
+
+        /// <summary>
+        /// Zero excess must report positive zero, not negative zero. They
+        /// compare equal and they do not print the same, and a test that
+        /// pinned the wrong one would fail for a reason nobody could see.
+        /// </summary>
+        [Test]
+        public void ReportsPositiveZeroForAnHonestCar()
+        {
+            Assert.That(double.IsNegative(Assists.StabilityTorque(0, Y)), Is.False);
+        }
+
+        /// <summary>
+        /// Nothing here may act on a car doing what it was asked. Swept
+        /// across speed and steering, a car rotating at exactly the rate its
+        /// steering implies gets no correction at all.
+        /// </summary>
+        [Test]
+        public void NeverResistsATurnTheDriverGenuinelyAsked()
+        {
+            for (var v = 10.0; v <= 90; v += 5)
+            {
+                for (var steer = -0.30; steer <= 0.30; steer += 0.02)
+                {
+                    var asked = -v * Math.Tan(steer) / Y.Wheelbase;
+                    var target = MathUtil.Clamp(asked, -Grip(v), Grip(v));
+
+                    Assert.That(Assists.YawExcessOf(target, steer, v, Y), Is.EqualTo(0).Within(1e-12),
+                        $"corrected an honest car at {v:F0} m/s and {steer:F2} rad");
+                    Assert.That(Assists.StabilityTorque(Assists.YawExcessOf(target, steer, v, Y), Y),
+                        Is.EqualTo(0).Within(0));
+                }
+            }
+        }
     }
 }
