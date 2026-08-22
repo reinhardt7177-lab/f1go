@@ -126,6 +126,24 @@ namespace MumuF1.Game
             ? 0
             : _wheels[RL].SurfaceGrip * TireThermal.ConditionGrip(_thermal, _wheels[RL].Condition);
 
+        /// <summary>
+        /// Drive torque into the left rear, and the tyre force out of it.
+        /// </summary>
+        /// <remarks>
+        /// The two ends of the chain, on the line together because they
+        /// bracket the question. The model says a driven wheel at slip 4
+        /// still makes about 1,300 N — three metres per second squared for
+        /// the pair — and the car was measured doing a fortieth of that.
+        /// Torque in near 4,300 N m with force out near 1,300 N means the
+        /// tyre is behaving and the arithmetic is wrong somewhere; torque in
+        /// near zero means the drivetrain never delivered anything and the
+        /// tyre was never the subject.
+        /// </remarks>
+        public double DrivenForce => _wheels[RL] == null ? 0 : _wheels[RL].ForceLong;
+
+        /// <summary>Drive torque reaching the left rear (N m).</summary>
+        public double DrivenTorque => _wheels[RL] == null ? 0 : _wheels[RL].DriveTorque;
+
         /// <summary>Surface temperature of the left rear (°C).</summary>
         public double DrivenTemp =>
             _wheels[RL] == null || _wheels[RL].Condition == null
@@ -327,6 +345,13 @@ namespace MumuF1.Game
             public double SlipAngle;
             public double SurfaceGrip = 1.0;
             public TireCondition Condition;
+
+            /* The two ends of the force chain, kept only so the F3 line can
+               show them. Everything between the pedal and the road has been
+               read and checked; these are the numbers that say which end is
+               not doing what the model says it should. */
+            public double ForceLong;
+            public double DriveTorque;
             public Vector3 ContactPoint;
 
             /// <summary>
@@ -708,6 +733,9 @@ namespace MumuF1.Game
 
                 double fLong = sumLong / sub;
                 double fLat = sumLat / sub;
+
+                w.ForceLong = fLong;
+                w.DriveTorque = w.Driven ? (i == RL ? drive.Left : drive.Right) : 0.0;
 
                 Vector3 wheelForward = transform.TransformDirection(
                     new Vector3((float)sin, 0f, (float)cos));
