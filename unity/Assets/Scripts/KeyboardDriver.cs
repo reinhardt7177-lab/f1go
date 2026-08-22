@@ -22,13 +22,26 @@ namespace MumuF1.Game
         public float ReturnTime = 0.14f;
 
         private CarController _car;
+        private TouchDriver _touch;
         private float _steer;
         private bool _shiftArmed = true;
 
-        private void Awake() => _car = GetComponent<CarController>();
+        private void Awake()
+        {
+            _car = GetComponent<CarController>();
+            _touch = GetComponent<TouchDriver>();
+        }
 
         private void Update()
         {
+            /* Stand aside once a finger has touched the screen. Both of these
+               write the same field in Update and Unity does not promise an
+               order between them, so without this the controls would be
+               whichever component ran second — and on a phone that is a
+               coin toss taken every frame. A player who has picked the car up
+               with their hands is not also on a keyboard. */
+            if (_touch != null && _touch.Active) return;
+
             float dt = Time.deltaTime;
             float want = 0f;
             if (Key(KeyCode.A) || Key(KeyCode.LeftArrow)) want -= 1f;

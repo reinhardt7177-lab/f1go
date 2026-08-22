@@ -116,6 +116,12 @@ namespace MumuF1.Game
             };
 
             CarController controller = car.AddComponent<CarController>();
+
+            /* Both, always. Which one is driving is decided at runtime by
+               whether a finger has touched the screen — a laptop with a
+               touchscreen is a real thing, and so is a phone with a
+               keyboard, so this is not a build-time question. */
+            car.AddComponent<TouchDriver>();
             car.AddComponent<KeyboardDriver>();
             Car = controller;
 
