@@ -141,6 +141,21 @@ namespace MumuF1.Game
             Lateral = where.T;
             OnTrack = Track.Circuit.IsOnTrack(where.S, where.T);
 
+            /* Nothing is timed until the session has been let go, and that
+               includes the lap clock. `Session.Update` has guarded itself
+               against running behind the title card since it was written —
+               its comment says so, "not the lights, not the clock, not track
+               limits" — but the lap timer is ticked here, a line above it,
+               and was never covered by that guard. So the clock ran from the
+               moment the world loaded and a first lap carried however long
+               anybody had spent looking at the menu. The run that found it
+               read a lap time of sixteen seconds on a stationary car with the
+               starting lights still counting down.
+
+               Where the car is stays live above, because the camera and the
+               read-out want it while the card is up. */
+            if (!Session.Started) return;
+
             // --- timing ---------------------------------------------------
             JustFinished = Timer.Update(where.S, OnTrack, dt);
             Session.Update(dt, OnTrack, JustFinished, Timer);

@@ -521,5 +521,44 @@ namespace MumuF1.Tests
             Assert.That(session.Lights, Is.EqualTo(1));
             Assert.That(session.OnGrid, Is.True);
         }
+
+        /// <summary>
+        /// Nothing runs until the session is let go, and callers can tell.
+        /// </summary>
+        /// <remarks>
+        /// The guard inside <c>Update</c> only covers what <c>Update</c>
+        /// does, and the comment above it claims more than that: "not the
+        /// lights, not the clock, not track limits". The lap timer is ticked
+        /// by the caller and was outside it entirely, so the clock ran from
+        /// the moment the world loaded — a first lap carried however long
+        /// anybody spent on the menu, which for a time trial is the whole
+        /// game. Exposing the flag is what lets a caller honour the sentence
+        /// rather than only the method.
+        /// </remarks>
+        [Test]
+        public void HoldsEverythingUntilItIsBegun()
+        {
+            var circuit = Circuits.Get("oval");
+            var session = new Session(Session.Preset(SessionKind.Race));
+            var timer = new LapTimer(circuit);
+
+            Assert.That(session.Started, Is.False, "a session starts already running");
+
+            for (var t = 0.0; t < 10; t += 0.02)
+            {
+                session.Update(0.02, true, null, timer);
+            }
+
+            Assert.That(session.Elapsed, Is.EqualTo(0).Within(1e-9),
+                "ten seconds passed behind the title card");
+            Assert.That(session.Lights, Is.EqualTo(0),
+                "the lights counted down behind the title card");
+
+            session.Begin();
+            Assert.That(session.Started, Is.True);
+
+            session.Update(0.02, true, null, timer);
+            Assert.That(session.Phase, Is.EqualTo(SessionPhase.Formation));
+        }
     }
 }

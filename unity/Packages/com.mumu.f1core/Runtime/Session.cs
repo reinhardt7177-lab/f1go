@@ -302,6 +302,19 @@ namespace MumuF1
         /// </summary>
         public void Begin() => _started = true;
 
+        /// <summary>Whether the session has been let go.</summary>
+        /// <remarks>
+        /// Exposed because the guard inside <see cref="Update"/> only covers
+        /// what <see cref="Update"/> does, and the sentence above it — "not
+        /// the lights, not the clock, not track limits" — was describing a
+        /// wider claim than it could enforce. The lap timer is ticked by the
+        /// caller, one line earlier, and nothing stopped it: the clock
+        /// started when the world loaded, so a first lap carried however long
+        /// somebody had spent on the menu before pressing start. Sixteen
+        /// seconds, on the run that found it, on a car that had not moved.
+        /// </remarks>
+        public bool Started => _started;
+
         /// <summary>Advance the session.</summary>
         /// <param name="dt">the step (s).</param>
         /// <param name="onTrack">whether the car is inside the white lines.</param>
