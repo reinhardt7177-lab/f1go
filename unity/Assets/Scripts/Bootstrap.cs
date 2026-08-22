@@ -57,7 +57,16 @@ namespace MumuF1.Game
             var builder = track.GetComponent<TrackBuilder>();
             TracksideBuilder.Build(root.transform, builder.Circuit, builder.Geometry);
 
-            BuildCar(root.transform, track);
+            CarController car = BuildCar(root.transform, track);
+
+            /* And the race around it. Everything from here down is timing,
+               rules and rivals, all of it out of MumuF1.Core — the car above
+               does not know a session exists and does not need to. */
+            RaceDirector race = car.gameObject.AddComponent<RaceDirector>();
+            race.Begin(track.GetComponent<TrackBuilder>());
+
+            RivalView.Build(root.transform, race);
+            Hud.Build(root.transform, race, car);
         }
 
         private static void BuildLighting(Transform parent)
@@ -77,7 +86,7 @@ namespace MumuF1.Game
             RenderSettings.ambientGroundColor = new Color(0.27f, 0.31f, 0.18f);
         }
 
-        private static void BuildCar(Transform parent, Transform track)
+        private static CarController BuildCar(Transform parent, Transform track)
         {
             var car = new GameObject("Car");
             car.transform.SetParent(parent);
@@ -126,6 +135,8 @@ namespace MumuF1.Game
             rig.AddComponent<AudioListener>();
             ChaseCamera chase = rig.AddComponent<ChaseCamera>();
             chase.Target = car.transform;
+
+            return controller;
         }
     }
 }
