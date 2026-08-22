@@ -14,8 +14,15 @@ where a thing came from, not because a licence demands it.
 | `AdBoard`      | `billboard`         | Racing Kit  |
 | `Flag`         | `flagCheckers`      | Racing Kit  |
 | `StartGantry`  | `overheadLights`    | Racing Kit  |
-| `Car`          | `race`              | Car Kit     |
-| `Wheel`        | `wheel-racing`      | Car Kit     |
+
+`Car` and `Wheel` used to be here too — Kenney's `race` and
+`wheel-racing`, out of the Car Kit. They were removed once the game could
+generate a car of its own. The Kenney one is a good model and the wrong
+one: it is a saloon with a windscreen, and this is a game about
+single-seaters. `MumuF1.CarMesh` builds something with a nose, a floor,
+two wings and a halo, and the point of a silhouette is that it says what
+the thing is. The slots still exist — putting a `Car.obj` back in this
+folder still replaces the generated one.
 
 Installed by `tools/install-kit.py`, which chose each of these by name out
 of the three archives. To change any of them, put a `mapping.txt` in

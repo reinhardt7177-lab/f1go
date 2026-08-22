@@ -64,11 +64,14 @@ RULES = [
     ('MarshalPost', ['signdirection', 'sign', 'marshal', 'marker',
                      'lightpostmodern', 'lightpost', 'pylon', 'post']),
 
-    # The car. Kenney's car kit keeps bodies and wheels apart, which is what
-    # makes it usable here: the wheels have to steer and spin, so a car
-    # modelled as one lump would have to stand still from the axles out.
-    ('Car',         ['race', 'racecarred', 'racecar']),
-    ('Wheel',       ['wheel-racing', 'wheel-default', 'wheel']),
+    # No entry for `Car` or `Wheel`, deliberately. Kenney's car kit was
+    # installed here once and the model is a good one — it is just a saloon
+    # with a windscreen, and this is a game about single-seaters. The game
+    # generates its own car now, with a nose, a floor, two wings and a halo,
+    # and a matcher that quietly replaced that with a road car every time
+    # somebody re-ran this script would be undoing a decision rather than
+    # making one. Dropping a `Car.obj` into the kit folder by hand still
+    # overrides it; see that folder's README.
 ]
 
 

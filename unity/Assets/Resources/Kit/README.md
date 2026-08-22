@@ -1,8 +1,8 @@
 # The models the game uses, when it is not making its own
 
-This folder is full, and `CREDITS.md` says what of. Nine models out of
-Kenney's Racing, Nature and Car kits, all CC0, installed by
-`tools/install-kit.py` from the archives.
+`CREDITS.md` says what is in here. Seven models out of Kenney's Racing
+and Nature kits, all CC0, installed by `tools/install-kit.py` from the
+archives.
 
 It did not start full and it does not have to stay that way. Every kind
 here is optional: `Resources.Load` returns null rather than throwing when
@@ -20,6 +20,11 @@ else has to be kept in step with it.
 Conifer  Broadleaf  MarshalPost  Grandstand  AdBoard  Flag  StartGantry
 Car  Wheel
 ```
+
+`Car` and `Wheel` have no file here, and that is the point of the
+mechanism rather than a gap in it: the game generates a single-seater and
+a spoked wheel of its own, and dropping a `Car.obj` in would replace
+them.
 
 ## Replacing one
 

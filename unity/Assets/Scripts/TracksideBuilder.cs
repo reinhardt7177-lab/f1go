@@ -271,8 +271,10 @@ namespace MumuF1.Game
                 for (int i = 0; i < slots.Length; i++)
                 {
                     Material source = r.sharedMaterials[i];
+                    string named = source != null ? source.name : null;
                     Color own = source != null ? source.color : Color.white;
-                    slots[i] = Paint.Shared(Paint.Deliberate(own) ? own : Colour(kind));
+
+                    slots[i] = Paint.Shared(Palette.ForPart(named, own, Colour(kind)));
                 }
                 r.sharedMaterials = slots;
             }
