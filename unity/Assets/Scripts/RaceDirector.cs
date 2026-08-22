@@ -157,7 +157,15 @@ namespace MumuF1.Game
             if (!Session.Started) return;
 
             // --- timing ---------------------------------------------------
-            JustFinished = Timer.Update(where.S, OnTrack, dt);
+            /* And not while the grid is held either. `Session.Elapsed`
+               deliberately does not advance through the formation phase —
+               that is the whole reason the phase exists — so the lap clock
+               agreeing with it is the least this can do. Sitting on the grid
+               watching five lights fill is not a lap, and it was six and a
+               third seconds of one. */
+            bool held = Session.Phase == SessionPhase.Formation;
+
+            JustFinished = held ? null : Timer.Update(where.S, OnTrack, dt);
             Session.Update(dt, OnTrack, JustFinished, Timer);
 
             // --- the ghost -------------------------------------------------
