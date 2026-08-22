@@ -59,6 +59,23 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Can the font still draw the game?
+      #
+      # The project ships a subset of Noto Sans KR — the full face is
+      # 4.6 MB and this is 26 KB — cut to exactly the characters the
+      # scripts contain. Which means every new label is a chance to write
+      # one it cannot draw, and a glyph that is not in a font is not an
+      # error. It is nothing: no console line, no missing asset, just a
+      # gap on screen where the words were.
+      #
+      # That is not hypothetical. The start card read "T 트랙션 · P
+      # 자동주행 · R 리셋" and a player saw "T 트 · P · R 리셋" — the
+      # traction-control key with no noun and the autopilot with nothing
+      # at all — through several builds, because nothing anywhere was
+      # checking. Now something is, and it costs a second.
+      - name: Can the font draw the game?
+        run: python3 tools/subset-font.py --check
+
   # The site, which is the Unity player and nothing else.
   #
   # It cannot be built here — the editor is several gigabytes and needs a

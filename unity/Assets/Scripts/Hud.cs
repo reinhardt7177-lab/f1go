@@ -126,7 +126,7 @@ namespace MumuF1.Game
             if (_speed != null && unit == _builtFor) return;
             _builtFor = unit;
 
-            _speed = Typeface.Style(Mathf.RoundToInt(unit * 2.2f), FontStyle.Bold, TextAnchor.MiddleLeft);
+            _speed = Typeface.Style(Mathf.RoundToInt(unit * 2.2f), FontStyle.Bold, TextAnchor.MiddleRight);
             _gear = Typeface.Style(Mathf.RoundToInt(unit * 2.1f), FontStyle.Bold, TextAnchor.MiddleCenter);
             /* Right-aligned, because a column of times is read down its last
                digit and a ragged right edge makes two lap times look
@@ -168,13 +168,20 @@ namespace MumuF1.Game
         /// Where the rev bar starts, as a fraction of the limiter.
         /// </summary>
         /// <remarks>
-        /// Not at zero. The engine idles at four thousand and never goes
-        /// below it, so a bar drawn from zero has its first quarter
-        /// permanently lit and nothing to say. A real shift-light strip does
-        /// the same thing for the same reason: it covers the top of the range
-        /// only, which is the part a gear change is decided in.
+        /// Just above the idle speed, and no higher. The engine idles at four
+        /// thousand of its fifteen and never goes below, so a bar drawn from
+        /// zero has its first quarter permanently lit and nothing to say.
+        ///
+        /// It was set at 0.55 on the theory that a shift-light strip only
+        /// covers the top of the range, and measuring it killed that: at
+        /// 5,200 rpm in second, accelerating hard out of a corner, the bar
+        /// was completely dark. An instrument that reads empty through most
+        /// of the range it is meant to describe is worse than no instrument,
+        /// because the first thing it teaches is not to look at it. The
+        /// shift point is carried by the colour bands instead, which is
+        /// where it belongs.
         /// </remarks>
-        private const float RevFloor = 0.55f;
+        private const float RevFloor = 0.27f;
 
         private void DrawCluster(float unit, float pad)
         {
@@ -192,22 +199,27 @@ namespace MumuF1.Game
             float row = box.y + unit * 1.9f;
             float rowHeight = unit * 2.1f;
 
-            // Speed, and the unit under its own last digit.
+            /* Speed, right-aligned, with its unit beside it rather than
+               under it. Under it is where it was, and the number's own
+               descender line is exactly where "KM/H" landed — at three
+               digits the two were drawn through each other. Right-aligning
+               also stops the number shifting sideways as it crosses from
+               99 to 100. */
             double kmh = Math.Abs(_car.SpeedMs) * MathUtil.Kmh;
-            var speedBox = new Rect(box.x + pad, row, unit * 5.2f, rowHeight);
+            var speedBox = new Rect(box.x + pad, row, unit * 4f, rowHeight);
             Text(speedBox, Mathf.RoundToInt((float)kmh).ToString(), _speed, Ink);
-            Text(new Rect(speedBox.x, speedBox.yMax - unit * 0.5f, unit * 2f, unit * 0.5f),
+            Text(new Rect(speedBox.xMax + unit * 0.15f, row + rowHeight * 0.42f, unit * 1.5f, unit * 0.7f),
                 "KM/H", _label, Dim);
 
             // The gear, on its own plate.
-            var gearBox = new Rect(box.x + unit * 6.1f, row, unit * 2.1f, rowHeight);
+            var gearBox = new Rect(box.x + unit * 6.2f, row, unit * 2.1f, rowHeight);
             Fill(gearBox, Sunk);
             Fill(new Rect(gearBox.x, gearBox.y, gearBox.width, Mathf.Max(2f, unit * 0.05f)), Amber);
             /* Reverse is gear zero and neutral is not a gear the box has, so
                R and a number is the whole vocabulary. */
             Text(gearBox, _car.Gear == 0 ? "R" : _car.Gear.ToString(), _gear, Amber);
 
-            DrawPedals(new Rect(box.x + unit * 8.8f, row + unit * 0.25f, unit * 3.1f, unit * 1.5f), unit);
+            DrawPedals(new Rect(box.x + unit * 8.9f, row + unit * 0.25f, unit * 2.9f, unit * 1.5f), unit);
             DrawEnergy(new Rect(box.xMax - pad - unit * 2.4f, row + unit * 0.25f, unit * 2.4f, unit * 1.5f), unit);
         }
 

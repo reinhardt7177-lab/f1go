@@ -188,6 +188,38 @@ const build = async () => {
      `immutable` was always promising. */
   const version = crypto.createHash('sha1').update(archive).digest('hex').slice(0, 10);
 
+  /* And a check on whether it is the player this commit expects.
+
+     The host builds the site on a push and the Unity workflow publishes
+     the player about eighteen minutes later, so a deploy triggered by a
+     push always fetches the *previous* build. That has cost more time
+     than any bug in the game, and its only symptom was reloading the page
+     and finding nothing had changed — both halves reported success
+     throughout, and there was nothing anywhere that said which player was
+     being served.
+
+     Now there is. The workflow records the digest of what it published
+     and commits it, so a mismatch here means exactly one thing: this
+     deploy is ahead of the build. It is a warning rather than an error
+     because it is the normal state of the first deploy after a push, and
+     failing would break the very build that is supposed to recover. The
+     commit that records the digest is also the push that brings the host
+     back to fetch it. */
+  const lock = path.join(root, 'tools', 'player.sha256');
+  const expected = fs.existsSync(lock) ? fs.readFileSync(lock, 'utf8').trim() : null;
+  const digest = crypto.createHash('sha256').update(archive).digest('hex');
+
+  if (expected && expected !== digest) {
+    console.warn('');
+    console.warn('  This is not the player this commit expects.');
+    console.warn(`    expected ${expected.slice(0, 16)}…`);
+    console.warn(`    fetched  ${digest.slice(0, 16)}…`);
+    console.warn('  The Unity build for this commit has not published yet, so this is');
+    console.warn('  the previous one. It records the new digest when it finishes, and');
+    console.warn('  that commit is what brings the host back to fetch it.');
+    console.warn('');
+  }
+
   const files = untar(zlib.gunzipSync(archive), out);
   if (files === 0) {
     console.error('The archive was empty.');
@@ -235,7 +267,7 @@ const build = async () => {
   const kept = fs.readdirSync(out, { recursive: true }).length;
   console.log(`dist-site ready — ${kept} files, ${(size(out) / 1024 / 1024).toFixed(1)} MB` +
     ` (${files - kept} of Unity's template files dropped)`);
-  console.log(`  player ${version}`);
+  console.log(`  player ${version}` + (expected === digest ? '  (as recorded)' : ''));
   console.log('  /  the game');
 };
 

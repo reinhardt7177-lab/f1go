@@ -331,6 +331,87 @@ jobs:
 
           gh release upload webgl mumuF1-webgl.tar.gz --clobber
 
+      # Record which player this build published.
+      #
+      # `tools/player.sha256` is the digest of the archive above, and the
+      # site build compares what it fetched against it. That comparison is
+      # the first thing anywhere in this pipeline that can tell you *which*
+      # player is being served — Unity's output has fixed filenames, so two
+      # different builds are identical from the outside, and "did my change
+      # reach the site" has cost more time on this project than any bug in
+      # the game.
+      #
+      # Committing it is also the fix rather than merely the diagnosis. The
+      # host builds the site on a push and this job finishes about eighteen
+      # minutes after that push, so a deploy always fetched the *previous*
+      # player — every single time, with both halves reporting success. This
+      # commit is a push that happens once the asset exists, so the host
+      # comes back and fetches it. No secret, no account, nothing to set up.
+      #
+      # It cannot loop: a push made with GITHUB_TOKEN does not start
+      # workflows, which is a rule GitHub has precisely so that this pattern
+      # is safe. The host's own integration is not a workflow and does see
+      # it, which is the whole point.
+      #
+      # Into a fresh clone rather than the working tree, which at this point
+      # is a Unity project with a WebGL build in it. And never fatal — this
+      # is a convenience, and a branch that refuses the push (protected, or
+      # something newer landed three times running) should not turn a good
+      # player into a red build.
+      - if: steps.licence.outputs.have == 'true'
+        name: Record the player, which is also what brings the host back
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          sum=$(sha256sum mumuF1-webgl.tar.gz | cut -d' ' -f1)
+          echo "Published player $sum"
+
+          work=$(mktemp -d)
+          if ! git clone --quiet --depth 1 --branch "$BRANCH" \
+              "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+              "$work"; then
+            echo "Could not clone $BRANCH to record it. The site will pick"
+            echo "this player up on the next push instead."
+            exit 0
+          fi
+
+          cd "$work"
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          for attempt in 1 2 3; do
+            printf '%s\n' "$sum" > tools/player.sha256
+            git add tools/player.sha256
+
+            if git diff --cached --quiet; then
+              echo "Already recorded — this is the same player as last time."
+              exit 0
+            fi
+
+            git commit --quiet -m "Record the player this build published
+
+          The digest of the WebGL archive on the rolling \`webgl\` release.
+          The site build checks what it fetched against this, and this commit
+          is the push that brings the host back to fetch it now the asset
+          exists. Written by CI; see the step that writes it in unity.yml."
+
+            if git push --quiet origin "HEAD:$BRANCH"; then
+              echo "Recorded. The host will rebuild with this player."
+              exit 0
+            fi
+
+            # Back to whatever the branch is now and try again on top of
+            # it. Fetch-and-reset rather than reset-and-pull, because this
+            # is a depth-one clone: `HEAD~1` need not exist, and a rebase
+            # onto a history that is not there fails in a less obvious way.
+            echo "Push rejected — something newer landed. Trying again."
+            git fetch --quiet --depth 1 origin "$BRANCH" || exit 0
+            git reset --hard --quiet FETCH_HEAD
+          done
+
+          echo "Could not record it after three attempts; carrying on."
+
       # Tell the host the player has changed.
       #
       # This closes a gap that has wasted more of everyone's time than any

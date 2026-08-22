@@ -47,8 +47,41 @@ namespace MumuF1
         /// <summary>Convective cooling at rest (W/K).</summary>
         public double CoolingBase = 45.0;
 
+        /*
+         * Cooling per metre per second of airspeed (W/K per m/s).
+         *
+         * This was 1.1, and at 1.1 the model has no stable operating point
+         * anywhere a race car lives. It is a closed loop and the loop has
+         * positive gain: a hotter tyre grips less, a tyre that grips less
+         * must slide further to make the same force, and sliding further is
+         * exactly what heats it. Every sustained run therefore ended at the
+         * clamp — 226 °C measured on a flat-out lap of the practice oval,
+         * with the grip multiplier pinned at its 0.62 floor.
+         *
+         * It never showed up because nothing here had ever completed a lap.
+         * Short runs read 74 to 85 °C and looked perfectly healthy; the
+         * runaway needs about a minute. What it feels like is a car that
+         * slides everywhere for no reason and gets worse the longer you
+         * drive, which is precisely the complaint that sent me looking.
+         *
+         * Solving the loop for its fixed points puts the knee at 3.1: below
+         * that there is only the clamp. Between 3.1 and about 5 a tyre that
+         * starts cold settles correctly and a tyre that has already been
+         * cooked never comes back, which is worse than either — you lose the
+         * car once and it stays lost. At 5 the hot solution disappears
+         * entirely and there is one stable point for any history, which is
+         * the property worth having, so the number is chosen for that rather
+         * than fitted to a measurement.
+         *
+         * What it gives: about 90 °C flat out from cold, inside the working
+         * window; low thirties ambling about, which is cold and slow and
+         * should be; and a tyre you have overheated recovers if you back
+         * off. The out-lap matters again and the tenth lap is not a
+         * different car.
+         */
+
         /// <summary>Extra convective cooling per m/s of airflow (W/K).</summary>
-        public double CoolingPerSpeed = 1.1;
+        public double CoolingPerSpeed = 5.0;
 
         public double AmbientTemp = 26.0;
 
