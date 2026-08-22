@@ -52,6 +52,7 @@ namespace MumuF1.Game
 
         // The model, shared with the tests and with the web version.
         private readonly TireParams _tire = new TireParams();
+        private readonly StictionParams _stiction = new StictionParams();
         private readonly TireThermalParams _thermal = new TireThermalParams();
         private readonly AeroParams _aero = new AeroParams();
         private readonly SuspensionParams _suspension = new SuspensionParams();
@@ -143,6 +144,26 @@ namespace MumuF1.Game
         /// </remarks>
         public double DrivenForce => _wheels[RL] == null ? 0 : _wheels[RL].ForceLong;
 
+        /// <summary>How many patches are holding rather than sliding.</summary>
+        /// <remarks>
+        /// On the instrument so the thing that stops a parked car sliding can
+        /// be seen doing it. Four on the grid and zero at any real speed is
+        /// the shape to look for; four at speed would mean the crawl is set
+        /// far too high and the car is being driven by a spring.
+        /// </remarks>
+        public int StuckWheels
+        {
+            get
+            {
+                int n = 0;
+                foreach (Wheel w in _wheels)
+                {
+                    if (w != null && w.Stick.Stuck) n++;
+                }
+                return n;
+            }
+        }
+
         /// <summary>Drive torque reaching the left rear (N m).</summary>
         public double DrivenTorque => _wheels[RL] == null ? 0 : _wheels[RL].DriveTorque;
 
@@ -185,6 +206,19 @@ namespace MumuF1.Game
                    degree is a car the stability program is catching and the
                    booster is punishing at the same time. */
                 Vector3 heading = transform.InverseTransformDirection(_body.linearVelocity);
+
+                /* A velocity with no length has no direction, and asking
+                   `Atan2` for one anyway gets an answer built out of two
+                   numbers that are both noise. Nothing acts on it — every
+                   consumer has its own speed floor, six metres a second for
+                   the aids and fifteen for the booster — so this is about the
+                   read-out, which is not nothing: a parked car reporting a
+                   ninety-five degree slip angle is exactly the sort of number
+                   that sends somebody looking in the wrong place, and it did.
+                   Half a metre a second is well below where any of this
+                   starts mattering and comfortably above the noise. */
+                if (heading.sqrMagnitude < 0.25f) return 0;
+
                 return System.Math.Atan2(heading.x, heading.z);
             }
         }
@@ -387,6 +421,9 @@ namespace MumuF1.Game
             public double LastCompression;
             public double SteerAngle;
             public double RelaxedSlipAngle;
+
+            /// <summary>Where this patch took hold, while it is nearly stopped.</summary>
+            public StictionState Stick;
             public bool Grounded;
             public double Load;
             public double SlipRatio;
@@ -464,6 +501,7 @@ namespace MumuF1.Game
                 w.Compression = 0;
                 w.LastCompression = 0;
                 w.RelaxedSlipAngle = 0;
+                w.Stick = default;
             }
         }
 
@@ -764,6 +802,12 @@ namespace MumuF1.Game
                     w.Spin += w.Omega * dt;
                     w.SlipRatio = 0;
 
+                    /* And it is holding nothing. Passing the zero load
+                       through rather than clearing the field by hand is the
+                       point: one place decides what an unloaded patch does,
+                       and it is the same place the loaded ones go through. */
+                    Stiction.Solve(_stiction, ref w.Stick, 0, 0, 0, 0, dt);
+
                     // An airborne tyre still cools in the airstream.
                     TireThermal.Step(_thermal, w.Condition, 0, speedMag, dt, false);
                     continue;
@@ -838,8 +882,36 @@ namespace MumuF1.Game
                 double fLong = sumLong / sub;
                 double fLat = sumLat / sub;
 
-                w.ForceLong = fLong;
                 w.DriveTorque = w.Driven ? (i == RL ? drive.Left : drive.Right) : 0.0;
+
+                /* What holds the car still. The magic formula above cannot:
+                   a slip ratio and a slip angle are both a velocity over a
+                   velocity, and the relaxation length makes a car that is not
+                   rolling build no cornering force at all — so a stationary
+                   car had no lateral friction whatever, and whatever pushed
+                   it sideways met nothing. Measured on the grid at 1.96 m and
+                   2.8 degrees in 9.2 seconds with nothing pressed.
+
+                   Its ceiling closes as the patch speeds up and is shut by
+                   the crawl, so above walking pace this contributes exactly
+                   zero and the tyre is the tyre it always was. Keyed to what
+                   the patch is sliding rather than to what the car is doing,
+                   which is why it launches the car instead of holding it: a
+                   driven wheel spins up first, and a patch sliding backwards
+                   pushes forwards. */
+                TireForces stick = Stiction.Solve(
+                    _stiction, ref w.Stick,
+                    vLong - w.Omega * WheelRadius, vLat,
+                    load, Tire.PeakForce(_tire, load), dt, gripScale);
+
+                fLong += stick.Long;
+                fLat += stick.Lat;
+
+                /* Reported after the two are added, so the instrument shows
+                   what the road is actually getting. Reading the slip curve
+                   alone is what let a car slide for nine seconds under an
+                   `f 0 N` that was, as far as it went, true. */
+                w.ForceLong = fLong;
 
                 Vector3 wheelForward = transform.TransformDirection(
                     new Vector3((float)sin, 0f, (float)cos));
