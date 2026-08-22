@@ -63,6 +63,85 @@ env:
   UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
 
 jobs:
+  # Are the secrets the shape they should be?
+  #
+  # Three runs failed identically at Unity's login with HTTP 401, and the
+  # same credentials sign in fine at id.unity.com with no second factor.
+  # That leaves the values themselves — and the usual culprit is a
+  # trailing newline picked up by a copy and paste, which is invisible
+  # everywhere and fatal here.
+  #
+  # So this measures rather than guesses. It prints lengths and yes/no
+  # answers and never the values; GitHub masks those anyway, but the
+  # point is that nothing here would be worth unmasking. It runs in
+  # seconds, ahead of a ten-minute editor job, so a mangled secret is
+  # answered before anything expensive starts.
+  secrets:
+    name: Check the shape of the secrets
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.shape.outputs.ok }}
+    steps:
+      - id: shape
+        run: |
+          ok=true
+          report () {
+            local name="$1" value="$2"
+            if [ -z "$value" ]; then
+              echo "$name: NOT SET"
+              ok=false
+              return
+            fi
+            local len=${#value}
+            local trimmed
+            trimmed="$(printf '%s' "$value" | tr -d '[:space:]')"
+            local lines
+            lines=$(printf '%s' "$value" | wc -l)
+            echo "$name: ${len} characters, $((len - ${#trimmed})) of them whitespace, $((lines + 1)) line(s)"
+            case "$value" in
+              " "*|$'\t'*) echo "  ! starts with whitespace"; ok=false ;;
+            esac
+            case "$value" in
+              *" "|*$'\t') echo "  ! ends with whitespace"; ok=false ;;
+            esac
+          }
+
+          report UNITY_EMAIL "$UNITY_EMAIL"
+          case "$UNITY_EMAIL" in
+            *@*.*) echo "  looks like an address" ;;
+            *) echo "  ! does not look like an address"; ok=false ;;
+          esac
+
+          report UNITY_PASSWORD "$UNITY_PASSWORD"
+
+          if [ -z "$UNITY_LICENSE" ]; then
+            echo "UNITY_LICENSE: NOT SET"
+            ok=false
+          else
+            echo "UNITY_LICENSE: ${#UNITY_LICENSE} characters, $(printf '%s' "$UNITY_LICENSE" | wc -l) newline(s)"
+            case "$UNITY_LICENSE" in
+              "<?xml"*) echo "  starts with the XML declaration" ;;
+              *) echo "  ! does not start with <?xml — the first line is missing"; ok=false ;;
+            esac
+            case "$UNITY_LICENSE" in
+              *"</root>"*) echo "  contains the closing root tag" ;;
+              *) echo "  ! no </root> — the file is truncated"; ok=false ;;
+            esac
+            case "$UNITY_LICENSE" in
+              *"<StopDate Value=\""*) echo "  carries a StopDate" ;;
+            esac
+          fi
+
+          echo "ok=$ok" >> "$GITHUB_OUTPUT"
+          echo
+          if [ "$ok" = true ]; then
+            echo "Nothing wrong with the shape of them. If Unity still answers 401,"
+            echo "the account is refusing password login to its API even though the"
+            echo "website accepts it — which is what a CI-only account solves."
+          else
+            echo "Fix the ones marked ! above and run this again."
+          fi
+
   # Compile Assets/Scripts against a real UnityEngine.
   #
   # This is the more valuable of the two jobs, and not by a little. The
@@ -83,6 +162,7 @@ jobs:
   # until this step existed to print it.
   editor:
     name: Compile Assets against UnityEngine
+    needs: secrets
     runs-on: ubuntu-latest
     # A hung editor does not fail, it waits — and the default is six hours
     # of a runner held by a process nobody can see. Forty-five minutes is
