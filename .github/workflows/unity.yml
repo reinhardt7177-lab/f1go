@@ -298,7 +298,18 @@ jobs:
       # accumulate a release per push — and because it is a release asset
       # rather than a commit, eleven megabytes of player never enters the git
       # history.
-      - if: steps.licence.outputs.have == 'true'
+      #
+      # `main` only, and that condition is load-bearing. One rolling tag
+      # clobbered by every branch means a branch build replaces the player
+      # the live site serves, and the site's own guard against that is a
+      # console warning rather than an error — deliberately, because a
+      # first deploy after a push is legitimately one build behind. So
+      # nothing downstream would have stopped it. That was harmless while
+      # `main` had no game on it and stopped being harmless the moment it
+      # did. A branch build still produces the artifact at the end of this
+      # job, which is how an unmerged change gets played before it is
+      # anybody else's.
+      - if: steps.licence.outputs.have == 'true' && github.ref == 'refs/heads/main'
         name: Publish it where the site build can reach it
         env:
           GH_TOKEN: ${{ github.token }}
@@ -358,7 +369,7 @@ jobs:
       # is a convenience, and a branch that refuses the push (protected, or
       # something newer landed three times running) should not turn a good
       # player into a red build.
-      - if: steps.licence.outputs.have == 'true'
+      - if: steps.licence.outputs.have == 'true' && github.ref == 'refs/heads/main'
         name: Record the player, which is also what brings the host back
         env:
           GH_TOKEN: ${{ github.token }}
@@ -433,7 +444,7 @@ jobs:
       # Without it everything still works and the site is simply one build
       # behind, which is what it has been all along — so this skips quietly
       # rather than failing, the same way the licence check does.
-      - if: steps.licence.outputs.have == 'true'
+      - if: steps.licence.outputs.have == 'true' && github.ref == 'refs/heads/main'
         name: Ask the host to rebuild now the player exists
         run: |
           if [ -z "$VERCEL_DEPLOY_HOOK" ]; then
@@ -457,11 +468,12 @@ jobs:
 
           echo "Deploy hook accepted (HTTP $code). The site will rebuild with this player."
 
-      # Uploaded rather than published. Publishing needs a decision about
-      # where it goes — the Pages site is the web version's, and putting a
-      # second game on it is a change to `ci.yml` rather than a step here.
-      # An artifact is downloadable and playable now, and does not risk the
-      # deploy that already works.
+      # Every build, on every branch — which is the point of it now that
+      # the three steps above are `main` only. This is how a change that
+      # has not merged yet gets played: download the artifact, serve the
+      # directory, drive it. It needs a token where a release asset does
+      # not, and that is exactly the property wanted here — a branch build
+      # is for whoever is working on it, not for the live site.
       - if: steps.licence.outputs.have == 'true'
         uses: actions/upload-artifact@v4
         with:
