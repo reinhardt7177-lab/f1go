@@ -1,7 +1,6 @@
 {
   "dependencies": {
     "com.mumu.f1core": "file:com.mumu.f1core",
-    "com.unity.render-pipelines.universal": "17.0.3",
     "com.unity.ugui": "2.0.0",
     "com.unity.modules.audio": "1.0.0",
     "com.unity.modules.imgui": "1.0.0",

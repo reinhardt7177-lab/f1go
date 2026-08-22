@@ -37,13 +37,17 @@ namespace MumuF1.Game
         /// the shader by GUID, and this project keeps neither.
         ///
         /// <c>Shader.Find</c> stays as the fallback, because in the editor it
-        /// works whatever folder the file is in.
+        /// works whatever folder the file is in. The two after it are
+        /// built-in pipeline shaders now: the Universal one used to be here
+        /// and was never going to help, because a project with no pipeline
+        /// asset assigned does not run URP at all — which is the same reason
+        /// the toon shader itself had to be rewritten.
         /// </remarks>
         public static Shader Toon =>
             _toon != null ? _toon : _toon =
                 Resources.Load<Shader>("MumuToon")
                 ?? Shader.Find("mumuF1/Toon")
-                ?? Shader.Find("Universal Render Pipeline/Lit")
+                ?? Shader.Find("Diffuse")
                 ?? Shader.Find("Standard");
 
         private static readonly System.Collections.Generic.Dictionary<int, Material> Cache =

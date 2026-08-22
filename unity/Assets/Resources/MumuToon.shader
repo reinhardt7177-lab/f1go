@@ -18,10 +18,24 @@
 // overdrawn by the model itself, and what survives is a rim of exactly
 // the thickness it was pushed by.
 //
-// Bought nothing to do it. The asset store has good cel-shading packs,
-// but this is thirty lines of HLSL and the web version already knows
-// exactly which thirty — including the two details that make it hold up,
-// both of which were paid for once already and are commented below.
+// ## Built-in, not URP, and why that is not a downgrade
+//
+// This was written against the Universal pipeline and rendered every
+// object in the game bright magenta, which is Unity's way of saying a
+// shader produced no usable subshader. URP is in the package manifest,
+// but a project only *uses* it when a pipeline asset is assigned in
+// Graphics Settings — and this project keeps no generated settings
+// files, because they are large diffs of defaults that refer to
+// everything by GUID and cannot be reviewed as text. So the game runs on
+// the built-in pipeline, the URP subshader was skipped for not matching
+// it, the fallback was also URP and was skipped too, and nothing was
+// left.
+//
+// Writing it for built-in costs nothing here. There is no lightmapping,
+// no reflection probe, no post-processing stack: the whole look is one
+// directional light quantised into four bands over flat colour. What it
+// buys is a shader that needs no project-wide state to work, which is
+// the same reason the scene is empty and the world is built from code.
 
 Shader "mumuF1/Toon"
 {
@@ -37,140 +51,129 @@ Shader "mumuF1/Toon"
 
     SubShader
     {
-        Tags { "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline" }
+        Tags { "RenderType" = "Opaque" "Queue" = "Geometry" }
 
-        // ---- the outline hull, first so the model overdraws it -------
+        // ---- The outline, first: an inverted hull ----------------------
         Pass
         {
             Name "Outline"
-            Tags { "LightMode" = "SRPDefaultUnlit" }
-
             Cull Front
             ZWrite On
 
-            HLSLPROGRAM
+            CGPROGRAM
             #pragma vertex OutlineVertex
             #pragma fragment OutlineFragment
-            #pragma multi_compile_instancing
+            #pragma multi_compile_fog
+            #include "UnityCG.cginc"
 
-            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            float4 _OutlineColor;
+            float _OutlineWeight;
 
-            CBUFFER_START(UnityPerMaterial)
-                float4 _BaseColor;
-                float4 _OutlineColor;
-                float _Bands;
-                float _Floor;
-                float _OutlineWeight;
-                float _UseVertexColor;
-            CBUFFER_END
-
-            struct Attributes
+            struct appdata
             {
-                float4 positionOS : POSITION;
-                float3 normalOS   : NORMAL;
-                UNITY_VERTEX_INPUT_INSTANCE_ID
+                float4 vertex : POSITION;
+                float3 normal : NORMAL;
             };
 
-            struct Varyings
+            struct v2f
             {
-                float4 positionCS : SV_POSITION;
+                float4 pos : SV_POSITION;
+                UNITY_FOG_COORDS(0)
             };
 
-            Varyings OutlineVertex(Attributes input)
+            v2f OutlineVertex(appdata v)
             {
-                Varyings output;
-                UNITY_SETUP_INSTANCE_ID(input);
+                v2f o;
 
-                float3 positionVS = TransformWorldToView(
-                    TransformObjectToWorld(input.positionOS.xyz));
-                float3 normalVS = normalize(
-                    TransformWorldToViewDir(TransformObjectToWorldNormal(input.normalOS)));
+                /* Pushed out in *clip* space rather than in the model's,
+                   so the rim is a constant width on screen instead of
+                   growing and shrinking with distance. A hull expanded in
+                   object space vanishes on a car at the end of a straight,
+                   which is the one place the outline is doing all the
+                   work. */
+                float4 clip = UnityObjectToClipPos(v.vertex);
+                float3 normalVS = mul((float3x3)UNITY_MATRIX_IT_MV, v.normal);
+                float2 offset = normalize(normalVS.xy);
 
-                /* The push is scaled by view depth, so a distant car keeps
-                   a line of the same weight on screen rather than fading
-                   to nothing.
+                /* Against the projection's own scale, so field of view and
+                   aspect ratio do not change the thickness either. The
+                   1080 in the property name is what the weight is quoted
+                   against; the division carries it to whatever the screen
+                   actually is. */
+                clip.xy += offset * (_OutlineWeight / 1080.0) * clip.w * 2.0;
 
-                   The perspective divide takes a metre to (focal / -z)
-                   pixels, so the push has to carry -z to come out constant
-                   on screen. The 2.0 is the clip cube's height in NDC, and
-                   UNITY_MATRIX_P[1][1] is the focal term. */
-                float perPixel = (2.0 * -positionVS.z)
-                    / (UNITY_MATRIX_P[1][1] * _ScreenParams.y);
-                positionVS += normalVS * _OutlineWeight * perPixel;
-
-                output.positionCS = TransformWViewToHClip(positionVS);
-                return output;
+                o.pos = clip;
+                UNITY_TRANSFER_FOG(o, o.pos);
+                return o;
             }
 
-            half4 OutlineFragment(Varyings input) : SV_Target
+            fixed4 OutlineFragment(v2f i) : SV_Target
             {
-                return _OutlineColor;
+                fixed4 col = _OutlineColor;
+                /* Fogged with everything else, or a distant car keeps a
+                   hard black edge while its body has already dissolved
+                   into the horizon. */
+                UNITY_APPLY_FOG(i.fogCoord, col);
+                return col;
             }
-            ENDHLSL
+            ENDCG
         }
 
-        // ---- the model itself, in flat bands ------------------------
+        // ---- The body ---------------------------------------------------
         Pass
         {
             Name "Toon"
-            Tags { "LightMode" = "UniversalForward" }
+            Tags { "LightMode" = "ForwardBase" }
 
             Cull Back
             ZWrite On
 
-            HLSLPROGRAM
+            CGPROGRAM
             #pragma vertex ToonVertex
             #pragma fragment ToonFragment
-            #pragma multi_compile_instancing
-            #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE
-            #pragma multi_compile_fragment _ _SHADOWS_SOFT
+            #pragma multi_compile_fwdbase
+            #pragma multi_compile_fog
+            #include "UnityCG.cginc"
+            #include "Lighting.cginc"
+            #include "AutoLight.cginc"
 
-            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
-            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
+            float4 _BaseColor;
+            float _Bands;
+            float _Floor;
+            float _UseVertexColor;
 
-            CBUFFER_START(UnityPerMaterial)
-                float4 _BaseColor;
-                float4 _OutlineColor;
-                float _Bands;
-                float _Floor;
-                float _OutlineWeight;
-                float _UseVertexColor;
-            CBUFFER_END
-
-            struct Attributes
+            struct appdata
             {
-                float4 positionOS : POSITION;
-                float3 normalOS   : NORMAL;
-                float4 color      : COLOR;
-                UNITY_VERTEX_INPUT_INSTANCE_ID
+                float4 vertex : POSITION;
+                float3 normal : NORMAL;
+                float4 color  : COLOR;
             };
 
-            struct Varyings
+            struct v2f
             {
-                float4 positionCS  : SV_POSITION;
-                float3 normalWS    : TEXCOORD0;
-                float3 positionWS  : TEXCOORD1;
-                float4 color       : COLOR;
+                float4 pos    : SV_POSITION;
+                float3 normal : TEXCOORD0;
+                float4 color  : COLOR;
+                SHADOW_COORDS(1)
+                UNITY_FOG_COORDS(2)
             };
 
-            Varyings ToonVertex(Attributes input)
+            v2f ToonVertex(appdata v)
             {
-                Varyings output;
-                UNITY_SETUP_INSTANCE_ID(input);
-                output.positionWS = TransformObjectToWorld(input.positionOS.xyz);
-                output.positionCS = TransformWorldToHClip(output.positionWS);
-                output.normalWS = TransformObjectToWorldNormal(input.normalOS);
-                output.color = input.color;
-                return output;
+                v2f o;
+                o.pos = UnityObjectToClipPos(v.vertex);
+                o.normal = UnityObjectToWorldNormal(v.normal);
+                o.color = v.color;
+                TRANSFER_SHADOW(o)
+                UNITY_TRANSFER_FOG(o, o.pos);
+                return o;
             }
 
-            half4 ToonFragment(Varyings input) : SV_Target
+            fixed4 ToonFragment(v2f i) : SV_Target
             {
-                float4 shadowCoord = TransformWorldToShadowCoord(input.positionWS);
-                Light light = GetMainLight(shadowCoord);
-
-                float ndotl = saturate(dot(normalize(input.normalWS), light.direction));
-                ndotl *= light.shadowAttenuation;
+                float3 lightDir = normalize(_WorldSpaceLightPos0.xyz);
+                float ndotl = saturate(dot(normalize(i.normal), lightDir));
+                ndotl *= SHADOW_ATTENUATION(i);
 
                 /* Quantised to hard steps: four reads as drawn, and more
                    starts to look smooth again.
@@ -180,24 +183,28 @@ Shader "mumuF1/Toon"
                    whose far side falls to nothing reads as a hole cut in
                    the picture rather than as a car. */
                 float bands = max(2.0, floor(_Bands));
-                float step = floor(ndotl * bands) / (bands - 1.0);
-                float shade = _Floor + (1.0 - _Floor) * saturate(step);
+                float stepped = floor(ndotl * bands) / (bands - 1.0);
+                float shade = _Floor + (1.0 - _Floor) * saturate(stepped);
 
-                float3 albedo = lerp(_BaseColor.rgb, input.color.rgb, _UseVertexColor);
-                float3 lit = albedo * shade * light.color;
+                float3 albedo = lerp(_BaseColor.rgb, i.color.rgb, _UseVertexColor);
+                float3 lit = albedo * shade * _LightColor0.rgb;
 
-                // A little ambient on top, so nothing is ever flat black.
-                lit += albedo * unity_AmbientSky.rgb * 0.35;
+                /* A little ambient on top, so nothing is ever flat black.
+                   `ShadeSH9` rather than a single colour, because the
+                   ambient is trilight — sky above, ground below — and a
+                   flat term would throw that away. */
+                lit += albedo * ShadeSH9(float4(normalize(i.normal), 1.0)) * 0.5;
 
-                return half4(lit, _BaseColor.a);
+                fixed4 col = fixed4(lit, _BaseColor.a);
+                UNITY_APPLY_FOG(i.fogCoord, col);
+                return col;
             }
-            ENDHLSL
+            ENDCG
         }
 
         // Shadows, so the car is not floating.
-        UsePass "Universal Render Pipeline/Lit/ShadowCaster"
-        UsePass "Universal Render Pipeline/Lit/DepthOnly"
+        UsePass "Legacy Shaders/VertexLit/SHADOWCASTER"
     }
 
-    Fallback "Universal Render Pipeline/Lit"
+    Fallback "Diffuse"
 }
