@@ -66,7 +66,20 @@ namespace MumuF1
         /// back across the road by a yaw about +Y, and a yaw has to have
         /// something to turn.
         /// </remarks>
-        public static Mesh3 Build(PropKind kind)
+        /// <summary>How far out the start gantry's legs stand, by default (m).</summary>
+        /// <remarks>
+        /// Only a default. It used to be the whole answer, with a comment
+        /// beside it saying "twelve metres is the widest half-width any
+        /// circuit here uses, plus its kerb" — true when it was written and
+        /// untrue the moment the Proving Ground was added, whose road is
+        /// sixty metres across. Nothing re-read the comment, so the gantry
+        /// went on standing two six-metre concrete legs seventeen metres
+        /// inside the racing surface, in the middle of the road, at the one
+        /// place every lap begins.
+        /// </remarks>
+        public const double GantryLegs = 12.4;
+
+        public static Mesh3 Build(PropKind kind, double gantryLegs = GantryLegs)
         {
             var b = new MeshBuilder();
 
@@ -122,13 +135,20 @@ namespace MumuF1
                     break;
 
                 case PropKind.StartGantry:
-                    /* Legs outside the road, so the thing spanning the timing
-                       line never has anything standing on it. Twelve metres
-                       is the widest half-width any circuit here uses, plus
-                       its kerb. */
-                    b.Box(new Vec3(-12.4, 3.4, 0), new Vec3(0.8, 6.8, 0.8), Shadow);
-                    b.Box(new Vec3(12.4, 3.4, 0), new Vec3(0.8, 6.8, 0.8), Shadow);
-                    b.Box(new Vec3(0, 7.2, 0), new Vec3(25.6, 1.2, 1.0), Warning);
+                    /* Legs outside the road, measured from the road rather
+                       than assumed, so the thing spanning the timing line
+                       never has anything standing on it.
+
+                       Only the span is the circuit's. The legs stay six and
+                       a half metres tall and the light panel stays the size
+                       of a light panel, which is why this is built to a width
+                       instead of being scaled to one: scaling a gantry to fit
+                       a sixty-metre road gives you a seventeen-metre-tall
+                       gantry with a fifteen-metre lamp on it. */
+                    var leg = Math.Max(4.0, gantryLegs);
+                    b.Box(new Vec3(-leg, 3.4, 0), new Vec3(0.8, 6.8, 0.8), Shadow);
+                    b.Box(new Vec3(leg, 3.4, 0), new Vec3(0.8, 6.8, 0.8), Shadow);
+                    b.Box(new Vec3(0, 7.2, 0), new Vec3(leg * 2 + 0.8, 1.2, 1.0), Warning);
                     b.Box(new Vec3(0, 6.2, 0), new Vec3(6.0, 0.9, 1.1), Shadow);
                     break;
 
@@ -140,14 +160,23 @@ namespace MumuF1
         }
 
         /// <summary>Every kind, built once.</summary>
-        public static Dictionary<PropKind, Mesh3> All()
+        public static Dictionary<PropKind, Mesh3> All(double gantryLegs = GantryLegs)
         {
             var meshes = new Dictionary<PropKind, Mesh3>();
             foreach (PropKind kind in Enum.GetValues(typeof(PropKind)))
             {
-                meshes[kind] = Build(kind);
+                meshes[kind] = Build(kind, gantryLegs);
             }
             return meshes;
         }
+
+        /// <summary>Where a circuit's gantry legs have to stand to be clear of it.</summary>
+        /// <remarks>
+        /// The road and its kerb at the timing line, and a metre and a bit of
+        /// verge so the legs are beside the circuit rather than on its edge.
+        /// </remarks>
+        public static double LegsFor(Circuit circuit) =>
+            circuit.HalfWidthAt(circuit.Spec.StartLine % circuit.Length)
+            + circuit.KerbWidth + 1.3;
     }
 }

@@ -174,9 +174,17 @@ namespace MumuF1
         }
 
         /// <summary>The box a generated prop occupies, for use as the reference.</summary>
-        public static Bounds3 Reference(PropKind kind)
+        /// <remarks>
+        /// Which means an imported model is sized to whatever the generated
+        /// one is, and one of those is not a constant: the start gantry spans
+        /// the road, and the road is sixty metres wide on one circuit and
+        /// fourteen on the rest. Take the span, or the kit gantry inherits
+        /// exactly the fault the generated one had — legs standing well
+        /// inside the racing surface at the timing line.
+        /// </remarks>
+        public static Bounds3 Reference(PropKind kind, double gantryLegs = PropMesh.GantryLegs)
         {
-            var mesh = PropMesh.Build(kind);
+            var mesh = PropMesh.Build(kind, gantryLegs);
             return Bounds3.Around(mesh.Positions, mesh.VertexCount);
         }
     }

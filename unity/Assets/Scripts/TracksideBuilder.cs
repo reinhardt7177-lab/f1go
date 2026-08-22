@@ -172,7 +172,14 @@ namespace MumuF1.Game
         private void BuildProps(Circuit circuit)
         {
             List<Placement> placements = Trackside.Place(circuit, Density);
-            Dictionary<PropKind, Mesh> shapes = Shapes();
+
+            /* How far out the gantry's legs have to stand to be beside this
+               circuit rather than on it. Needed by the generated shapes and
+               again by the kit models, which are fitted to the generated
+               ones' boxes — so a kit gantry sized against the wrong box
+               inherits the fault whole. */
+            double legs = PropMesh.LegsFor(circuit);
+            Dictionary<PropKind, Mesh> shapes = Shapes(circuit);
 
             /* The road and the land are already built and this is about to
                ask them questions, so PhysX has to have heard about them
@@ -194,7 +201,7 @@ namespace MumuF1.Game
                 GameObject prefab = FromKit(p.Kind);
                 if (prefab != null)
                 {
-                    Seat(prefab, p.Kind, position, rotation, scale);
+                    Seat(prefab, p.Kind, position, rotation, scale, legs);
                     continue;
                 }
 
@@ -274,7 +281,8 @@ namespace MumuF1.Game
         /// round, how large — and the model sits inside it carrying the fit,
         /// so the two never have to be composed by hand.
         /// </remarks>
-        private void Seat(GameObject prefab, PropKind kind, Vector3 position, Quaternion rotation, Vector3 scale)
+        private void Seat(GameObject prefab, PropKind kind, Vector3 position,
+            Quaternion rotation, Vector3 scale, double gantryLegs)
         {
             var holder = new GameObject(kind.ToString());
             holder.transform.SetParent(transform, false);
@@ -285,7 +293,7 @@ namespace MumuF1.Game
 
             if (LocalBounds(instance, out Bounds3 measured))
             {
-                KitTransform fit = KitFit.Fit(measured, KitFit.Reference(kind));
+                KitTransform fit = KitFit.Fit(measured, KitFit.Reference(kind, gantryLegs));
                 instance.transform.localScale = Vector3.one * (float)fit.Scale;
                 instance.transform.localPosition = new Vector3(
                     (float)fit.Offset.X, (float)fit.Offset.Y, (float)fit.Offset.Z);
@@ -374,10 +382,16 @@ namespace MumuF1.Game
         }
 
         /// <summary>The generated shape for each kind, built once.</summary>
-        private static Dictionary<PropKind, Mesh> Shapes()
+        /// <remarks>
+        /// Per circuit rather than once for all of them, because one of the
+        /// shapes has to know how wide the road is: the start gantry spans
+        /// it, and a span that is right for a fourteen-metre circuit puts its
+        /// legs seventeen metres inside a sixty-metre one.
+        /// </remarks>
+        private static Dictionary<PropKind, Mesh> Shapes(Circuit circuit)
         {
             var shapes = new Dictionary<PropKind, Mesh>();
-            foreach (KeyValuePair<PropKind, Mesh3> entry in PropMesh.All())
+            foreach (KeyValuePair<PropKind, Mesh3> entry in PropMesh.All(PropMesh.LegsFor(circuit)))
             {
                 shapes[entry.Key] = Meshes.From(entry.Value, entry.Key.ToString());
             }

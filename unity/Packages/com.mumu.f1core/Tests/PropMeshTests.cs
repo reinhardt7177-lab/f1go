@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using NUnit.Framework;
 
 namespace MumuF1.Tests
@@ -19,6 +20,14 @@ namespace MumuF1.Tests
     [TestFixture]
     public class PropMeshTests
     {
+        private static IEnumerable<string> Ids
+        {
+            get
+            {
+                foreach (var id in Circuits.Specs.Keys) yield return id;
+            }
+        }
+
         private static Array Kinds => Enum.GetValues(typeof(PropKind));
 
         private static Vec3 Vertex(Mesh3 m, int index) => new Vec3(
@@ -183,6 +192,61 @@ namespace MumuF1.Tests
             var heptagon = 7.0 / 2 * Math.Sin(2 * Math.PI / 7) / Math.PI;
 
             Assert.That(six / 6.0, Is.EqualTo(trueCones * heptagon).Within(0.5));
+        }
+
+        /// <summary>
+        /// The gantry stands beside every circuit, not on it.
+        /// </summary>
+        /// <remarks>
+        /// Its legs were at a fixed 12.4 m with a comment saying that was
+        /// the widest half-width any circuit here used, plus its kerb. That
+        /// was true when it was written. Then the Proving Ground was added,
+        /// whose road is sixty metres across, and nothing re-read the
+        /// comment — so two six-metre concrete legs stood seventeen metres
+        /// inside the racing surface at the one place every lap begins.
+        ///
+        /// Only the legs are measured. The beam is meant to span the road
+        /// and the light panel is meant to be the size of a light panel, so
+        /// the test isolates everything below five metres, which is legs and
+        /// nothing else.
+        /// </remarks>
+        [TestCaseSource(nameof(Ids))]
+        public void StandsTheGantryBesideTheRoadAndNotOnIt(string id)
+        {
+            var circuit = Circuits.Get(id);
+            var mesh = PropMesh.Build(PropKind.StartGantry, PropMesh.LegsFor(circuit));
+
+            var road = circuit.HalfWidthAt(circuit.Spec.StartLine % circuit.Length)
+                + circuit.KerbWidth;
+
+            var nearest = double.PositiveInfinity;
+            for (var v = 0; v < mesh.Positions.Length; v += 3)
+            {
+                if (mesh.Positions[v + 1] >= 5.0) continue;
+                nearest = Math.Min(nearest, Math.Abs(mesh.Positions[v]));
+            }
+
+            Assert.That(nearest, Is.GreaterThan(road),
+                $"a gantry leg stands {nearest:F1} m out on a road {road:F1} m wide");
+        }
+
+        /// <summary>And the beam still reaches from one leg to the other.</summary>
+        [TestCaseSource(nameof(Ids))]
+        public void SpansTheRoadItStandsOver(string id)
+        {
+            var circuit = Circuits.Get(id);
+            var legs = PropMesh.LegsFor(circuit);
+            var mesh = PropMesh.Build(PropKind.StartGantry, legs);
+
+            var widest = 0.0;
+            for (var v = 0; v < mesh.Positions.Length; v += 3)
+            {
+                if (mesh.Positions[v + 1] < 6.5) continue;
+                widest = Math.Max(widest, Math.Abs(mesh.Positions[v]));
+            }
+
+            Assert.That(widest, Is.GreaterThanOrEqualTo(legs),
+                "the beam stops short of the legs holding it up");
         }
     }
 }
