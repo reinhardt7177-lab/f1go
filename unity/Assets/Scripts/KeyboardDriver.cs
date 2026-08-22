@@ -72,6 +72,11 @@ namespace MumuF1.Game
             };
             _shiftArmed = !wantShift;
 
+            /* One key for the aids, because a driver who wants the car to
+               bite has to be able to switch them off, and one who does not
+               should never have to find out they exist. */
+            if (KeyDown(KeyCode.T)) _car.TractionControl = !_car.TractionControl;
+
             if (KeyDown(KeyCode.R)) _car.Reset(_car.transform.position + Vector3.up * 1.5f,
                 _car.transform.eulerAngles.y);
         }

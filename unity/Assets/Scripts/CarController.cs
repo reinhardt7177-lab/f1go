@@ -57,6 +57,11 @@ namespace MumuF1.Game
         private readonly SuspensionParams _suspension = new SuspensionParams();
         private readonly Drivetrain _drivetrain = new Drivetrain();
 
+        /* What the aids are holding between ticks. */
+        private readonly AssistState _assist = new AssistState();
+        private readonly TractionControlParams _traction = new TractionControlParams();
+        private readonly YawAssistParams _yaw = new YawAssistParams();
+
         private Rigidbody _body;
 
         /* Reused so four casts a tick allocate nothing. Eight is more than a
@@ -73,6 +78,32 @@ namespace MumuF1.Game
 
         /// <summary>Driver input for this step, written by whatever is driving.</summary>
         public Controls Controls;
+
+        /// <summary>
+        /// Whether traction control is doing anything.
+        /// </summary>
+        /// <remarks>
+        /// On, and the default matters. An F1 car has something like nine
+        /// hundred kilowatts and four hundred kilograms of rear tyre, and
+        /// full throttle from a standstill lights the rears and keeps them
+        /// lit: measured on the practice oval, thirteen kilometres an hour
+        /// after forty-seven seconds of full throttle, slip ratio pinned at
+        /// its ceiling the whole way. That is not a hard car to drive, it is
+        /// a car that does not go, and no amount of skill helps because the
+        /// pedal has only one useful position and it is not the one a
+        /// keyboard gives you.
+        ///
+        /// The controller was written and tested a long time ago and was
+        /// simply never connected — <c>Assists</c> has had it, and a spin
+        /// catch, and a steering limiter, since the port. This is the first
+        /// of the three to be wired up; the other two read signed yaw, and
+        /// the engine mirrors the reference's forward axis, so they need
+        /// their signs settled before they can be trusted.
+        /// </remarks>
+        public bool TractionControl = true;
+
+        /// <summary>The ceiling traction control is currently holding.</summary>
+        public double ThrottleLimit => _assist.ThrottleLimit;
 
         /// <summary>
         /// The circuit, for the surface under each wheel. Null is allowed —
@@ -520,9 +551,37 @@ namespace MumuF1.Game
             double arbRear = Suspension.AntiRoll(
                 _suspension.AntiRollRear, _wheels[RL].Compression, _wheels[RR].Compression);
 
+            // --- driver aids ------------------------------------------
+            /* Read from the slip the *last* step measured, because this
+               step's is a consequence of the throttle being decided here.
+               That is one tick of lag on a controller running at 120 Hz. */
+            double throttle = Controls.Throttle;
+
+            if (TractionControl)
+            {
+                Vector3 local = transform.InverseTransformDirection(velocity);
+                double sideslip = System.Math.Atan2(local.x, local.z);
+
+                /* Below walking pace it does nothing and forgets what it was
+                   holding. Without that, a car stopped on the grass walks its
+                   own ceiling to the floor and can never pull away — the
+                   ceiling decays faster than it restores on a low-grip
+                   surface, and the car is stuck there for good. */
+                if (System.Math.Abs(speedAlongForward) < 3.0)
+                {
+                    _assist.Reset();
+                }
+                else
+                {
+                    throttle = Assists.TractionControl(
+                        throttle, DrivenSlip, _assist, dt, _traction,
+                        sliding: System.Math.Abs(sideslip) > _yaw.Deadband);
+                }
+            }
+
             // --- drivetrain -------------------------------------------
             DriveTorques drive = _drivetrain.Step(
-                Controls.Throttle, Controls.ShiftUp, Controls.ShiftDown, Controls.Overtake,
+                throttle, Controls.ShiftUp, Controls.ShiftDown, Controls.Overtake,
                 _wheels[RL].Omega, _wheels[RR].Omega, dt);
             _drivetrain.BrakeTorques(Controls.Brake, out double brakeFront, out double brakeRear);
 
