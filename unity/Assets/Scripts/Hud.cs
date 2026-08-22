@@ -123,16 +123,27 @@ namespace MumuF1.Game
             LapTimer timer = _race.Timer;
             SessionState state = _race.Session.State(timer);
 
-            float w = unit * 8.5f;
-            float line = unit * 0.95f;
+            /* Measured off the font rather than assumed. The rows used a
+               fraction of the layout unit, which was right for the built-in
+               face and wrong the moment a real one shipped: Noto sits taller
+               in its line box, so every value was clipped against the row
+               above it and the top row against the panel. A style knows how
+               tall its own line is; asking it costs nothing and cannot go
+               stale when the font changes again. */
+            float line = Mathf.Max(unit * 1.05f, _small.lineHeight * 1.18f);
+
+            /* Wide enough for the widest thing that goes in it, which is a
+               lap time with a sign on it, not the label. */
+            float w = Mathf.Max(unit * 8.5f, _small.CalcSize(new GUIContent("GHOST  +00.000")).x + unit * 3f);
+
             int rows = 4;
             if (_race.Field != null) rows++;
             if (_race.Ghost != null) rows++;
 
-            var box = new Rect(pad, pad, w, line * rows + pad);
+            var box = new Rect(pad, pad, w, line * rows + pad * 1.2f);
             Fill(box, Panel);
 
-            float y = box.y + pad * 0.4f;
+            float y = box.y + pad * 0.6f;
 
             Row(box, ref y, line, "LAP",
                 state.LapsTotal == null
@@ -171,8 +182,11 @@ namespace MumuF1.Game
 
         private void Row(Rect box, ref float y, float line, string label, string value, Color colour)
         {
-            Text(new Rect(box.x + line * 0.6f, y, line * 3f, line), label, _label, Dim);
-            Text(new Rect(box.x + line * 3.4f, y, box.width, line), value, _small, colour);
+            float left = line * 0.5f;
+            float column = _label.CalcSize(new GUIContent("GROUND")).x + line * 0.5f;
+
+            Text(new Rect(box.x + left, y, column, line), label, _label, Dim);
+            Text(new Rect(box.x + left + column, y, box.width - left - column, line), value, _small, colour);
             y += line;
         }
 
