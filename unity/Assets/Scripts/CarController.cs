@@ -632,8 +632,22 @@ namespace MumuF1.Game
             }
 
             // --- drivetrain -------------------------------------------
+            /* A shift is a request, and a request is consumed. The drivers
+               raise these once per *frame*; this runs once per *physics
+               step*, and at 120 Hz a slow frame runs forty of them. The
+               gearbox only refuses a shift while its 0.05 s timer is
+               running, which is six steps — so one frame could take six
+               gears, and did: measured on the practice oval at 62 km/h in
+               seventh, engine below its idle floor, pulling a third of the
+               torque it should have been. It hides on a fast machine and
+               ruins the launch on a slow one, which is every phone. */
+            bool shiftUp = Controls.ShiftUp;
+            bool shiftDown = Controls.ShiftDown;
+            Controls.ShiftUp = false;
+            Controls.ShiftDown = false;
+
             DriveTorques drive = _drivetrain.Step(
-                throttle, Controls.ShiftUp, Controls.ShiftDown, Controls.Overtake,
+                throttle, shiftUp, shiftDown, Controls.Overtake,
                 _wheels[RL].Omega, _wheels[RR].Omega, dt);
             _drivetrain.BrakeTorques(Controls.Brake, out double brakeFront, out double brakeRear);
 
