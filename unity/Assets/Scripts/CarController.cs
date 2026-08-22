@@ -83,15 +83,20 @@ namespace MumuF1.Game
         /// Whether traction control is doing anything.
         /// </summary>
         /// <remarks>
-        /// On, and the default matters. An F1 car has something like nine
-        /// hundred kilowatts and four hundred kilograms of rear tyre, and
-        /// full throttle from a standstill lights the rears and keeps them
-        /// lit: measured on the practice oval, thirteen kilometres an hour
-        /// after forty-seven seconds of full throttle, slip ratio pinned at
-        /// its ceiling the whole way. That is not a hard car to drive, it is
-        /// a car that does not go, and no amount of skill helps because the
-        /// pedal has only one useful position and it is not the one a
-        /// keyboard gives you.
+        /// On, and the default matters. Measured on the practice oval:
+        /// thirteen kilometres an hour after forty-seven seconds of full
+        /// throttle, slip ratio pinned at its ceiling the whole way. The
+        /// arithmetic says the same thing. First gear times the final drive
+        /// is 18.19, so 610 N m of engine torque at 95% efficiency is
+        /// 10,541 N m at the wheel and 29,281 N of tractive force — against
+        /// a rear axle carrying 4,306 N at a friction coefficient of 1.79,
+        /// which is 7,708 N of grip. The engine can ask for 3.8 times what
+        /// the tyres can take, so the rears light up and stay lit.
+        ///
+        /// That is not a hard car to drive, it is a car that does not go,
+        /// and no amount of skill helps: holding the peak needs about a
+        /// quarter throttle held steady, and a keyboard pedal has two
+        /// positions.
         ///
         /// The controller was written and tested a long time ago and was
         /// simply never connected — <c>Assists</c> has had it, and a spin

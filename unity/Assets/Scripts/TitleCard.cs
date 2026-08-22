@@ -154,10 +154,18 @@ namespace MumuF1.Game
             if (Clicked(startAt)) Dismiss();
 
             y += sh + unit * 0.8f;
+
+            /* `Input.touchSupported` used to be part of this and should not
+               have been. Every Chromium exposes touch events whether or not
+               anything can touch it, so a laptop was being told where to put
+               its thumbs. The platform is the honest question: a machine with
+               a keyboard is better served by the keyboard hint even when it
+               also has a touchscreen, and the pads draw themselves the moment
+               a finger actually lands. */
             Text(new Rect(0, y, Screen.width, unit),
-                Application.isMobilePlatform || Input.touchSupported
+                Application.isMobilePlatform
                     ? "왼쪽 엄지 조향 · 오른쪽 엄지 위 스로틀 / 아래 브레이크"
-                    : "A D 또는 ← → 조향 · W 스로틀 · S 브레이크 · R 리셋",
+                    : "A D 또는 ← → 조향 · W 스로틀 · S 브레이크 · T 트랙션 · R 리셋",
                 _hint, Dim);
         }
 
