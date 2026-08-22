@@ -86,6 +86,41 @@ namespace MumuF1.Game
         public int Gear => _drivetrain.Gear;
         public double Downforce { get; private set; }
 
+        /// <summary>What one tyre is doing, for whatever wants to hear it.</summary>
+        /// <remarks>
+        /// A copy of four numbers rather than the wheel itself. `Wheel` is
+        /// private because it is the integrator's own state — omega,
+        /// compression, relaxation, the spline hint — and handing that out
+        /// would let anything reach in and change what the car is doing next
+        /// tick. These four are outputs.
+        /// </remarks>
+        public struct TyreSound
+        {
+            public double SlipAngle;
+            public double SlipRatio;
+
+            /// <summary>Grip multiplier of the surface under this wheel; one is clean tarmac.</summary>
+            public double SurfaceGrip;
+
+            /// <summary>Vertical load through the contact patch (N).</summary>
+            public double Load;
+        }
+
+        /// <summary>What the tyre at <paramref name="index"/> is doing.</summary>
+        public TyreSound Tyre(int index)
+        {
+            Wheel w = _wheels[Mathf.Clamp(index, 0, 3)];
+            if (w == null) return default;
+
+            return new TyreSound
+            {
+                SlipAngle = w.SlipAngle,
+                SlipRatio = w.SlipRatio,
+                SurfaceGrip = w.SurfaceGrip,
+                Load = w.Load
+            };
+        }
+
         private sealed class Wheel
         {
             public Vector3 Hardpoint;

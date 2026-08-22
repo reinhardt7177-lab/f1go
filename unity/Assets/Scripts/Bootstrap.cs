@@ -152,6 +152,10 @@ namespace MumuF1.Game
                keyboard, so this is not a build-time question. */
             car.AddComponent<TouchDriver>();
             car.AddComponent<KeyboardDriver>();
+
+            /* Synthesised rather than sampled, so there is no audio file to
+               import, give a GUID and reference from a serialised field. */
+            car.AddComponent<CarAudio>();
             Car = controller;
 
             CarView.Build(car.transform);
