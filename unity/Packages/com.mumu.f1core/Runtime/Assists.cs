@@ -161,6 +161,130 @@ namespace MumuF1
         public double SpeedHeadroom { get; set; } = 1.6;
     }
 
+    public sealed class YawAssistParams
+    {
+        /// <summary>Sideslip below which the assist does nothing at all (rad).</summary>
+        /// <remarks>
+        /// Seven degrees, and this number is what keeps the simulator intact.
+        /// A car cornering at the limit runs three to six degrees of body
+        /// sideslip, so below the deadband this contributes exactly zero —
+        /// bit for bit, not approximately. Lower than it first was, because a
+        /// slide caught at eight degrees was already unrecoverable: the yaw
+        /// rate had doubled by the time the assist was allowed to look at it.
+        /// </remarks>
+        public double Deadband { get; set; } = 0.12;
+
+        /// <summary>Sideslip at which it has its full authority (rad).</summary>
+        /// <remarks>
+        /// Eleven and a half degrees, down from twenty. Sideslip grew from
+        /// nothing to twenty-seven degrees in one second in the slide this
+        /// was tuned against, so the old ramp needed half a second to reach
+        /// full authority and the car was gone by then. This one takes
+        /// 0.17 s, and it catches the car while the rear axle still has 97
+        /// per cent of its peak force to straighten up with, against 90 per
+        /// cent at twenty degrees.
+        /// </remarks>
+        public double FullBand { get; set; } = 0.2;
+
+        /// <summary>Lock commanded per radian of slide.</summary>
+        /// <remarks>
+        /// Saturating at 10.4 degrees of slide, just inside the point where
+        /// the assist is allowed its full authority — so it is asking for
+        /// everything it has by the time it may use everything it has.
+        ///
+        /// One degree of slide per degree of lock turns out to be too little:
+        /// at 130 km/h the rack only offers 15.2 degrees, so matching the
+        /// slide angle merely points the front wheels <em>along</em> the
+        /// direction of travel, and wheels pointing where the car is already
+        /// going make no restoring moment at all. This asks for about 1.45
+        /// times the slide, which does.
+        /// </remarks>
+        public double CounterGain { get; set; } = 5.5;
+
+        /// <summary>Lock added per radian per second of yaw excess.</summary>
+        /// <remarks>
+        /// The lead term, and its sign is worth stating plainly because it was
+        /// once wrong while the comment beside it described the right physics.
+        ///
+        /// Forward is -Z and right is +X, so a right turn is a
+        /// <em>negative</em> yaw rate; and when the rear steps out in that
+        /// turn the velocity vector sits to the left of the nose, making
+        /// sideslip negative too. Slide and yaw rate therefore share a sign
+        /// while a slide is opening and oppose once it is being caught.
+        /// Subtracting the rate term took countersteer away exactly while the
+        /// slide grew and added it while the car came back — a positive
+        /// feedback term wearing a damper's clothes, and the reason the
+        /// measured trace oscillated between thirteen and twenty degrees
+        /// instead of settling.
+        ///
+        /// Driven off the yaw <em>excess</em> rather than the raw rate, so a
+        /// car going round a corner at the rate that corner implies
+        /// contributes nothing. Read the size as a release time: the command
+        /// nulls once the car is unwinding fast enough to close the remaining
+        /// slide in about three tenths of a second.
+        /// </remarks>
+        public double RateGain { get; set; } = 1.6;
+
+        /// <summary>The most of the command the assist may ever take, zero to one.</summary>
+        /// <remarks>
+        /// Blend, never override — but only just. With the driver holding full
+        /// wrong-way lock this is the difference between reaching -0.80 of
+        /// countersteer and -0.90, and the measured slide needed the latter.
+        /// What keeps the car from feeling like it drives itself is the
+        /// deadband, not this number.
+        /// </remarks>
+        public double MaxAuthority { get; set; } = 0.95;
+
+        /// <summary>Fraction of throttle removed at full authority.</summary>
+        /// <remarks>
+        /// Now the only thing shaping throttle while the car is sideways —
+        /// traction control stands down there, because slip ratio misreads a
+        /// yaw event as wheelspin. A third of throttle in fourth at 130 km/h
+        /// cannot light the rears, and it is the difference between a car that
+        /// drives out of a slide and the 0.07 that was measured, which is a
+        /// car being dragged to a halt.
+        /// </remarks>
+        public double ThrottleTrim { get; set; } = 0.7;
+
+        /// <summary>Below this road speed sideslip means nothing (m/s).</summary>
+        public double MinSpeed { get; set; } = 6;
+    }
+
+    /// <summary>What the yaw assist decided this tick.</summary>
+    public struct YawAssistResult
+    {
+        public double Steer;
+        public double Throttle;
+
+        /// <summary>How much authority the assist took, zero to one.</summary>
+        public double Authority;
+    }
+
+    public sealed class ReverseParams
+    {
+        /// <summary>Road speed below which the car counts as stopped (m/s).</summary>
+        /// <remarks>
+        /// Two metres a second, matching the gearbox's own rule for when
+        /// reverse may be selected at all — asking for it above that would be
+        /// a request the drivetrain refuses, and the car would simply sit
+        /// there.
+        /// </remarks>
+        public double SelectBelow { get; set; } = 1.8;
+    }
+
+    /// <summary>Every aid, and the speed below which none of them run.</summary>
+    public sealed class EasyModeParams
+    {
+        public TractionControlParams Traction { get; set; } = new TractionControlParams();
+        public SteerLimiterParams Steering { get; set; } = new SteerLimiterParams();
+        public YawAssistParams Yaw { get; set; } = new YawAssistParams();
+        public YawLimiterParams Limiter { get; set; } = new YawLimiterParams();
+        public ReverseParams Reverse { get; set; } = new ReverseParams();
+
+        /// <summary>Below this road speed every loop is bypassed and reset (m/s).</summary>
+        public double BypassSpeed { get; set; } = 3;
+    }
+
     /// <summary>
     /// Driver aids.
     /// </summary>
@@ -432,6 +556,221 @@ namespace MumuF1
                memory. */
             var ceiling = Math.Min(state.SteerLimit, SpeedLockCeiling(speed, p));
             return MathUtil.Clamp(desired, -ceiling, ceiling);
+        }
+
+        /// <summary>
+        /// Catch the slide before it becomes a spin.
+        /// </summary>
+        /// <param name="desiredSteer">steer asked for, after the limiter.</param>
+        /// <param name="desiredThrottle">throttle asked for, after traction control.</param>
+        /// <param name="sideslip">radians, positive when the car travels to the right of its own nose.</param>
+        /// <param name="yawExcess">rate beyond what steering and grip imply, from <see cref="YawExcessOf"/>.</param>
+        /// <param name="speed">road speed (m/s).</param>
+        /// <param name="p">deadband, gains and how much authority to allow.</param>
+        /// <remarks>
+        /// The signal is body sideslip — the angle between where the car
+        /// points and where it is actually going. It needs no reference model
+        /// and no invented understeer gradient, and its target is exactly
+        /// zero, which is the whole reason to prefer it to a yaw-rate error.
+        ///
+        /// The yaw term is the <em>excess</em> rather than the raw rate, so a
+        /// car going round a corner at the rate that corner implies
+        /// contributes nothing to the correction.
+        /// </remarks>
+        public static YawAssistResult YawAssist(
+            double desiredSteer,
+            double desiredThrottle,
+            double sideslip,
+            double yawExcess,
+            double speed,
+            YawAssistParams p = null)
+        {
+            p = p ?? new YawAssistParams();
+
+            var idle = new YawAssistResult
+            {
+                Steer = desiredSteer,
+                Throttle = desiredThrottle,
+                Authority = 0
+            };
+
+            if (Math.Abs(speed) < p.MinSpeed) return idle;
+
+            var over = Math.Abs(sideslip) - p.Deadband;
+            if (over <= 0) return idle;
+
+            var authority = MathUtil.Clamp(over / (p.FullBand - p.Deadband), 0, 1) * p.MaxAuthority;
+
+            /* A tail out to the right means the car is yawing right and
+               travelling to the left of its nose: sideslip negative, yaw rate
+               negative, both terms negative, and the assist steers left — into
+               the slide, as it should. The two share a sign while the slide
+               opens and oppose while it is caught, which is why they *add*. */
+            var counter = MathUtil.Clamp(p.CounterGain * sideslip + p.RateGain * yawExcess, -1, 1);
+
+            return new YawAssistResult
+            {
+                Steer = desiredSteer + authority * (counter - desiredSteer),
+                Throttle = desiredThrottle * (1 - p.ThrottleTrim * authority),
+                Authority = authority
+            };
+        }
+
+        /// <summary>
+        /// Reverse without knowing there is a gearbox.
+        /// </summary>
+        /// <param name="desired">what the driver is actually pressing.</param>
+        /// <param name="gear">the gear engaged; zero is reverse.</param>
+        /// <param name="speed">forward speed, negative when travelling backwards.</param>
+        /// <param name="p">how slow counts as stopped.</param>
+        /// <remarks>
+        /// The car has a reverse gear and it works, but reaching it means
+        /// holding the downshift paddle through neutral at walking pace — a
+        /// thing a ten-year-old will never find and would not think to look
+        /// for. What they do is hold the back key and wait to go backwards,
+        /// because that is what every game they have played does.
+        ///
+        /// So the brake becomes both. Held while rolling forwards it is a
+        /// brake; held once the car has stopped it selects reverse and feeds
+        /// in throttle. Pressing forward again brakes the reversing car and
+        /// then puts it back into first. Nothing about the gearbox changes —
+        /// this presses the same paddles a driver would, just without being
+        /// asked.
+        /// </remarks>
+        public static ControlState ArcadeReverse(
+            ControlState desired,
+            int gear,
+            double speed,
+            ReverseParams p = null)
+        {
+            p = p ?? new ReverseParams();
+
+            var reversing = gear == 0;
+            var stopped = Math.Abs(speed) < p.SelectBelow;
+
+            /* Every branch below starts from a copy. ControlState is a struct
+               precisely so this is a copy and not an alias — the reference
+               spreads its input rather than mutating it, and an aid that
+               rewrote the caller's pedals would be a very quiet bug. */
+            var next = desired;
+
+            if (reversing)
+            {
+                /* Backwards, and the back key is now the accelerator. The
+                   forward key is the brake, and once it has stopped the car it
+                   shifts up out of reverse — one press to stop, and the same
+                   press to set off again. */
+                if (desired.Throttle > 0)
+                {
+                    next.Throttle = 0;
+                    if (stopped)
+                    {
+                        next.Brake = 0;
+                        next.ShiftUp = true;
+                    }
+                    else
+                    {
+                        next.Brake = desired.Throttle;
+                    }
+
+                    return next;
+                }
+
+                next.Throttle = desired.Brake;
+                next.Brake = 0;
+                return next;
+            }
+
+            /* Forwards. The brake is a brake until the car is stopped and the
+               key is still held, at which point it asks for reverse. */
+            if (desired.Brake > 0 && stopped && desired.Throttle == 0)
+            {
+                next.Brake = 0;
+                next.Throttle = 0;
+                next.ShiftDown = true;
+                return next;
+            }
+
+            return desired;
+        }
+
+        /// <summary>
+        /// Every easy-mode aid, in the order they have to run.
+        /// </summary>
+        /// <param name="desired">what the driver or the AI is asking for.</param>
+        /// <param name="state">the car this tick.</param>
+        /// <param name="assist">what the controllers are holding between ticks.</param>
+        /// <param name="dt">the step (s).</param>
+        /// <param name="p">every aid's parameters, and the bypass speed.</param>
+        /// <remarks>
+        /// Traction control first, because a spinning rear tyre is what
+        /// creates the slide the other two then have to deal with; the
+        /// steering limiter next, on the raw command; the yaw assist last, so
+        /// it has the final say on both steer and throttle when the car is
+        /// genuinely sideways.
+        ///
+        /// The low-speed bypass at the top is not a nicety, it is a bug fix.
+        /// The AI driver carried one for a while with a comment explaining the
+        /// deadlock it prevents: on a low-grip surface the throttle ceiling
+        /// decays faster than it restores until the car can never pull away
+        /// again. The player's path never had it, so a car stopped on the
+        /// grass with traction control on was stuck there for good. Putting
+        /// the bypass here means there is one copy of it rather than two.
+        /// </remarks>
+        public static ControlState DriverAids(
+            ControlState desired,
+            VehicleState state,
+            AssistState assist,
+            double dt,
+            EasyModeParams p = null)
+        {
+            p = p ?? new EasyModeParams();
+
+            /* Reverse first, because it rewrites what the pedals mean and
+               everything below reads them. */
+            ControlState pedals = ArcadeReverse(desired, state.Gear, state.Speed, p.Reverse);
+
+            if (Math.Abs(state.Speed) < p.BypassSpeed)
+            {
+                assist.Reset();
+                return pedals;
+            }
+
+            var drivenSlip = Math.Max(
+                Math.Abs(state.Wheels[Wheel.Rl].SlipRatio),
+                Math.Abs(state.Wheels[Wheel.Rr].SlipRatio));
+
+            var sideslip = state.Sideslip();
+            var sliding = Math.Abs(sideslip) > p.Yaw.Deadband;
+
+            var throttle = TractionControl(
+                pedals.Throttle, drivenSlip, assist, dt, p.Traction, sliding);
+
+            /* The mean of the two front wheels rather than the larger. They
+               share a steer angle and sit 1.6 m apart, so they track each
+               other closely — and the mean needs no decision about whose sign
+               to believe. */
+            var frontSlip =
+                (state.Wheels[Wheel.Fl].SlipAngle + state.Wheels[Wheel.Fr].SlipAngle) / 2;
+            var grounded = state.Wheels[Wheel.Fl].Grounded || state.Wheels[Wheel.Fr].Grounded;
+
+            /* How much faster the car is turning than anything could justify.
+               Computed once here and used by both the steering correction and
+               the torque, so the two can never be looking at different
+               states. */
+            var excess = YawExcessOf(
+                state.AngularVelocity.Y, state.SteerAngles[Wheel.Fl], state.Speed, p.Limiter);
+            assist.StabilityTorque = StabilityTorque(excess, p.Limiter);
+
+            var steer = grounded
+                ? SteerLimiter(pedals.Steer, frontSlip, assist, dt, p.Steering, sliding, state.Speed)
+                : MathUtil.Clamp(pedals.Steer, -assist.SteerLimit, assist.SteerLimit);
+
+            YawAssistResult caught = YawAssist(steer, throttle, sideslip, excess, state.Speed, p.Yaw);
+
+            pedals.Throttle = caught.Throttle;
+            pedals.Steer = caught.Steer;
+            return pedals;
         }
     }
 }

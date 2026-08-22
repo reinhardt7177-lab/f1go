@@ -512,5 +512,380 @@ namespace MumuF1.Tests
                 Is.EqualTo(0.25).Within(1e-12));
         }
 
+
+        // ---- The yaw assist -------------------------------------------
+
+        private static readonly YawAssistParams Y2 = new YawAssistParams();
+
+        /// <summary>
+        /// Below the deadband it contributes exactly nothing — bit for bit,
+        /// not approximately.
+        /// </summary>
+        /// <remarks>
+        /// This is the number that keeps the simulator intact. A car
+        /// cornering at the limit runs three to six degrees of body sideslip,
+        /// and if the assist shaded the controls there the car would drive
+        /// itself round every corner. The boundary itself is idle too, which
+        /// is worth pinning: the reference tests <c>over &lt;= 0</c>, so seven
+        /// degrees exactly is still the driver's.
+        /// </remarks>
+        [TestCase(0.0)]
+        [TestCase(0.05)]
+        [TestCase(0.119999)]
+        [TestCase(0.12)]
+        public void DoesNothingAtAllBelowTheDeadband(double sideslip)
+        {
+            YawAssistResult r = Assists.YawAssist(0.3, 0.8, sideslip, -0.5, 40, Y2);
+
+            Assert.That(r.Steer, Is.EqualTo(0.3).Within(0));
+            Assert.That(r.Throttle, Is.EqualTo(0.8).Within(0));
+            Assert.That(r.Authority, Is.EqualTo(0).Within(0));
+        }
+
+        /// <summary>
+        /// Authority ramps over the band and then saturates, and the steer and
+        /// throttle it produces are pinned with it.
+        /// </summary>
+        [TestCase(0.13, 0.145625000, 0.733500000, 0.118750000)]
+        [TestCase(0.16, -0.317500000, 0.534000000, 0.475000000)]
+        [TestCase(0.20, -0.935000000, 0.268000000, 0.950000000)]
+        [TestCase(0.30, -0.935000000, 0.268000000, 0.950000000)]
+        [TestCase(0.60, -0.935000000, 0.268000000, 0.950000000)]
+        public void RampsToFullAuthorityAcrossTheBandAndStopsThere(
+            double slide, double steer, double throttle, double authority)
+        {
+            YawAssistResult r = Assists.YawAssist(0.3, 0.8, -slide, -0.5, 40, Y2);
+
+            Assert.That(r.Authority, Is.EqualTo(authority).Within(1e-9));
+            Assert.That(r.Steer, Is.EqualTo(steer).Within(1e-9));
+            Assert.That(r.Throttle, Is.EqualTo(throttle).Within(1e-9));
+        }
+
+        /// <summary>
+        /// It blends and never overrides — but only just, and that margin was
+        /// measured rather than chosen.
+        /// </summary>
+        /// <remarks>
+        /// With the driver holding full wrong-way lock through a
+        /// twenty-seven degree slide, 0.95 of authority is the difference
+        /// between reaching -0.80 of countersteer and -0.90, and the slide
+        /// this was tuned against needed the latter.
+        /// </remarks>
+        [Test]
+        public void OutSteersADriverHoldingFullWrongWayLock()
+        {
+            YawAssistResult r = Assists.YawAssist(1, 0.5, -0.47, -1.2, 36, Y2);
+
+            Assert.That(r.Steer, Is.EqualTo(-0.9).Within(1e-9));
+            Assert.That(r.Throttle, Is.EqualTo(0.1675).Within(1e-9));
+            Assert.That(r.Authority, Is.EqualTo(0.95).Within(1e-9));
+        }
+
+        /// <summary>
+        /// Sideslip means nothing at walking pace, so below the minimum speed
+        /// the assist stands right down.
+        /// </summary>
+        /// <remarks>
+        /// The angle between where a car points and where it is going is a
+        /// ratio of two velocities, and at a standstill both are noise. A car
+        /// being nudged in a pit lane would otherwise read as a spin.
+        /// </remarks>
+        [Test]
+        public void IgnoresSideslipAtWalkingPace()
+        {
+            YawAssistResult r = Assists.YawAssist(0.3, 0.8, -0.9, -2, 5.9, Y2);
+
+            Assert.That(r.Steer, Is.EqualTo(0.3).Within(0));
+            Assert.That(r.Throttle, Is.EqualTo(0.8).Within(0));
+            Assert.That(r.Authority, Is.EqualTo(0).Within(0));
+        }
+
+        /// <summary>
+        /// The two terms add rather than subtract, which was once the other
+        /// way round and is the difference between a damper and positive
+        /// feedback.
+        /// </summary>
+        /// <remarks>
+        /// Slide and yaw rate share a sign while a slide is opening and
+        /// oppose once it is being caught. Subtracting the rate term took
+        /// countersteer away exactly while the slide grew and added it while
+        /// the car came back, and the measured trace oscillated between
+        /// thirteen and twenty degrees instead of settling. So: a car
+        /// unwinding fast enough gets <em>less</em> correction than one still
+        /// going away.
+        /// </remarks>
+        [Test]
+        public void AsksForLessOnceTheCarIsComingBack()
+        {
+            var opening = Assists.YawAssist(0, 1, -0.15, -0.6, 40, Y2).Steer;
+            var caught = Assists.YawAssist(0, 1, -0.15, 0.6, 40, Y2).Steer;
+
+            Assert.That(opening, Is.LessThan(caught),
+                "the rate term is subtracting, which makes it positive feedback");
+        }
+
+        // ---- Reverse, without knowing there is a gearbox ---------------
+
+        private static ControlState Pedals(double throttle = 0, double brake = 0) =>
+            new ControlState { Throttle = throttle, Brake = brake };
+
+        /// <summary>
+        /// Rolling forwards, the brake is just a brake.
+        /// </summary>
+        [Test]
+        public void LeavesTheBrakeAloneWhileTheCarIsMoving()
+        {
+            ControlState r = Assists.ArcadeReverse(Pedals(brake: 1), 1, 10);
+
+            Assert.That(r.Brake, Is.EqualTo(1).Within(0));
+            Assert.That(r.ShiftDown, Is.False);
+        }
+
+        /// <summary>
+        /// Stopped with the key still held, it asks for reverse — which is
+        /// the whole feature.
+        /// </summary>
+        [Test]
+        public void SelectsReverseOnceTheCarHasStopped()
+        {
+            ControlState r = Assists.ArcadeReverse(Pedals(brake: 1), 1, 1.0);
+
+            Assert.That(r.ShiftDown, Is.True);
+            Assert.That(r.Brake, Is.EqualTo(0).Within(0));
+            Assert.That(r.Throttle, Is.EqualTo(0).Within(0));
+        }
+
+        /// <summary>
+        /// Both pedals at once is not a request for reverse. Someone holding
+        /// the throttle against the brake is doing something deliberate, and
+        /// dropping them into reverse for it would be a nasty surprise.
+        /// </summary>
+        [Test]
+        public void DoesNotSelectReverseWhileTheThrottleIsAlsoHeld()
+        {
+            ControlState r = Assists.ArcadeReverse(
+                new ControlState { Brake = 1, Throttle = 0.5 }, 1, 1.0);
+
+            Assert.That(r.ShiftDown, Is.False);
+            Assert.That(r.Brake, Is.EqualTo(1).Within(0));
+            Assert.That(r.Throttle, Is.EqualTo(0.5).Within(0));
+        }
+
+        /// <summary>
+        /// The threshold matches the gearbox's own rule for when reverse may
+        /// be selected at all, so the boundary is exclusive on both sides.
+        /// Asking above it would be a request the drivetrain refuses, and the
+        /// car would simply sit there with nothing to explain why.
+        /// </summary>
+        [Test]
+        public void HoldsTheSameThresholdTheGearboxDoes()
+        {
+            Assert.That(Assists.ArcadeReverse(Pedals(brake: 1), 1, 1.8).ShiftDown, Is.False);
+            Assert.That(Assists.ArcadeReverse(Pedals(brake: 1), 1, 1.79).ShiftDown, Is.True);
+        }
+
+        /// <summary>
+        /// In reverse the keys swap: the back key drives and the forward key
+        /// brakes, and once it has stopped the car the same press shifts back
+        /// up into first.
+        /// </summary>
+        [Test]
+        public void SwapsThePedalsRoundOnceInReverse()
+        {
+            ControlState back = Assists.ArcadeReverse(Pedals(brake: 0.7), 0, -3);
+            Assert.That(back.Throttle, Is.EqualTo(0.7).Within(0));
+            Assert.That(back.Brake, Is.EqualTo(0).Within(0));
+
+            ControlState slowing = Assists.ArcadeReverse(Pedals(throttle: 0.6), 0, -3);
+            Assert.That(slowing.Throttle, Is.EqualTo(0).Within(0));
+            Assert.That(slowing.Brake, Is.EqualTo(0.6).Within(0));
+            Assert.That(slowing.ShiftUp, Is.False);
+
+            ControlState away = Assists.ArcadeReverse(Pedals(throttle: 0.6), 0, -1.0);
+            Assert.That(away.ShiftUp, Is.True);
+            Assert.That(away.Throttle, Is.EqualTo(0).Within(0));
+            Assert.That(away.Brake, Is.EqualTo(0).Within(0));
+        }
+
+        /// <summary>
+        /// It returns a copy and never writes through to what it was handed.
+        /// </summary>
+        /// <remarks>
+        /// The reference spreads its input rather than mutating it, and every
+        /// aid downstream reads the same controls. A ControlState that aliased
+        /// would make this whole file rewrite the caller's pedals, which is
+        /// why it is a struct.
+        /// </remarks>
+        [Test]
+        public void NeverWritesBackThroughItsArgument()
+        {
+            ControlState asked = Pedals(brake: 1);
+            Assists.ArcadeReverse(asked, 1, 1.0);
+
+            Assert.That(asked.Brake, Is.EqualTo(1).Within(0));
+            Assert.That(asked.ShiftDown, Is.False);
+        }
+
+        // ---- Everything together ---------------------------------------
+        //
+        // The pipeline is what the game actually calls, so these are the
+        // numbers that matter most. Every one was measured against the
+        // TypeScript with the same car before being written here.
+
+        /// <summary>A car pointed down -Z, travelling at <paramref name="speed"/>.</summary>
+        private static VehicleState Car(
+            double speed,
+            double sideslip = 0,
+            double yawRate = 0,
+            int gear = 4,
+            double rearSlip = 0,
+            double frontSlipAngle = 0,
+            bool grounded = true)
+        {
+            var v = new VehicleState
+            {
+                Rotation = Quat.Identity,
+                /* Identity rotation, so local is world and the sideslip the
+                   aids read back out is exactly the one asked for here. */
+                Velocity = new Vec3(speed * Math.Sin(sideslip), 0, -speed * Math.Cos(sideslip)),
+                AngularVelocity = new Vec3(0, yawRate, 0),
+                Speed = speed,
+                EngineRpm = 9000,
+                Gear = gear
+            };
+
+            for (var i = 0; i < Wheel.Count; i++)
+            {
+                WheelTelemetry w = WheelTelemetry.Empty;
+                w.Grounded = grounded;
+                if (i == Wheel.Rl || i == Wheel.Rr) w.SlipRatio = rearSlip;
+                if (i == Wheel.Fl || i == Wheel.Fr) w.SlipAngle = frontSlipAngle;
+                v.Wheels[i] = w;
+            }
+
+            return v;
+        }
+
+        /// <summary>
+        /// Below the bypass speed nothing runs and every controller is put
+        /// back to neutral.
+        /// </summary>
+        /// <remarks>
+        /// Not a nicety — a bug fix, and one that used to exist in only one of
+        /// the two places that needed it. On a low-grip surface the throttle
+        /// ceiling decays faster than it restores until the car can never pull
+        /// away again, so a car stopped on the grass with traction control on
+        /// was stuck there for good.
+        /// </remarks>
+        [Test]
+        public void StandsEverythingDownAtWalkingPace()
+        {
+            var assist = new AssistState { ThrottleLimit = 0.3, SteerLimit = 0.4, StabilityTorque = 999 };
+            ControlState result = Assists.DriverAids(
+                new ControlState { Throttle = 1, Steer = 1 }, Car(2), assist, Dt);
+
+            Assert.That(result.Throttle, Is.EqualTo(1).Within(0));
+            Assert.That(result.Steer, Is.EqualTo(1).Within(0));
+            Assert.That(assist.ThrottleLimit, Is.EqualTo(1).Within(0));
+            Assert.That(assist.SteerLimit, Is.EqualTo(1).Within(0));
+            Assert.That(assist.StabilityTorque, Is.EqualTo(0).Within(0));
+        }
+
+        /// <summary>
+        /// A clean car at speed keeps all its throttle, and only the speed
+        /// ceiling touches the steering.
+        /// </summary>
+        [Test]
+        public void TakesNothingFromACleanCarButTheLockItCannotUse()
+        {
+            var assist = new AssistState();
+            ControlState result = Assists.DriverAids(
+                new ControlState { Throttle = 1, Steer = 1 }, Car(36), assist, Dt);
+
+            Assert.That(result.Throttle, Is.EqualTo(1).Within(0));
+            Assert.That(result.Steer, Is.EqualTo(0.341574166).Within(1e-9));
+            Assert.That(assist.ThrottleLimit, Is.EqualTo(1).Within(1e-12));
+            Assert.That(assist.SteerLimit, Is.EqualTo(1).Within(1e-12));
+            Assert.That(assist.StabilityTorque, Is.EqualTo(0).Within(0));
+        }
+
+        /// <summary>Wheelspin cuts the throttle and nothing else.</summary>
+        [Test]
+        public void CutsTheThrottleForWheelspin()
+        {
+            var assist = new AssistState();
+            ControlState result = Assists.DriverAids(
+                new ControlState { Throttle = 1 }, Car(36, rearSlip: 0.5), assist, Dt);
+
+            Assert.That(result.Throttle, Is.EqualTo(0.871428571).Within(1e-9));
+            Assert.That(assist.ThrottleLimit, Is.EqualTo(0.871428571).Within(1e-9));
+        }
+
+        /// <summary>
+        /// The case the whole file exists for: a car twenty-seven degrees
+        /// sideways with the driver holding full wrong-way lock.
+        /// </summary>
+        /// <remarks>
+        /// Three things have to be true at once, and each was wrong at some
+        /// point. The steering has to end up hard the other way despite the
+        /// driver. The throttle has to be a third rather than nothing, because
+        /// a car with no drive cannot pull itself straight — 0.07 was measured
+        /// through an entire slide before traction control learned to stand
+        /// down. And the stability torque has to be saturated, because at 1.4
+        /// rad/s the car is rotating several times faster than any corner at
+        /// this speed could justify.
+        /// </remarks>
+        [Test]
+        public void CatchesASlideWhileTheDriverIsMakingItWorse()
+        {
+            var assist = new AssistState();
+            ControlState result = Assists.DriverAids(
+                new ControlState { Throttle = 0.5, Steer = 1 },
+                Car(36, sideslip: -0.47, yawRate: -1.4, rearSlip: 0.6, frontSlipAngle: -0.3),
+                assist, Dt);
+
+            Assert.That(result.Steer, Is.EqualTo(-0.932921292).Within(1e-9));
+            Assert.That(result.Throttle, Is.EqualTo(0.1675).Within(1e-9));
+
+            Assert.That(assist.ThrottleLimit, Is.EqualTo(1).Within(1e-12),
+                "traction control cut while sliding, which takes away the drive that straightens the car");
+            Assert.That(assist.SteerLimit, Is.EqualTo(1).Within(1e-12),
+                "the steering limiter moved while sliding, where it cannot read the axle");
+            Assert.That(assist.StabilityTorque, Is.EqualTo(11000).Within(1e-6));
+        }
+
+        /// <summary>
+        /// Airborne, the limiter cannot read the front axle, so the ceiling it
+        /// had is applied to the command and the integrator is left alone.
+        /// </summary>
+        [Test]
+        public void HoldsItsCeilingWhileTheFrontWheelsAreOffTheGround()
+        {
+            var assist = new AssistState { SteerLimit = 0.35 };
+            ControlState result = Assists.DriverAids(
+                new ControlState { Steer = 1 }, Car(36, grounded: false), assist, Dt);
+
+            Assert.That(result.Steer, Is.EqualTo(0.35).Within(1e-9));
+            Assert.That(assist.SteerLimit, Is.EqualTo(0.35).Within(0));
+        }
+
+        /// <summary>
+        /// Reverse survives the pipeline: the pedals are rewritten before
+        /// anything else reads them, so holding the back key at a standstill
+        /// asks for reverse, and holding it once reversing drives the car.
+        /// </summary>
+        [Test]
+        public void CarriesReverseThroughTheWholePipeline()
+        {
+            ControlState select = Assists.DriverAids(
+                new ControlState { Brake = 1 }, Car(1.0), new AssistState(), Dt);
+            Assert.That(select.ShiftDown, Is.True);
+
+            ControlState going = Assists.DriverAids(
+                new ControlState { Brake = 0.8 }, Car(-2.5, gear: 0), new AssistState(), Dt);
+            Assert.That(going.Throttle, Is.EqualTo(0.8).Within(1e-12));
+            Assert.That(going.Brake, Is.EqualTo(0).Within(0));
+        }
+
     }
 }
