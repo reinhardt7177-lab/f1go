@@ -82,6 +82,14 @@ namespace MumuF1
             _bestSectors = new double[circuit.SectorSplits.Count];
             for (var i = 0; i < _bestSectors.Length; i++) _bestSectors[i] = double.PositiveInfinity;
             _lapValid = true;
+
+            /* On lap one before the first tick, not lap zero.
+               `Update` sets this on the tick it first runs, which was
+               indistinguishable from setting it here until the caller stopped
+               ticking the timer on a held grid — and then the start card read
+               "LAP 0" over a car waiting for the lights. A timer that has not
+               started is not between laps, it is on its first. */
+            Lap = 1;
         }
 
         /// <summary>

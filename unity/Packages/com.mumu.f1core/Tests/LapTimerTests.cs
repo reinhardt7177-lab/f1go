@@ -201,5 +201,26 @@ namespace MumuF1.Tests
             Assert.That(timer.Sector, Is.EqualTo(0));
             Assert.That(timer.History.Count, Is.EqualTo(1));
         }
+
+        /// <summary>
+        /// A timer that has not run yet is on lap one.
+        /// </summary>
+        /// <remarks>
+        /// It used to reach lap one on its first tick, which was the same
+        /// thing right up until the caller stopped ticking it behind a held
+        /// grid — and then the start card read "LAP 0" over a car waiting for
+        /// the lights. A timer that has not started is not between laps.
+        /// </remarks>
+        [Test]
+        public void IsOnLapOneBeforeItHasTicked()
+        {
+            var timer = new LapTimer(Circuits.Get("oval"));
+
+            Assert.That(timer.Lap, Is.EqualTo(1));
+            Assert.That(timer.LapTime, Is.EqualTo(0).Within(1e-9));
+
+            timer.Update(0, true, 0.02);
+            Assert.That(timer.Lap, Is.EqualTo(1), "the first tick moved it off lap one");
+        }
     }
 }
