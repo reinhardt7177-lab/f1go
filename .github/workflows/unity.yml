@@ -278,7 +278,10 @@ jobs:
         name: Say how big it came out
         run: |
           du -sh build/WebGL || true
-          find build -maxdepth 3 -type f -printf '%10s  %p\n' | sort -rn | head -12 || true
+          # Four deep, not three. GameCI nests under the build name and the
+          # payload is another level below that, so at three this printed one
+          # line — index.html — and called it the biggest file in the build.
+          find build -maxdepth 4 -type f -printf '%10s  %p\n' | sort -rn | head -12 || true
 
       # Somewhere the site build can fetch it from.
       #
