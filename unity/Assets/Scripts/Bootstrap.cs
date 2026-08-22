@@ -32,10 +32,32 @@ namespace MumuF1.Game
     {
         public static CarController Car { get; private set; }
 
+        /// <summary>Everything this made, so it can be unmade.</summary>
+        private static GameObject _root;
+
+        /// <summary>
+        /// Tear the world down and build it again.
+        /// </summary>
+        /// <remarks>
+        /// What the title card calls when the circuit changes. Nothing here
+        /// is loaded from disk — the circuit is swept from a spline, the
+        /// scenery is placed from a hash, the car is primitives — so building
+        /// it a second time is a fraction of a second and needs no scene
+        /// load. Which is just as well: `RuntimeInitializeOnLoadMethod` runs
+        /// once at startup and never again, so reloading the scene would
+        /// leave a world nobody had rebuilt.
+        /// </remarks>
+        public static void Rebuild()
+        {
+            if (_root != null) Object.Destroy(_root);
+            Build();
+        }
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void Build()
         {
             var root = new GameObject("mumuF1");
+            _root = root;
             Object.DontDestroyOnLoad(root);
 
             /* 120 Hz, matching the web version. The tyre model is stiff —
@@ -67,6 +89,14 @@ namespace MumuF1.Game
 
             RivalView.Build(root.transform, race);
             Hud.Build(root.transform, race, car);
+
+            /* Last, and on top of everything. Until it is dismissed the
+               session has not begun — not the clock, not the lights, not
+               track limits — which is a different and stronger claim than
+               the grid makes, and the web version learned it the hard way:
+               the lights used to count down behind the card, so you tapped
+               to find yourself already late off a grid you never saw. */
+            TitleCard.Build(root.transform, race);
         }
 
         private static void BuildLighting(Transform parent)
@@ -80,10 +110,9 @@ namespace MumuF1.Game
             light.intensity = 1.4f;
             light.shadows = LightShadows.Hard;
 
-            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
-            RenderSettings.ambientSkyColor = new Color(0.60f, 0.75f, 0.92f);
-            RenderSettings.ambientEquatorColor = new Color(0.45f, 0.50f, 0.55f);
-            RenderSettings.ambientGroundColor = new Color(0.27f, 0.31f, 0.18f);
+            /* Ambient, fog and the sky itself are Sky's, so there is one
+               place that decides what the weather is rather than three that
+               have to agree. */
         }
 
         private static CarController BuildCar(Transform parent, Transform track)
@@ -139,6 +168,13 @@ namespace MumuF1.Game
             cam.farClipPlane = 4000f;
             cam.backgroundColor = new Color(0.043f, 0.055f, 0.071f);
             rig.AddComponent<AudioListener>();
+
+            /* With the camera, because the sky is half a camera setting: a
+               skybox draws nothing unless the camera is told to clear to it,
+               and a background colour behind a skybox is what shows through
+               on the frame it fails to load. */
+            Sky.Build(parent, cam);
+
             ChaseCamera chase = rig.AddComponent<ChaseCamera>();
             chase.Target = car.transform;
 

@@ -80,6 +80,12 @@ namespace MumuF1.Game
         {
             if (_race == null || _race.Session == null) return;
 
+            /* Nothing to read while the card is up: the clock has not
+               started, no lap is running, and a HUD full of zeroes over a
+               menu is just clutter. The web version hides it for the same
+               reason. */
+            if (TitleCard.Up) return;
+
             EnsureStyles();
 
             float unit = Mathf.Max(12f, Mathf.Min(Screen.width, Screen.height) / 22f);

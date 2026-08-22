@@ -116,13 +116,13 @@ namespace MumuF1.Game
 
             Ghost = _store.Load(TrackBuilder.CircuitId);
 
-            /* Nothing runs until the player is actually here. There is no
-               title card in this build yet, so this is that moment — but it
-               stays a separate call rather than being folded into the
-               constructor, because the session having begun and the lights
-               having gone out are two different facts and the web version
-               learned that the hard way. */
-            Session.Begin();
+            /* Deliberately not begun here. `TitleCard` calls it, because
+               nothing should run while the card is up — not the clock, not
+               the lights, not track limits. The session having begun and the
+               lights having gone out are two different facts, and folding
+               the first into construction is exactly the bug the web version
+               had: the countdown ran behind the card and the race started
+               without the player. */
         }
 
         private void FixedUpdate()
