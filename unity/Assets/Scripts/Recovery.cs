@@ -70,6 +70,29 @@ namespace MumuF1.Game
                 return;
             }
 
+            /* A car that has not been released is not stuck. It is waiting,
+               which from here looks identical: grounded, stationary, and
+               nothing the driver does changes it. That is the whole test
+               below, and on the grid it is satisfied by a car doing exactly
+               what it is supposed to — so four seconds into a six second
+               countdown the recovery fired, picked the car up off its grid
+               slot, put it on the racing line and dropped it from spawn
+               height. Every four seconds, for as long as the lights took.
+
+               Which is very close to what this session has been chasing:
+               "the car moves at the start". It is not the whole of it — the
+               tyre had no friction at a standstill either, and that is fixed
+               separately — but a car being teleported and dropped mid
+               countdown is not a subtle contribution to it. */
+            if (_race.Session == null
+                || !_race.Session.Started
+                || _race.Session.Phase == SessionPhase.Formation)
+            {
+                _airborne = 0f;
+                _stopped = 0f;
+                return;
+            }
+
             float dt = Time.deltaTime;
             bool grounded = _car.GroundedWheels > 0;
 

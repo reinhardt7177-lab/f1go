@@ -160,6 +160,16 @@ namespace MumuF1.Game
             Lateral = where.T;
             OnTrack = Track.Circuit.IsOnTrack(where.S, where.T);
 
+            /* On the brakes until the lights go out, and before the guard
+               below rather than after it — a car behind the title card is
+               even more obviously not going anywhere than one on the grid,
+               and that early return is what had let it roll away from both. */
+            if (_car != null)
+            {
+                _car.HeldOnGrid = !Session.Started
+                    || Session.Phase == SessionPhase.Formation;
+            }
+
             /* Nothing is timed until the session has been let go, and that
                includes the lap clock. `Session.Update` has guarded itself
                against running behind the title card since it was written —

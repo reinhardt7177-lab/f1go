@@ -110,6 +110,22 @@ namespace MumuF1.Game
         /// </remarks>
         public bool Aids = true;
 
+        /// <summary>Held on the grid, brakes on, waiting for the lights.</summary>
+        /// <remarks>
+        /// What a driver actually does. The formation phase already exists
+        /// and the lap clock, the track limits and the booster all respect
+        /// it; the car did not, so it was free to roll away while the lights
+        /// filled. A free-rolling wheel is the one case neither half of the
+        /// tyre model resists — a rolling contact patch is not sliding, so
+        /// there is nothing for the slip curve or the anchor to work
+        /// against. Correct physics, wrong car: one waiting for a start has
+        /// its brakes on.
+        ///
+        /// Set by <see cref="RaceDirector"/>. Steering is left alone, since
+        /// a driver on the grid can turn the wheel.
+        /// </remarks>
+        public bool HeldOnGrid;
+
         /// <summary>The ceiling traction control is currently holding.</summary>
         public double ThrottleLimit => _assist.ThrottleLimit;
 
@@ -621,6 +637,15 @@ namespace MumuF1.Game
                circle are for. */
             double throttle = Controls.Throttle;
             double steer = Controls.Steer;
+
+            /* Before the aids, so traction control is never asked to manage
+               a throttle nobody is allowed to use. */
+            if (HeldOnGrid)
+            {
+                throttle = 0;
+                Controls.Throttle = 0;
+                Controls.Brake = 1;
+            }
 
             if (Aids)
             {
