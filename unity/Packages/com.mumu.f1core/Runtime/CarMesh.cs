@@ -113,32 +113,43 @@ namespace MumuF1
         /// The silhouette, front to back.
         /// </summary>
         /// <remarks>
-        /// Read the Z column and the car is there: a nose tip out at 3.25,
+        /// Read the Z column and the car is there: a nose tip out at 3.32,
         /// the front axle at 1.98, the cockpit opening either side of the
         /// origin, the rear axle at −1.62 and the crash structure ending at
         /// −2.30. The waist column is the plan view and the top column is the
         /// side view, so the two together are the drawing.
         ///
-        /// The floor stays at −0.10 for most of the length and lifts at both
-        /// ends, which is what gives the car a visible rake and keeps the
-        /// plank off the road over a kerb.
+        /// Two numbers hold the whole thing together, and the first draft got
+        /// both wrong. The road is at y = −0.32 — the hub sits at +0.04 and a
+        /// wheel is 0.36 in radius — so a floor at −0.10 stands the car 220 mm
+        /// off the ground on stilts. It runs at −0.24 now, which is the 80 mm
+        /// ride height <c>CarController.FloorY</c> already uses, so the model
+        /// and the aerodynamics agree about where the plank is.
+        ///
+        /// And the waist was 0.62, against a wheel whose inner face is at
+        /// 0.62. The body touched the tyres, which is the one thing a
+        /// single-seater must not do: what makes it read as open-wheel is the
+        /// daylight between the two. At 0.47 there is 150 mm of it.
+        ///
+        /// The floor lifts at both ends, which gives the car a visible rake
+        /// and keeps the plank off the road over a kerb.
         /// </remarks>
         private static readonly Section[] Hull =
         {
             //            z      foot  waist  deck   floor  shldr   top
-            new Section(3.25, 0.05, 0.07, 0.05, 0.02, 0.10, 0.14),
-            new Section(2.85, 0.10, 0.14, 0.09, 0.00, 0.14, 0.24),
-            new Section(2.30, 0.16, 0.21, 0.13, -0.04, 0.16, 0.31),
-            new Section(1.98, 0.20, 0.25, 0.16, -0.07, 0.16, 0.34),
-            new Section(1.40, 0.26, 0.32, 0.21, -0.09, 0.15, 0.38),
-            new Section(0.85, 0.32, 0.41, 0.27, -0.10, 0.13, 0.44),
-            new Section(0.42, 0.40, 0.56, 0.30, -0.10, 0.10, 0.46),
-            new Section(-0.05, 0.44, 0.62, 0.32, -0.10, 0.08, 0.47),
-            new Section(-0.60, 0.44, 0.60, 0.30, -0.10, 0.08, 0.50),
-            new Section(-1.10, 0.38, 0.48, 0.24, -0.10, 0.10, 0.48),
-            new Section(-1.62, 0.28, 0.33, 0.17, -0.09, 0.12, 0.40),
-            new Section(-2.00, 0.18, 0.21, 0.11, -0.06, 0.12, 0.30),
-            new Section(-2.30, 0.10, 0.12, 0.07, -0.02, 0.10, 0.20)
+            new Section(3.32, 0.04, 0.06, 0.04, -0.06, 0.00, 0.06),
+            new Section(2.90, 0.08, 0.11, 0.07, -0.10, -0.02, 0.14),
+            new Section(2.30, 0.13, 0.17, 0.10, -0.16, -0.06, 0.20),
+            new Section(1.98, 0.16, 0.20, 0.12, -0.19, -0.09, 0.23),
+            new Section(1.40, 0.20, 0.25, 0.15, -0.22, -0.11, 0.28),
+            new Section(0.85, 0.25, 0.32, 0.19, -0.24, -0.12, 0.34),
+            new Section(0.42, 0.31, 0.43, 0.23, -0.24, -0.13, 0.38),
+            new Section(-0.05, 0.35, 0.47, 0.25, -0.24, -0.13, 0.40),
+            new Section(-0.60, 0.35, 0.45, 0.23, -0.24, -0.13, 0.44),
+            new Section(-1.10, 0.29, 0.36, 0.18, -0.24, -0.12, 0.42),
+            new Section(-1.62, 0.21, 0.25, 0.13, -0.23, -0.11, 0.34),
+            new Section(-2.00, 0.13, 0.16, 0.08, -0.20, -0.10, 0.24),
+            new Section(-2.30, 0.07, 0.09, 0.05, -0.16, -0.08, 0.14)
         };
 
         /// <summary>The whole car, less its wheels.</summary>
@@ -225,7 +236,7 @@ namespace MumuF1
         /// generated one happened to add up to, including a wing mirror.
         /// </remarks>
         public static Bounds3 Space => new Bounds3(
-            new Vec3(-0.90, -0.13, -2.48), new Vec3(0.90, 0.86, 3.36));
+            new Vec3(-0.98, -0.33, -2.44), new Vec3(0.98, 0.68, 3.36));
 
         /// <summary>Skin a run of sections.</summary>
         /// <remarks>
@@ -275,61 +286,141 @@ namespace MumuF1
         private static void Cockpit(MeshBuilder b, Rgb livery)
         {
             // The opening, sunk into the deck so the driver sits in a hole.
-            b.Box(new Vec3(0, 0.44, 0.30), new Vec3(0.46, 0.06, 1.05), Dark);
+            b.Box(new Vec3(0, 0.37, 0.30), new Vec3(0.40, 0.06, 1.00), Dark);
 
             // Shoulders either side of it.
-            b.Box(new Vec3(-0.30, 0.46, 0.05), new Vec3(0.14, 0.10, 0.55), livery);
-            b.Box(new Vec3(0.30, 0.46, 0.05), new Vec3(0.14, 0.10, 0.55), livery);
+            b.Box(new Vec3(-0.25, 0.39, 0.05), new Vec3(0.12, 0.09, 0.52), livery);
+            b.Box(new Vec3(0.25, 0.39, 0.05), new Vec3(0.12, 0.09, 0.52), livery);
 
             // Helmet, and a visor that catches a different band of light.
-            b.Ball(new Vec3(0, 0.56, 0.28), 0.15, 8, 5, Trim);
-            b.Box(new Vec3(0, 0.57, 0.41), new Vec3(0.20, 0.07, 0.06), Visor);
+            b.Ball(new Vec3(0, 0.45, 0.26), 0.14, 8, 5, Trim);
+            b.Box(new Vec3(0, 0.46, 0.38), new Vec3(0.19, 0.07, 0.06), Visor);
 
-            // Roll hoop over the driver's head, and the airbox behind it.
-            b.Box(new Vec3(0, 0.62, -0.02), new Vec3(0.30, 0.30, 0.16), Carbon);
-            b.Box(new Vec3(0, 0.58, -0.30), new Vec3(0.26, 0.22, 0.44), livery);
+            /* Roll hoop over the driver's head, and the airbox behind it.
+               Its top lands 0.94 above the road, which is where a real one
+               is — the regulations put the whole car under 0.95. */
+            b.Box(new Vec3(0, 0.52, -0.02), new Vec3(0.26, 0.28, 0.16), Carbon);
+            b.Box(new Vec3(0, 0.49, -0.30), new Vec3(0.23, 0.20, 0.44), livery);
 
             // The engine cover fin, running back to the wing.
-            b.Quad(
-                new Vec3(0, 0.66, -0.30), new Vec3(0, 0.48, -1.20),
-                new Vec3(0, 0.48, -1.90), new Vec3(0, 0.72, -1.60), livery);
-            b.Quad(
-                new Vec3(0, 0.72, -1.60), new Vec3(0, 0.48, -1.90),
-                new Vec3(0, 0.48, -1.20), new Vec3(0, 0.66, -0.30), livery);
+            Fin(b, livery);
 
             Halo(b);
+        }
+
+        /// <summary>
+        /// The shark fin, as a blade with thickness.
+        /// </summary>
+        /// <remarks>
+        /// Two skins and a spine rather than one quad drawn twice. A surface
+        /// with no thickness has no inside, so the outline pass — which draws
+        /// the back faces pushed out along their normals — pushes both skins
+        /// the same way and the fin loses its edge. Ten millimetres is enough
+        /// to give it one.
+        /// </remarks>
+        private static void Fin(MeshBuilder b, Rgb livery)
+        {
+            var profile = new[]
+            {
+                new Vec3(0, 0.56, -0.30),
+                new Vec3(0, 0.60, -1.55),
+                new Vec3(0, 0.40, -1.95),
+                new Vec3(0, 0.40, -1.10)
+            };
+
+            const double t = 0.012;
+
+            for (var i = 0; i < profile.Length; i++)
+            {
+                var a = profile[i];
+                var c = profile[(i + 1) % profile.Length];
+                b.Quad(
+                    new Vec3(-t, a.Y, a.Z), new Vec3(t, a.Y, a.Z),
+                    new Vec3(t, c.Y, c.Z), new Vec3(-t, c.Y, c.Z), livery);
+            }
+
+            b.Quad(
+                new Vec3(t, profile[0].Y, profile[0].Z), new Vec3(t, profile[1].Y, profile[1].Z),
+                new Vec3(t, profile[2].Y, profile[2].Z), new Vec3(t, profile[3].Y, profile[3].Z), livery);
+            b.Quad(
+                new Vec3(-t, profile[3].Y, profile[3].Z), new Vec3(-t, profile[2].Y, profile[2].Z),
+                new Vec3(-t, profile[1].Y, profile[1].Z), new Vec3(-t, profile[0].Y, profile[0].Z), livery);
         }
 
         /// <summary>
         /// The halo, as a hoop on a post.
         /// </summary>
         /// <remarks>
-        /// Seven segments around the front of the cockpit. It is the one part
-        /// of a modern car that is unmistakable in silhouette from any angle,
-        /// which is worth more than the forty triangles it costs.
+        /// Swept rather than assembled. It was seven axis-aligned boxes sized
+        /// to span each arc segment, and axis-aligned is exactly what an arc
+        /// is not: every box stuck out along whichever axis its segment
+        /// happened to run, and the whole thing rendered as a pair of
+        /// asterisks over the cockpit. A square section carried along the
+        /// curve costs the same triangles and is the shape it is meant to be.
+        ///
+        /// It is worth its forty triangles. The halo is the one part of a
+        /// modern car that is unmistakable in silhouette from any angle.
         /// </remarks>
         private static void Halo(MeshBuilder b)
         {
-            const double y = 0.60, r = 0.36, half = 0.09;
-            const int segments = 7;
+            const int segments = 9;
+            const double t = 0.035;
 
-            for (var i = 0; i < segments; i++)
+            Vec3 On(double u)
             {
-                var a0 = Math.PI * (0.08 + 0.84 * i / segments);
-                var a1 = Math.PI * (0.08 + 0.84 * (i + 1) / segments);
+                var a = Math.PI * (0.06 + 0.88 * u);
+                return new Vec3(
+                    -Math.Cos(a) * 0.42,
+                    0.50 + Math.Sin(a) * 0.055,
+                    0.28 + Math.Sin(a) * 0.34);
+            }
 
-                var p0 = new Vec3(-Math.Cos(a0) * 0.46, y + Math.Sin(a0) * 0.06, 0.30 + Math.Sin(a0) * r);
-                var p1 = new Vec3(-Math.Cos(a1) * 0.46, y + Math.Sin(a1) * 0.06, 0.30 + Math.Sin(a1) * r);
+            var previous = Section4(On(0), On(1.0 / segments), t);
 
-                b.Box(new Vec3((p0.X + p1.X) * 0.5, (p0.Y + p1.Y) * 0.5, (p0.Z + p1.Z) * 0.5),
-                    new Vec3(Math.Max(Math.Abs(p1.X - p0.X), half * 0.7),
-                             half * 0.6,
-                             Math.Max(Math.Abs(p1.Z - p0.Z), half * 0.7)),
-                    Carbon);
+            for (var i = 1; i <= segments; i++)
+            {
+                var here = On((double)i / segments);
+                var ahead = On(Math.Min(1.0, (i + 1.0) / segments));
+                var next = Section4(here, i == segments ? here + (here - On((i - 1.0) / segments)) : ahead, t);
+
+                for (var k = 0; k < 4; k++)
+                {
+                    var k2 = (k + 1) % 4;
+                    b.Quad(previous[k2], previous[k], next[k], next[k2], Carbon);
+                }
+                previous = next;
             }
 
             // The post down the centreline, ahead of the driver.
-            b.Box(new Vec3(0, 0.54, 0.66), new Vec3(0.06, 0.20, 0.09), Carbon);
+            b.Box(new Vec3(0, 0.45, 0.62), new Vec3(0.05, 0.18, 0.08), Carbon);
+        }
+
+        /// <summary>
+        /// A square section at <paramref name="at"/>, square to the line
+        /// running towards <paramref name="towards"/>.
+        /// </summary>
+        private static Vec3[] Section4(Vec3 at, Vec3 towards, double half)
+        {
+            var dx = towards.X - at.X;
+            var dz = towards.Z - at.Z;
+            var len = Math.Sqrt(dx * dx + dz * dz);
+            if (len < 1e-9) { dx = 1; dz = 0; len = 1; }
+            dx /= len;
+            dz /= len;
+
+            /* Perpendicular in the ground plane, and straight up. Good enough
+               for a hoop that only ever leans a few degrees — a full frame
+               carried along the curve would buy nothing at this size. */
+            var px = -dz * half;
+            var pz = dx * half;
+
+            return new[]
+            {
+                new Vec3(at.X - px, at.Y - half, at.Z - pz),
+                new Vec3(at.X + px, at.Y - half, at.Z + pz),
+                new Vec3(at.X + px, at.Y + half, at.Z + pz),
+                new Vec3(at.X - px, at.Y + half, at.Z - pz)
+            };
         }
 
         /// <summary>Sidepod inlets and the shoulder above them.</summary>
@@ -338,13 +429,13 @@ namespace MumuF1
             for (var side = -1; side <= 1; side += 2)
             {
                 // The mouth, dark so it reads as a hole rather than a panel.
-                b.Box(new Vec3(side * 0.52, 0.16, 0.52), new Vec3(0.16, 0.26, 0.14), Dark);
+                b.Box(new Vec3(side * 0.40, -0.06, 0.50), new Vec3(0.14, 0.22, 0.12), Dark);
 
                 // Bargeboard ahead of it, down at floor level.
-                b.Box(new Vec3(side * 0.46, -0.02, 1.05), new Vec3(0.05, 0.20, 0.60), Carbon);
+                b.Box(new Vec3(side * 0.38, -0.15, 1.05), new Vec3(0.04, 0.18, 0.56), Carbon);
 
                 // The winglet on top of the pod.
-                b.Box(new Vec3(side * 0.44, 0.40, -0.30), new Vec3(0.34, 0.03, 0.40), Carbon);
+                b.Box(new Vec3(side * 0.34, 0.30, -0.35), new Vec3(0.26, 0.03, 0.36), Carbon);
             }
         }
 
@@ -392,14 +483,14 @@ namespace MumuF1
         /// <summary>The floor and diffuser, seen from behind and from a kerb.</summary>
         private static void Floor(MeshBuilder b)
         {
-            b.Box(new Vec3(0, -0.11, -0.30), new Vec3(1.05, 0.03, 2.60), Carbon);
+            b.Box(new Vec3(0, -0.25, -0.30), new Vec3(0.92, 0.03, 2.60), Carbon);
 
             // The diffuser ramp, stepped rather than swept: three boxes read
             // as a ramp under four bands of shading and cost nine faces.
             for (var i = 0; i < 3; i++)
             {
-                b.Box(new Vec3(0, -0.10 + i * 0.035, -1.70 - i * 0.22),
-                    new Vec3(0.94 - i * 0.06, 0.03, 0.26), Dark);
+                b.Box(new Vec3(0, -0.24 + i * 0.04, -1.70 - i * 0.22),
+                    new Vec3(0.82 - i * 0.06, 0.03, 0.26), Dark);
             }
         }
     }
