@@ -140,6 +140,17 @@ namespace MumuF1.Game
             var collider = gameObject.AddComponent<MeshCollider>();
             collider.sharedMesh = mesh;
 
+            /* And the line the lap is measured from, laid on top rather than
+               painted in. See StartLineMesh for why it cannot be part of the
+               ribbon above: its rings are four metres apart and a start line
+               is one and a half. No collider — it is a marking, and the car
+               drives over markings. */
+            var line = new GameObject("Start line");
+            line.transform.SetParent(transform, false);
+            line.AddComponent<MeshFilter>().sharedMesh =
+                Meshes.From(StartLineMesh.Build(circuit), "Start line");
+            line.AddComponent<MeshRenderer>().sharedMaterial = Paint.FromVertices(outline: 0f);
+
             /* Height left to the car, because only the car knows how long
                its own suspension is. Half a metre was picked here by eye and
                put the wheels beyond the reach of the rays that look for the
