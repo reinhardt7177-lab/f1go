@@ -374,18 +374,48 @@ namespace MumuF1.Tests
         }
 
         /// <summary>
-        /// The floor is a safety net, not a working limit. At the fastest the
-        /// car ever goes the ceiling is still twice it, so it can never bind
-        /// on a straight — which is the whole reason it is safe to have.
+        /// The floor is a safety net rather than a working limit: the ceiling
+        /// never reaches it at any speed at all.
         /// </summary>
+        /// <remarks>
+        /// Not merely at any speed the car can do — at any speed whatsoever,
+        /// and that falls out of the arithmetic rather than being lucky. Above
+        /// 300 km/h the available lock is clamped and stops shrinking, while
+        /// the lock a corner needs tends to <c>atan(latAccelPerV2 · L)</c> as
+        /// the v² in numerator and denominator cancel. So the ceiling has a
+        /// positive asymptote — about 0.1265 — comfortably above the 0.1 floor.
+        ///
+        /// An earlier version of this asserted twice the floor, on the grounds
+        /// that 300 km/h measures 0.211. It does, and the ceiling keeps
+        /// falling past there: it drops under 0.2 at 322 km/h. The claim was
+        /// true of the number it was read from and false of the sweep it was
+        /// written into, which is what the sweep is for.
+        /// </remarks>
         [Test]
-        public void NeverReachesItsFloorAtAnySpeedTheCarCanDo()
+        public void NeverReachesItsFloorAtAnySpeedAtAll()
         {
             for (var kmh = 0.0; kmh <= 400; kmh += 1)
             {
-                Assert.That(Assists.SpeedLockCeiling(kmh / 3.6, S), Is.GreaterThan(S.Floor * 2),
+                Assert.That(Assists.SpeedLockCeiling(kmh / 3.6, S), Is.GreaterThan(S.Floor),
                     $"the floor bound at {kmh:F0} km/h");
             }
+
+            /* And out past anything a car does, to pin the asymptote itself
+               rather than the fastest sample that happens to be taken. */
+            Assert.That(Assists.SpeedLockCeiling(100000 / 3.6, S),
+                Is.EqualTo(0.126527206120).Within(1e-9));
+            Assert.That(Assists.SpeedLockCeiling(100000 / 3.6, S), Is.GreaterThan(S.Floor));
+        }
+
+        /// <summary>
+        /// Where it does fall under twice the floor, pinned so the shape of
+        /// the curve above 300 km/h is a stated fact rather than a surprise.
+        /// </summary>
+        [Test]
+        public void KeepsFallingPastThreeHundred()
+        {
+            Assert.That(Assists.SpeedLockCeiling(321 / 3.6, S), Is.GreaterThan(0.2));
+            Assert.That(Assists.SpeedLockCeiling(322 / 3.6, S), Is.LessThan(0.2));
         }
 
         /// <summary>

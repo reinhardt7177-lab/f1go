@@ -171,7 +171,16 @@ namespace MumuF1
             var i = (int)Math.Floor(f) % n;
             var j = (i + 1) % n;
             var u = f - Math.Floor(f);
-            return _offsets[i] + (_offsets[j] - _offsets[i]) * u;
+            /* Both widened before the subtraction, which is not fussiness.
+               The arrays are single precision, so `b - a` on two elements is a
+               float subtraction and rounds when the two have different
+               exponents — where the reference, reading the same values out of
+               a Float32Array, gets doubles and subtracts exactly. Storing in
+               float is deliberate and matching the reference; doing the
+               arithmetic in float is not. */
+            double a = _offsets[i];
+            double b = _offsets[j];
+            return a + (b - a) * u;
         }
 
         public double CurvatureAt(double s) => _curvature[Index(s)];

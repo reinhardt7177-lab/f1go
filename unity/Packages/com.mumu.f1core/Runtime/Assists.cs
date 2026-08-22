@@ -126,9 +126,11 @@ namespace MumuF1
 
         /// <summary>Never cut below this, or slow corners become impossible.</summary>
         /// <remarks>
-        /// A safety net rather than a working limit. The worst case in normal
-        /// driving is 300 km/h, where the ceiling lands at 0.211 — twice the
-        /// floor — so the floor can never bind on a straight.
+        /// A safety net rather than a working limit, and one that never binds
+        /// at any speed. Above 300 km/h the available lock is clamped and
+        /// stops shrinking while the lock a corner needs tends to a constant,
+        /// so the ceiling has a positive asymptote of about 0.1265 — above
+        /// this. It is 0.211 at 300 km/h and still 0.174 at 400.
         /// </remarks>
         public double Floor { get; set; } = 0.1;
 

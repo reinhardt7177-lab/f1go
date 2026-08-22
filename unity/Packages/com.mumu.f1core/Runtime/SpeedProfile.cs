@@ -174,7 +174,15 @@ namespace MumuF1
                 {
                     var i = (n - 1 - step + n) % n;
                     var next = (i + 1) % n;
-                    var vNext = _target[next];
+                    /* Widened deliberately, and the cast is the whole point.
+                       `_target` is float, so `var` here infers float and
+                       `vNext * vNext` below is then computed in single
+                       precision — where the reference, reading the same value
+                       out of a Float32Array, gets a double and squares in
+                       double. The forward pass already does this and this one
+                       did not, which is how a 7e-8 drift reached the driver's
+                       target speed a thousand lines away. */
+                    var vNext = (double)_target[next];
                     var budget = Math.Min(
                         _options.MaxBraking,
                         LongitudinalBudget(_target[i], line.Curvature[i], car, _options));
@@ -212,7 +220,16 @@ namespace MumuF1
             var i = (int)Math.Floor(f) % n;
             var j = (i + 1) % n;
             var u = f - Math.Floor(f);
-            return _target[i] + (_target[j] - _target[i]) * u;
+            /* Both widened before the subtraction, which is not fussiness.
+               The arrays are single precision, so `b - a` on two elements is a
+               float subtraction and rounds when the two have different
+               exponents — where the reference, reading the same values out of
+               a Float32Array, gets doubles and subtracts exactly. Storing in
+               float is deliberate and matching the reference; doing the
+               arithmetic in float is not. */
+            double a = _target[i];
+            double b = _target[j];
+            return a + (b - a) * u;
         }
 
         /// <summary>
