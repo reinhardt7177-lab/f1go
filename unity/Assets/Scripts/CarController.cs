@@ -61,6 +61,8 @@ namespace MumuF1.Game
         private readonly AssistState _assist = new AssistState();
         private readonly TractionControlParams _traction = new TractionControlParams();
         private readonly YawAssistParams _yaw = new YawAssistParams();
+        private readonly SteerLimiterParams _steering = new SteerLimiterParams();
+        private readonly YawLimiterParams _limiter = new YawLimiterParams();
 
         private Rigidbody _body;
 
@@ -80,7 +82,7 @@ namespace MumuF1.Game
         public Controls Controls;
 
         /// <summary>
-        /// Whether traction control is doing anything.
+        /// Whether the driver aids are doing anything.
         /// </summary>
         /// <remarks>
         /// On, and the default matters. Measured on the practice oval:
@@ -105,7 +107,7 @@ namespace MumuF1.Game
         /// the engine mirrors the reference's forward axis, so they need
         /// their signs settled before they can be trusted.
         /// </remarks>
-        public bool TractionControl = true;
+        public bool Aids = true;
 
         /// <summary>The ceiling traction control is currently holding.</summary>
         public double ThrottleLimit => _assist.ThrottleLimit;
@@ -521,6 +523,76 @@ namespace MumuF1.Game
             double speedAlongForward = Vector3.Dot(velocity, forward);
             SpeedMs = speedAlongForward;
 
+            // --- driver aids ------------------------------------------
+            /* Ahead of the steering, because two of the three change it.
+               They read the slip the *previous* step measured — this step's
+               is a consequence of what is decided here — which is one tick
+               of lag at 120 Hz.
+
+               Traction control alone is not enough, and the measurement says
+               so: held at its target the rears spend their whole grip circle
+               going forwards and have nothing left sideways, so the car goes
+               straight beautifully and spins at the first disturbance. The
+               limiter and the catch are what the other two thirds of that
+               circle are for. */
+            double throttle = Controls.Throttle;
+            double steer = Controls.Steer;
+
+            if (Aids)
+            {
+                Vector3 heading = transform.InverseTransformDirection(velocity);
+                double sideslip = System.Math.Atan2(heading.x, heading.z);
+                bool sliding = System.Math.Abs(sideslip) > _yaw.Deadband;
+
+                /* Below walking pace they do nothing and forget what they
+                   were holding. Without that, a car stopped on the grass
+                   walks its own throttle ceiling to the floor and can never
+                   pull away — it decays faster than it restores on a
+                   low-grip surface, and the car is stuck there for good. */
+                if (System.Math.Abs(speedAlongForward) < 3.0)
+                {
+                    _assist.Reset();
+                }
+                else
+                {
+                    throttle = Assists.TractionControl(
+                        throttle, DrivenSlip, _assist, dt, _traction, sliding);
+
+                    double previousSteer = steer * MaxSteerAngleDeg * MathUtil.Rad;
+
+                    /* The one quantity that has to be flipped. The reference
+                       these aids were written against puts the car's nose on
+                       -Z, so a right turn there is a *negative* yaw rate
+                       about +Y and its code says so in as many words. Unity's
+                       nose is +Z, so the same turn is positive here. Steer
+                       and sideslip are positive-to-the-right in both and pass
+                       straight through; only the rate is mirrored, and the
+                       torque that comes back out is mirrored again on the way
+                       to the rigid body. */
+                    double yawRate = -_body.angularVelocity.y;
+                    double excess = Assists.YawExcessOf(
+                        yawRate, previousSteer, speedAlongForward, _limiter);
+                    _assist.StabilityTorque = Assists.StabilityTorque(excess, _limiter);
+
+                    double frontSlip =
+                        (_wheels[FL].SlipAngle + _wheels[FR].SlipAngle) / 2;
+
+                    steer = _wheels[FL].Grounded || _wheels[FR].Grounded
+                        ? Assists.SteerLimiter(steer, frontSlip, _assist, dt,
+                            _steering, sliding, speedAlongForward)
+                        : MathUtil.Clamp(steer, -_assist.SteerLimit, _assist.SteerLimit);
+
+                    YawAssistResult caught = Assists.YawAssist(
+                        steer, throttle, sideslip, excess, speedAlongForward, _yaw);
+                    throttle = caught.Throttle;
+                    steer = caught.Steer;
+
+                    /* Back into Unity's sense, and about the car's own up so
+                       it still works on a banked corner. */
+                    _body.AddTorque(up * (float)-_assist.StabilityTorque);
+                }
+            }
+
             // --- aerodynamics -----------------------------------------
             AeroMode mode = Controls.StraightMode ? AeroMode.Straight : AeroMode.Corner;
             AeroForces air = Aero.Solve(
@@ -544,7 +616,7 @@ namespace MumuF1.Game
             // --- steering, with lock reduced as speed rises ------------
             double kmh = System.Math.Abs(speedAlongForward) * MathUtil.Kmh;
             double lockScale = 1.0 - (1.0 - SteerSpeedFactor) * MathUtil.Clamp(kmh / 300.0, 0, 1);
-            double steerAngle = Controls.Steer * MaxSteerAngleDeg * MathUtil.Rad * lockScale;
+            double steerAngle = steer * MaxSteerAngleDeg * MathUtil.Rad * lockScale;
 
             // --- suspension: cast every ray before applying anything ---
             double maxRay = _suspension.RestLength + WheelRadius + _suspension.MaxTravel;
@@ -602,34 +674,6 @@ namespace MumuF1.Game
                 _suspension.AntiRollFront, _wheels[FL].Compression, _wheels[FR].Compression);
             double arbRear = Suspension.AntiRoll(
                 _suspension.AntiRollRear, _wheels[RL].Compression, _wheels[RR].Compression);
-
-            // --- driver aids ------------------------------------------
-            /* Read from the slip the *last* step measured, because this
-               step's is a consequence of the throttle being decided here.
-               That is one tick of lag on a controller running at 120 Hz. */
-            double throttle = Controls.Throttle;
-
-            if (TractionControl)
-            {
-                Vector3 local = transform.InverseTransformDirection(velocity);
-                double sideslip = System.Math.Atan2(local.x, local.z);
-
-                /* Below walking pace it does nothing and forgets what it was
-                   holding. Without that, a car stopped on the grass walks its
-                   own ceiling to the floor and can never pull away — the
-                   ceiling decays faster than it restores on a low-grip
-                   surface, and the car is stuck there for good. */
-                if (System.Math.Abs(speedAlongForward) < 3.0)
-                {
-                    _assist.Reset();
-                }
-                else
-                {
-                    throttle = Assists.TractionControl(
-                        throttle, DrivenSlip, _assist, dt, _traction,
-                        sliding: System.Math.Abs(sideslip) > _yaw.Deadband);
-                }
-            }
 
             // --- drivetrain -------------------------------------------
             /* A shift is a request, and a request is consumed. The drivers

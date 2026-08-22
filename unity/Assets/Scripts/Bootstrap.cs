@@ -115,6 +115,10 @@ namespace MumuF1.Game
                see where the car is. */
             car.gameObject.AddComponent<Autopilot>();
 
+            /* And a way back. The track ends at the outside of the verge,
+               so a car that runs wide enough falls for ever. */
+            car.gameObject.AddComponent<Recovery>();
+
             RivalView.Build(root.transform, race);
             Hud.Build(root.transform, race, car);
 

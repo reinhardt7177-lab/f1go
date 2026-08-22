@@ -75,10 +75,12 @@ namespace MumuF1.Game
             /* One key for the aids, because a driver who wants the car to
                bite has to be able to switch them off, and one who does not
                should never have to find out they exist. */
-            if (KeyDown(KeyCode.T)) _car.TractionControl = !_car.TractionControl;
+            if (KeyDown(KeyCode.T)) _car.Aids = !_car.Aids;
 
-            if (KeyDown(KeyCode.R)) _car.Reset(_car.transform.position + Vector3.up * 1.5f,
-                _car.transform.eulerAngles.y);
+            /* R is handled by Recovery, which knows where the circuit is.
+               It used to be here, and it lifted the car a metre and a half
+               from wherever it stood — which, a hundred metres below a track
+               it had fallen off, is a hundred metres below the track. */
         }
 
         private static bool Key(KeyCode k) => Input.GetKey(k);

@@ -250,7 +250,7 @@ namespace MumuF1.Game
                 _car.RayDistance, _car.RayFacing,
                 _car.ProbeDown, _car.ProbeUp, _car.ProbeHit,
                 _car.transform.position.y,
-                _car.TractionControl ? _car.ThrottleLimit.ToString("F2") : "off",
+                _car.Aids ? _car.ThrottleLimit.ToString("F2") : "off",
                 _car.DrivenGrip, _car.DrivenTemp,
                 _car.DrivenTorque, _car.DrivenForce);
 
