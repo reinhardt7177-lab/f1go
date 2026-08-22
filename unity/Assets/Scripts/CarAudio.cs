@@ -25,68 +25,134 @@ namespace MumuF1.Game
     [RequireComponent(typeof(CarController))]
     public class CarAudio : MonoBehaviour
     {
-        /// <summary>Overall level, so the whole thing has one knob.</summary>
+        /// <summary>Overall level.</summary>
         public float Volume = 0.22f;
 
+        /// <summary>
+        /// The firing frequency the engine clip is baked at (Hz).
+        /// </summary>
+        /// <remarks>
+        /// Chosen so the clip is a whole number of periods at 44.1 kHz — one
+        /// second is exactly two hundred of them — which is what makes the
+        /// loop seamless. Everything above and below is reached by pitching
+        /// it: idle is 200 Hz and the limiter is 750, so the widest stretch
+        /// asked of the sample is under four to one.
+        /// </remarks>
+        private const float BakedHz = 200f;
+
+        private const int BakeRate = 44100;
+
         private CarController _car;
-        private AudioSource _source;
-
-        /* Read by the audio thread and written by the game thread. Doubles
-           and floats are written atomically on every platform this runs on,
-           and the worst case is one buffer built from a mix of two ticks —
-           which is 23 ms of a note that is already changing continuously. A
-           lock here would be a lock held on the audio thread, which is the
-           one place it must never be. */
-        private volatile float _hz;
-        private volatile float _gain;
-        private volatile float _wind;
-        private volatile float _scrub;
-        private volatile float _rumble;
-
-        private double[] _amplitudes = EngineAudio.HarmonicAmplitudes(0);
-
-        /// <summary>Phase per harmonic, kept between buffers.</summary>
-        private readonly double[] _phase = new double[EngineAudio.Harmonics + 1];
-
-        private double _sampleRate = 48000;
-
-        /// <summary>Noise state for the wind and scrub, one pole low-passed.</summary>
-        private float _noise;
-        private uint _seed = 0x9E3779B9;
+        private AudioSource _engine;
+        private AudioSource _air;
 
         private void Awake()
         {
             _car = GetComponent<CarController>();
-            _sampleRate = AudioSettings.outputSampleRate > 0 ? AudioSettings.outputSampleRate : 48000;
 
-            _source = gameObject.AddComponent<AudioSource>();
-            _source.clip = null;
-            _source.playOnAwake = true;
-            _source.loop = true;
+            _engine = Source(EngineClip(), 1f);
+            _air = Source(NoiseClip(), 0f);
+        }
+
+        private AudioSource Source(AudioClip clip, float volume)
+        {
+            var source = gameObject.AddComponent<AudioSource>();
+            source.clip = clip;
+            source.loop = true;
 
             /* Flat 2D. The listener is on the chase camera a few metres
                behind, and panning the player's own engine across the stereo
                field as the camera swings is a novelty that becomes nausea. */
-            _source.spatialBlend = 0f;
-            _source.volume = 1f;
-            _source.Play();
+            source.spatialBlend = 0f;
+            source.volume = volume;
+            source.playOnAwake = false;
+            source.Play();
+            return source;
+        }
+
+        /// <summary>
+        /// One second of the engine's harmonic stack, at <see cref="BakedHz"/>.
+        /// </summary>
+        /// <remarks>
+        /// The timbre is fixed at a middling load rather than followed live,
+        /// and that is the compromise this whole file is. It used to be
+        /// synthesised sample by sample in <c>OnAudioFilterRead</c>, which
+        /// follows the load exactly and does not exist in WebGL: Unity's
+        /// browser backend has no custom DSP callback at all, so the engine
+        /// was not quiet there, it was absent. A baked loop moved by pitch
+        /// and volume is the part of that which a browser can play.
+        /// </remarks>
+        private static AudioClip EngineClip()
+        {
+            double[] amps = EngineAudio.HarmonicAmplitudes(0.6);
+            var data = new float[BakeRate];
+
+            for (int i = 0; i < data.Length; i++)
+            {
+                double t = (double)i / BakeRate;
+                double sample = 0;
+
+                for (int n = 1; n <= EngineAudio.Harmonics; n++)
+                {
+                    sample += System.Math.Sin(2 * System.Math.PI * BakedHz * n * t) * amps[n];
+                }
+
+                data[i] = (float)System.Math.Max(-1.0, System.Math.Min(1.0, sample));
+            }
+
+            var clip = AudioClip.Create("Engine", data.Length, 1, BakeRate, false);
+            clip.SetData(data, 0);
+            return clip;
+        }
+
+        /// <summary>Two seconds of one-pole filtered noise, for everything unpitched.</summary>
+        /// <remarks>
+        /// Unfiltered white noise is a hiss; filtered, it is closer to air and
+        /// to rubber. Two seconds because a shorter loop of noise has an
+        /// audible period, and noise that ticks is worse than no noise.
+        /// </remarks>
+        private static AudioClip NoiseClip()
+        {
+            var data = new float[BakeRate * 2];
+            uint seed = 0x9E3779B9;
+            float value = 0f;
+
+            for (int i = 0; i < data.Length; i++)
+            {
+                seed ^= seed << 13;
+                seed ^= seed >> 17;
+                seed ^= seed << 5;
+                float white = seed / (float)uint.MaxValue * 2f - 1f;
+
+                value += (white - value) * 0.35f;
+                data[i] = value;
+            }
+
+            /* Crossfaded into itself over the last tenth of a second, so the
+               join is not a click. */
+            int blend = BakeRate / 10;
+            for (int i = 0; i < blend; i++)
+            {
+                float k = (float)i / blend;
+                int tail = data.Length - blend + i;
+                data[tail] = data[tail] * (1f - k) + data[i] * k;
+            }
+
+            var clip = AudioClip.Create("Air", data.Length, 1, BakeRate, false);
+            clip.SetData(data, 0);
+            return clip;
         }
 
         private void Update()
         {
-            if (_car == null) return;
+            if (_car == null || _engine == null) return;
 
-            var rpm = _car.EngineRpm;
-            var throttle = _car.Controls.Throttle;
+            double rpm = _car.EngineRpm;
+            double throttle = _car.Controls.Throttle;
 
-            _hz = (float)EngineAudio.FiringHz(rpm);
-            _gain = (float)EngineAudio.EngineGain(rpm, throttle);
-            _wind = (float)EngineAudio.WindGain(_car.SpeedMs);
-
-            /* Timbre is recomputed on the game thread and handed over as a
-               whole array, so the audio thread never sees a half-written
-               one. Sixteen divides a frame is nothing. */
-            _amplitudes = EngineAudio.HarmonicAmplitudes(throttle);
+            float hz = (float)EngineAudio.FiringHz(rpm);
+            _engine.pitch = Mathf.Clamp(hz / BakedHz, 0.25f, 6f);
+            _engine.volume = (float)EngineAudio.EngineGain(rpm, throttle) * Volume;
 
             /* The loudest complaining tyre, rather than a sum: four tyres
                scrubbing is not four times the noise, it is one slide. */
@@ -95,82 +161,18 @@ namespace MumuF1.Game
             for (int i = 0; i < 4; i++)
             {
                 CarController.TyreSound w = _car.Tyre(i);
-                scrub = Math.Max(scrub, EngineAudio.ScrubGain(w.SlipAngle, w.SlipRatio));
-                rumble = Math.Max(rumble, EngineAudio.RumbleGain(w.SurfaceGrip, w.Load));
+                scrub = System.Math.Max(scrub, EngineAudio.ScrubGain(w.SlipAngle, w.SlipRatio));
+                rumble = System.Math.Max(rumble, EngineAudio.RumbleGain(w.SurfaceGrip, w.Load));
             }
 
-            _scrub = (float)scrub;
-            _rumble = (float)rumble;
-        }
+            double wind = EngineAudio.WindGain(_car.SpeedMs);
 
-        /// <summary>
-        /// Fill a buffer. This runs on the audio thread.
-        /// </summary>
-        /// <remarks>
-        /// Nothing in here may allocate, block, or touch a Unity object. It
-        /// reads five floats and an array reference and does arithmetic.
-        /// </remarks>
-        private void OnAudioFilterRead(float[] data, int channels)
-        {
-            double[] amps = _amplitudes;
-            double step = _hz / _sampleRate * 2 * Math.PI;
+            _air.volume = (float)(wind * 0.55 + scrub * 0.5 + rumble * 0.7) * Volume;
 
-            float engine = _gain * Volume;
-            float wind = _wind * Volume * 0.55f;
-            float scrub = _scrub * Volume * 0.5f;
-            float rumble = _rumble * Volume * 0.7f;
-
-            int frames = data.Length / channels;
-
-            for (int f = 0; f < frames; f++)
-            {
-                double sample = 0;
-
-                if (step > 0)
-                {
-                    for (int n = 1; n <= EngineAudio.Harmonics; n++)
-                    {
-                        _phase[n] += step * n;
-                        /* Wrapped rather than left to grow. A double holds
-                           enough digits for hours, but the sine of a large
-                           argument loses precision long before it overflows,
-                           and the note goes gritty on a long stint. */
-                        if (_phase[n] > Math.PI * 2) _phase[n] -= Math.PI * 2;
-                        sample += Math.Sin(_phase[n]) * amps[n];
-                    }
-                }
-
-                sample *= engine;
-
-                /* One-pole filtered white noise for everything that is not a
-                   pitch. Unfiltered noise is a hiss; this is closer to air
-                   and to rubber. */
-                _noise += (White() - _noise) * 0.35f;
-                sample += _noise * (wind + scrub);
-
-                /* The rumble is lower, so it gets a slower filter — a kerb is
-                   felt more than heard, and a bright rattle sounds like
-                   gravel rather than like a car crossing a kerb. */
-                sample += _noise * rumble * 0.6;
-
-                var value = (float)Math.Max(-1.0, Math.Min(1.0, sample));
-                for (int c = 0; c < channels; c++) data[f * channels + c] = value;
-            }
-        }
-
-        /// <summary>White noise, from a generator that does not allocate.</summary>
-        /// <remarks>
-        /// <c>UnityEngine.Random</c> is not safe to call off the main thread
-        /// and <c>System.Random</c> allocates and is not either. An xorshift
-        /// on a field is three instructions and is fine on any thread that
-        /// owns it — and this one is only ever touched by the audio thread.
-        /// </remarks>
-        private float White()
-        {
-            _seed ^= _seed << 13;
-            _seed ^= _seed >> 17;
-            _seed ^= _seed << 5;
-            return _seed / (float)uint.MaxValue * 2f - 1f;
+            /* Air rises in pitch with speed and rubber does not, so the two
+               share a source and the wind decides. It is a cheap trick and it
+               is the difference between "noise" and "going fast". */
+            _air.pitch = Mathf.Clamp(0.8f + (float)(System.Math.Abs(_car.SpeedMs) / 120.0), 0.8f, 1.8f);
         }
     }
 }
