@@ -156,11 +156,33 @@ const page = (u, version) => `<!DOCTYPE html>
   }
 
   #note.bad { color: #ff8b7f; }
+
+  /* Which build this is, shown for a moment once the game is up.
+     There is no other way to tell from the outside: Unity's output has
+     fixed filenames, so two different builds look identical in the URL
+     bar, and "did my change reach the site" has cost more time on this
+     project than any bug in it. Four seconds, bottom corner, dim. */
+  #stamp {
+    position: fixed;
+    right: .7rem;
+    bottom: .55rem;
+    font: 400 .68rem/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .06em;
+    color: var(--dim);
+    opacity: .55;
+    pointer-events: none;
+    transition: opacity 1s ease .6s;
+    z-index: 1;
+  }
+
+  #stamp.gone { opacity: 0; }
 </style>
 </head>
 <body>
 
 <canvas id="canvas" tabindex="-1"></canvas>
+
+<div id="stamp">build ${version || 'dev'}</div>
 
 <div id="gate">
   <div id="mark">무무 <span>F1</span></div>
@@ -217,6 +239,12 @@ const page = (u, version) => `<!DOCTYPE html>
          the first touch is the one that starts the race. */
       setTimeout(function () { gate.remove(); }, 500);
       canvas.focus();
+
+      var stamp = document.getElementById('stamp');
+      if (stamp) {
+        setTimeout(function () { stamp.classList.add('gone'); }, 4000);
+        setTimeout(function () { stamp.remove(); }, 6000);
+      }
     }).catch(function (message) {
       say(String(message), true);
     });
