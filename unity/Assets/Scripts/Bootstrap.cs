@@ -26,7 +26,20 @@ namespace MumuF1.Game
     /// first, which is a confusing way to be told the build list is
     /// blank. So the scene is a placeholder with nothing in it: no
     /// camera, no light, no objects, because this method makes all
-    /// three before that scene ever loads.
+    /// three.
+    ///
+    /// It runs <em>after</em> that scene loads, and the difference is not
+    /// cosmetic. It ran before, and the whole world came up with no physics
+    /// in it: the car hung motionless at exactly the height it was spawned
+    /// at, every suspension ray came back empty, and a two-hundred-metre
+    /// probe straight down through a road that was plainly there found
+    /// nothing. A collider and a rigidbody belong to the scene they are
+    /// created in, and at <c>BeforeSceneLoad</c> there is no scene to belong
+    /// to — so PhysX never heard about any of them. Nothing said so.
+    /// <c>FixedUpdate</c> still ran, the engine still revved to its limiter,
+    /// the renderer still drew a car sitting correctly on a road, and the
+    /// build was green from end to end. Three builds went out before an
+    /// instrument was pointed at it.
     /// </remarks>
     public static class Bootstrap
     {
@@ -62,7 +75,7 @@ namespace MumuF1.Game
             Build();
         }
 
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Build()
         {
             var root = new GameObject("mumuF1");
@@ -107,6 +120,15 @@ namespace MumuF1.Game
                to find yourself already late off a grid you never saw. */
             Music.Build(root.transform);
             TitleCard.Build(root.transform, race);
+
+            /* Push every collider just created into PhysX before anything
+               asks it a question. Transforms are not synced on their own —
+               `Physics.autoSyncTransforms` is off by default and a scene
+               query does not trigger a sync — so the first suspension cast
+               of the first tick would otherwise be asked about a world the
+               physics engine had not been told about yet. It costs
+               microseconds once. */
+            Physics.SyncTransforms();
         }
 
         private static void BuildLighting(Transform parent)

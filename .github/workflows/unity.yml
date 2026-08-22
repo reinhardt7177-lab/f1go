@@ -61,6 +61,8 @@ env:
   UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
   UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
   UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+  # Optional. See the note on the redeploy step at the bottom of this file.
+  VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
 
 jobs:
   # Are the secrets the shape they should be?
@@ -328,6 +330,51 @@ jobs:
             2>/dev/null || true
 
           gh release upload webgl mumuF1-webgl.tar.gz --clobber
+
+      # Tell the host the player has changed.
+      #
+      # This closes a gap that has wasted more of everyone's time than any
+      # bug in the game. The site is assembled by fetching the release asset
+      # above, and the host rebuilds on a push — but the push happens the
+      # moment the code lands and the asset does not arrive until this job
+      # finishes, eighteen minutes later. So every deploy served the player
+      # from the *previous* commit, every single time, and the only symptom
+      # was refreshing the page and finding nothing had changed. Both halves
+      # reported success throughout.
+      #
+      # A deploy hook is a URL that asks the host to build again, now, with
+      # nothing else in it — no token, no account, and nothing it can do but
+      # start a build of this project. Vercel makes one under
+      # Settings → Git → Deploy Hooks; the branch it names is the branch it
+      # builds. Paste the URL into a repository secret called
+      # VERCEL_DEPLOY_HOOK and the step below stops skipping.
+      #
+      # Without it everything still works and the site is simply one build
+      # behind, which is what it has been all along — so this skips quietly
+      # rather than failing, the same way the licence check does.
+      - if: steps.licence.outputs.have == 'true'
+        name: Ask the host to rebuild now the player exists
+        run: |
+          if [ -z "$VERCEL_DEPLOY_HOOK" ]; then
+            echo "No VERCEL_DEPLOY_HOOK secret, so nothing to notify."
+            echo "The site will pick this player up on the next push instead."
+            echo "See the note above this step to wire it up."
+            exit 0
+          fi
+
+          # --fail so a hook that has been deleted or revoked is an error
+          # rather than a silent success, and -sS so the body is quiet but
+          # a real failure still says why. The URL is a secret and is never
+          # echoed; only the status code is.
+          code=$(curl -sS --fail-with-body -o /tmp/hook.out -w '%{http_code}' \
+            -X POST "$VERCEL_DEPLOY_HOOK") || {
+              echo "The deploy hook was rejected with HTTP $code."
+              echo "If it has been deleted, make a new one and update the secret."
+              cat /tmp/hook.out
+              exit 1
+            }
+
+          echo "Deploy hook accepted (HTTP $code). The site will rebuild with this player."
 
       # Uploaded rather than published. Publishing needs a decision about
       # where it goes — the Pages site is the web version's, and putting a
