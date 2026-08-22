@@ -114,6 +114,27 @@ jobs:
 
           report UNITY_PASSWORD "$UNITY_PASSWORD"
 
+          # Characters a value has to survive being carried through a
+          # shell and into docker. A password can be perfectly correct,
+          # contain no whitespace at all, and still arrive at Unity as a
+          # different string — which looks exactly like a wrong password
+          # and is the one remaining way these secrets could be at fault.
+          hostile=""
+          case "$UNITY_PASSWORD" in *'$'*) hostile="$hostile \$" ;; esac
+          case "$UNITY_PASSWORD" in *'`'*) hostile="$hostile backtick" ;; esac
+          case "$UNITY_PASSWORD" in *'\'*) hostile="$hostile backslash" ;; esac
+          case "$UNITY_PASSWORD" in *'"'*) hostile="$hostile doublequote" ;; esac
+          case "$UNITY_PASSWORD" in *"'"*) hostile="$hostile singlequote" ;; esac
+          case "$UNITY_PASSWORD" in *'!'*) hostile="$hostile !" ;; esac
+          if [ -n "$hostile" ]; then
+            echo "  ! contains shell-sensitive characters:$hostile"
+            echo "    These can be mangled on the way to the editor. A password"
+            echo "    of only letters and digits would rule it out."
+            ok=false
+          else
+            echo "  no shell-sensitive characters"
+          fi
+
           if [ -z "$UNITY_LICENSE" ]; then
             echo "UNITY_LICENSE: NOT SET"
             ok=false
