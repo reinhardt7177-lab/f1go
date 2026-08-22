@@ -100,15 +100,26 @@ for (const n of [0, 1, 2, 3]) {
 }
 
 // --- does the wall hold it? ------------------------------------------
+/* Not by holding full lock, which was the first attempt and tests
+   nothing: the car simply turns inside its own length and spends the
+   whole time scrabbling round the run-off at 40 km/h, never getting
+   near a barrier. What has to be shown is a car arriving at the wall
+   with speed on it, so the throttle stays down and the steering is
+   nudged — enough to walk the car outwards over several seconds, not
+   enough to make it turn. */
 await page.keyboard.down('ArrowUp');
-await page.keyboard.down('ArrowLeft');
-for (const t of [3, 6, 10, 16, 24]) {
-  await page.waitForTimeout(3000);
-  await shot(`wall-${t}s`);
+await page.waitForTimeout(4000);
+
+for (let nudge = 0; nudge < 6; nudge++) {
+  await page.keyboard.down('ArrowLeft');
+  await page.waitForTimeout(500);
+  await page.keyboard.up('ArrowLeft');
+  await page.waitForTimeout(2500);
+  await shot(`wall-${nudge}`);
 }
+
 await shot('wall-scene', true);
 await page.keyboard.up('ArrowUp');
-await page.keyboard.up('ArrowLeft');
 
 // --- and can it drive a lap? -----------------------------------------
 await page.keyboard.press('r');
