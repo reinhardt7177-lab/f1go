@@ -1,16 +1,15 @@
 {
   "name": "f1go-tooling",
   "private": true,
-  "description": "Repository tooling. The game is f1sim/ and builds with its own TypeScript; this is deliberately NOT \"type\": \"module\", because tools/build-site.js is CommonJS and the host's build command runs it.",
+  "description": "Repository tooling. The game is unity/ and is built by the Unity editor in CI; this is the linter for the handful of Node scripts that assemble the site.",
   "scripts": {
     "lint": "eslint",
-    "lint:fix": "eslint --fix"
+    "lint:fix": "eslint --fix",
+    "site": "node tools/build-site.js"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
     "eslint": "^9.39.2",
-    "globals": "^16.5.0",
-    "typescript": "6.0.3",
-    "typescript-eslint": "^8.67.0"
+    "globals": "^16.5.0"
   }
 }

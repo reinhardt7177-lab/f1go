@@ -1,114 +1,60 @@
 #!/usr/bin/env node
 /* ------------------------------------------------------------------
-   Assemble the built simulator into the directory the host serves.
+   Assemble the site the host serves.
 
-     /       the simulator
-     /sim/   the same build, so links shared earlier keep working
+   There used to be two games here and then three. An arcade racer at
+   the root, a TypeScript simulator under /sim/, and finally the Unity
+   port at /unity/. The arcade went first, because a point on a
+   one-dimensional ribbon is a dead end next to a rigid body on four
+   raycast wheels. The TypeScript went second, because it had become the
+   *reference* for a port that had overtaken it — every number in the C#
+   was measured against it before being written down, and once that was
+   done, keeping a second renderer, a second input stack and a second
+   set of circuits meant building everything twice.
 
-   This script only moves files. It used to run the Vite build itself
-   through execSync, which spawns a shell, which spawns npm, which
-   spawns vite — a chain that dies with a stack-buffer overrun on some
-   Windows setups, before printing anything, so the build looks like it
-   never started. The build belongs in the build command; assembling
-   belongs here.
+   Nothing was lost by deleting it. It is in the history, and the
+   comments on the ported files still say which TypeScript file each one
+   came from, because that is where they came from.
 
-     npm --prefix f1sim run build && node tools/build-site.js
-
-   There used to be two games here — an arcade racer at the root and
-   the simulator under /sim/. The arcade modelled the car as a point on
-   a one-dimensional ribbon, which is a dead end next to a rigid body
-   on four raycast wheels, and keeping both meant building every
-   circuit and every feature twice.
+   So this script does one thing now: fetch the Unity player and lay it
+   out. It builds nothing, because the thing it serves cannot be built
+   here — see below.
    ------------------------------------------------------------------ */
 'use strict';
 
 const fs = require('node:fs');
-const zlib = require('node:zlib');
 const path = require('node:path');
+const zlib = require('node:zlib');
 
 const root = path.resolve(__dirname, '..');
 const out = path.join(root, 'dist-site');
-const dist = path.join(root, 'f1sim', 'dist');
-
-if (!fs.existsSync(dist)) {
-  console.error('f1sim/dist is missing — run the build first:');
-  console.error('  npm --prefix f1sim run build');
-  process.exit(1);
-}
-
-/* Clear the output by walking it. `fs.rmSync(dir, { recursive: true })`
-   is the obvious call and it takes node 24 down on this machine with a
-   stack-buffer overrun. Recursing by hand behaves the same everywhere. */
-const clear = (dir) => {
-  if (!fs.existsSync(dir)) return;
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const p = path.join(dir, entry.name);
-    if (entry.isDirectory()) clear(p);
-    else fs.unlinkSync(p);
-  }
-  fs.rmdirSync(dir);
-};
-
-/* Hand-rolled for the same reason as `clear`: node's recursive helpers
-   — rmSync, cpSync, readdirSync({recursive}) — all abort this process
-   on this machine. Copying a directory tree is ten lines and works
-   the same on every runtime. */
-const copy = (from, to) => {
-  const stat = fs.statSync(from);
-  if (!stat.isDirectory()) {
-    fs.mkdirSync(path.dirname(to), { recursive: true });
-    fs.copyFileSync(from, to);
-    return;
-  }
-  fs.mkdirSync(to, { recursive: true });
-  for (const entry of fs.readdirSync(from, { withFileTypes: true })) {
-    copy(path.join(from, entry.name), path.join(to, entry.name));
-  }
-};
-
-/** Total bytes under a directory. */
-const size = (dir) => {
-  let total = 0;
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const p = path.join(dir, entry.name);
-    total += entry.isDirectory() ? size(p) : fs.statSync(p).size;
-  }
-  return total;
-};
-
 
 /* ------------------------------------------------------------------
-   The Unity player, fetched rather than built.
+   The player, fetched rather than built.
 
    Vercel builds this site on every push and has no Unity in it — the
-   editor is a several-gigabyte install and needs a licence — so the
-   player cannot be produced here. It is built by `.github/workflows/
-   unity.yml` on a runner that does have one, and published as an asset
-   on a rolling `webgl` release.
+   editor is several gigabytes and needs a licence — so the player
+   cannot be produced where the site is assembled. It is built by
+   `.github/workflows/unity.yml` on a runner that does have one, and
+   published as an asset on a rolling `webgl` release.
 
    A release asset rather than an Actions artifact because an artifact
    needs a token to download and this repository is public, so the asset
    does not. And a release asset rather than a commit because it is
-   eleven megabytes that would otherwise land in the git history on
+   twelve megabytes that would otherwise land in the git history on
    every Unity change, forever.
-
-   Missing is not fatal, and that is deliberate: the web version is the
-   thing people are actually playing, and a Unity build that has not
-   been produced yet — or a GitHub outage — must not take it down with
-   it. The site then ships without `/unity/` and says so.
    ------------------------------------------------------------------ */
 const UNITY_URL =
   'https://github.com/reinhardt7177-lab/f1go/releases/download/webgl/mumuF1-webgl.tar.gz';
 
 /* Extracted by hand, in Node, with nothing installed.
 
-   Vercel's install command is `npm --prefix f1sim install`, so a
-   dependency added at the root would never be installed and this file
-   would fail on the host and nowhere else. Shelling out to `tar` or
-   `unzip` would work until the day the build image does not have one.
-   Node has gzip built in, and tar is a genuinely simple format: 512-byte
-   headers, the name at offset 0, the size in octal at 124, the type at
-   156, and the contents padded to the next 512. */
+   Shelling out to `tar` or `unzip` would work until the day the build
+   image does not have one, and a dependency would need an install step
+   this build no longer has. Node has gzip built in, and tar is a
+   genuinely simple format: 512-byte headers, the name at offset 0, the
+   size in octal at 124, the type at 156, and the contents padded to the
+   next 512. */
 const untar = (buffer, into) => {
   let at = 0;
   let written = 0;
@@ -143,7 +89,7 @@ const untar = (buffer, into) => {
     at += Math.ceil(size / 512) * 512;
 
     /* GNU's long name: the real path, as the body of a record whose own
-       name is a placeholder. It applies to the next entry and to nothing
+       name is a placeholder. It applies to the next entry and nothing
        else. */
     if (type === 'L') {
       pendingName = body.toString('utf8').replace(/\0.*$/, '');
@@ -151,8 +97,7 @@ const untar = (buffer, into) => {
     }
 
     /* pax carries the same thing as `path=` inside a `len key=value`
-       list. Anything else in there — times, ownership, extended
-       attributes — is not wanted. */
+       list. Anything else in there is not wanted. */
     if (type === 'x' || type === 'g') {
       const match = /(?:^|\n)\d+ path=([^\n]*)/.exec(body.toString('utf8'));
       if (match) pendingName = match[1];
@@ -187,103 +132,80 @@ const untar = (buffer, into) => {
   return written;
 };
 
-const addUnity = async () => {
-  const into = path.join(out, 'unity');
+/* Cleared by walking it. `fs.rmSync(dir, { recursive: true })` is the
+   obvious call and it takes node down on some machines with a
+   stack-buffer overrun; recursing by hand behaves the same everywhere. */
+const clear = (dir) => {
+  if (!fs.existsSync(dir)) return;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, entry.name);
+    if (entry.isDirectory()) clear(p);
+    else fs.unlinkSync(p);
+  }
+  fs.rmdirSync(dir);
+};
+
+/** Total bytes under a directory. */
+const size = (dir) => {
+  let total = 0;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, entry.name);
+    total += entry.isDirectory() ? size(p) : fs.statSync(p).size;
+  }
+  return total;
+};
+
+const build = async () => {
+  clear(out);
+  fs.mkdirSync(out, { recursive: true });
 
   let response;
   try {
     response = await fetch(UNITY_URL, { redirect: 'follow' });
   } catch (err) {
-    console.log(`  /unity/  skipped — could not reach the release (${err.message})`);
-    return;
+    console.error(`Could not reach the release: ${err.message}`);
+    process.exit(1);
   }
 
   if (!response.ok) {
-    console.log(`  /unity/  skipped — the release returned ${response.status}`);
-    return;
+    console.error(`The release returned ${response.status}.`);
+    console.error('Has the Unity workflow published a build yet?');
+    process.exit(1);
   }
 
-  const gz = Buffer.from(await response.arrayBuffer());
-
-  let files;
-  try {
-    files = untar(zlib.gunzipSync(gz), into);
-  } catch (err) {
-    console.log(`  /unity/  skipped — the archive would not open (${err.message})`);
-    return;
-  }
-
+  const files = untar(zlib.gunzipSync(Buffer.from(await response.arrayBuffer())), out);
   if (files === 0) {
-    console.log('  /unity/  skipped — the archive was empty');
-    return;
+    console.error('The archive was empty.');
+    process.exit(1);
   }
 
-  /* The page has to be at the top, and an archive can easily arrive with
-     it one level down: GameCI nests its output under the build name, so
-     packing the directory above it produces exactly that. The workflow
-     packs from the page's own directory now, and this is the belt to
-     that pair of braces — an archive shaped either way is served the
-     same, and a future change to the build name cannot quietly turn the
-     whole thing into a 404 that every individual step reports as a
-     success. */
-  if (!fs.existsSync(path.join(into, 'index.html'))) {
-    const entries = fs.readdirSync(into, { withFileTypes: true });
+  /* The page has to be at the top, and an archive can arrive with it one
+     level down: GameCI nests its output under the build name, so packing
+     the directory above it produces exactly that. The workflow packs
+     from the page's own directory now, and this is the belt to that pair
+     of braces — the failure it guards against reports success at every
+     individual step and then serves a 404. */
+  if (!fs.existsSync(path.join(out, 'index.html'))) {
+    const entries = fs.readdirSync(out, { withFileTypes: true });
     const only = entries.length === 1 && entries[0].isDirectory() ? entries[0].name : null;
 
-    if (only && fs.existsSync(path.join(into, only, 'index.html'))) {
-      /* Lifted rather than re-extracted. Renaming into place would
-         collide with the directory it is being lifted out of, so it goes
-         via a name nothing else uses. */
-      const nested = path.join(into, only);
-      const staging = `${into}.lift`;
-      fs.renameSync(nested, staging);
-      fs.rmdirSync(into);
-      fs.renameSync(staging, into);
-      console.log(`  /unity/  lifted out of ${only}/ — the archive was nested`);
-    } else {
-      console.log('  /unity/  skipped — no index.html in the archive');
-      fs.rmSync(into, { recursive: true, force: true });
-      return;
+    if (!only || !fs.existsSync(path.join(out, only, 'index.html'))) {
+      console.error('No index.html in the archive — there is nothing to serve.');
+      process.exit(1);
     }
+
+    /* Lifted rather than re-extracted. Renaming into place would collide
+       with the directory it is being lifted out of, so it goes via a
+       name nothing else uses. */
+    const staging = `${out}.lift`;
+    fs.renameSync(path.join(out, only), staging);
+    fs.rmdirSync(out);
+    fs.renameSync(staging, out);
+    console.log(`lifted out of ${only}/ — the archive was nested`);
   }
 
-  console.log(
-    `  /unity/  the Unity build — ${files} files, ` +
-    `${(size(into) / 1024 / 1024).toFixed(1)} MB`
-  );
+  console.log(`dist-site ready — ${files} files, ${(size(out) / 1024 / 1024).toFixed(1)} MB`);
+  console.log('  /  the game');
 };
 
-clear(out);
-fs.mkdirSync(out, { recursive: true });
-
-/* Static assets, laid down alongside the bundle rather than left to
-   Vite. Vite copies `public/` itself — and on this machine that step
-   dies the same way everything else recursive does, silently, leaving
-   a dist that looks complete and has no car in it. Doing it here means
-   the model ships whether or not the bundler managed it. */
-const publicDir = path.join(root, 'f1sim', 'public');
-
-/* Vite is configured with a relative base, so one build serves both the
-   root and the sub-path without being rebuilt for each. Each
-   destination is filled from the sources — never from the other
-   destination, which would mean copying `out` into a directory inside
-   `out` and recursing until the disk gave out. */
-for (const dest of [out, path.join(out, 'sim')]) {
-  copy(dist, dest);
-  if (fs.existsSync(publicDir)) {
-    for (const entry of fs.readdirSync(publicDir, { withFileTypes: true })) {
-      copy(path.join(publicDir, entry.name), path.join(dest, entry.name));
-    }
-  }
-}
-
-copy(path.join(root, 'README.md'), path.join(out, 'README.md'));
-
-/* Last, and awaited, so the size printed below is the whole site. Top
-   level await is unavailable here — this file is CommonJS, because the
-   host's build command runs it directly — so the tail is a callback. */
-addUnity().then(() => {
-  console.log(`dist-site ready — ${(size(out) / 1024 / 1024).toFixed(1)} MB`);
-  console.log('  /      the simulator');
-  console.log('  /sim/  the same build, for older links');
-});
+build();
