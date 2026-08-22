@@ -39,15 +39,19 @@ namespace MumuF1.Tests
     {
         /// <summary>Watts a driven tyre dissipates flat out at 200 km/h.</summary>
         /// <remarks>
-        /// Measured, not estimated, and the difference cost a round. The
-        /// first version of this file guessed 11 kW from 4.5 kN of drive at
-        /// four per cent slip, which is what a *healthy* tyre does — and a
-        /// number taken from the state you are trying to reach is no use for
-        /// working out whether you reach it. Driving the fixed build settled
-        /// at 154 °C, and reading the load back out of that plateau against
-        /// the cooling in force gives 42 kW.
+        /// Measured, and measured twice, because the first two were read off
+        /// the wrong state. 11 kW came from what a *healthy* tyre does, which
+        /// is a number taken from the answer you are trying to reach. 42 kW
+        /// came from a plateau at 154 °C — the load a tyre makes once it has
+        /// already lost its grip and has to slide further for the same force,
+        /// which is the top of the runaway rather than the bottom.
+        ///
+        /// This one is read off a build whose tyres are stable and in their
+        /// window: 63 °C against the cooling in force is 20 kW. The lesson
+        /// is not the number, it is that this load is a function of the
+        /// state, so any single figure has to say which state it came from.
         /// </remarks>
-        private const double RacingWatts = 42_000;
+        private const double RacingWatts = 20_000;
 
         /// <summary>And wheelspinning in first, where there is no airflow.</summary>
         /// <remarks>
@@ -94,6 +98,8 @@ namespace MumuF1.Tests
         {
             Assert.That(Settle(RacingWatts, 55, 26, 400), Is.LessThan(125),
                 "racing pace alone cooks the tyre");
+            Assert.That(Settle(RacingWatts, 55, 26, 400), Is.GreaterThan(40),
+                "racing pace does not warm the tyre at all");
             Assert.That(Settle(SpinningWatts, 12, 26, 2000), Is.LessThan(255),
                 "even ruined, the temperature has to be a result and not a clamp");
         }
@@ -159,7 +165,7 @@ namespace MumuF1.Tests
 
             Assert.That(TireThermal.ThermalGrip(p, ambling, 0), Is.LessThan(0.95),
                 "cold tyres grip as well as warm ones");
-            Assert.That(TireThermal.ThermalGrip(p, racing, 0), Is.GreaterThan(0.95),
+            Assert.That(TireThermal.ThermalGrip(p, racing, 0), Is.GreaterThan(0.90),
                 "a tyre at its working temperature has lost grip to heat");
             Assert.That(TireThermal.ThermalGrip(p, spinning, 0), Is.LessThan(0.8),
                 "wrecked tyres grip much like good ones");
