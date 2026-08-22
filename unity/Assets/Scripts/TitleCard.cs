@@ -99,7 +99,7 @@ namespace MumuF1.Game
         }
 
         private static GUIStyle Centred(int size, FontStyle weight) =>
-            Ink.Style(size, weight, TextAnchor.MiddleCenter);
+            Typeface.Style(size, weight, TextAnchor.MiddleCenter);
 
         private void OnGUI()
         {

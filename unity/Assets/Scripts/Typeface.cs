@@ -6,6 +6,13 @@ namespace MumuF1.Game
     /// The one font this game draws with.
     /// </summary>
     /// <remarks>
+    /// Named <c>Typeface</c> rather than the obvious <c>Ink</c>, because both
+    /// surfaces that use it already have a private colour field called
+    /// <c>Ink</c> — and a field hides a type of the same name inside its own
+    /// class, so every call site read as <c>Color.Style(...)</c> and would
+    /// not compile.
+    /// </remarks>
+    /// <remarks>
     /// Unity's built-in IMGUI font has no Hangul in it, and the failure is
     /// silent: the first playable build drew "F1 mumu" where it should have
     /// said "F1 mumu 리그", printed "made by" with nobody after it, and left
@@ -25,7 +32,7 @@ namespace MumuF1.Game
     /// survivable: the game falls back to the built-in font, which is exactly
     /// what it had before.
     /// </remarks>
-    public static class Ink
+    public static class Typeface
     {
         private const string Path = "NotoSansKR-Subset";
 
