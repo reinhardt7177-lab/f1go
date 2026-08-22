@@ -109,6 +109,12 @@ namespace MumuF1.Game
             RaceDirector race = car.gameObject.AddComponent<RaceDirector>();
             race.Begin(track.GetComponent<TrackBuilder>());
 
+            /* Drives itself when asked. An attract mode, and the only way
+               anything here has ever completed a lap under test — a harness
+               can hold the throttle down but cannot steer, because it cannot
+               see where the car is. */
+            car.gameObject.AddComponent<Autopilot>();
+
             RivalView.Build(root.transform, race);
             Hud.Build(root.transform, race, car);
 
