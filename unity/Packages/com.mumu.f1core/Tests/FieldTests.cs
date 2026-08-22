@@ -24,6 +24,54 @@ namespace MumuF1.Tests
         private static Field MakeField() => new Field(Line, Profile, Track.Length);
 
         /// <summary>
+        /// A rival points where it is going.
+        /// </summary>
+        /// <remarks>
+        /// Nothing pinned this, and it was wrong: the heading was built with
+        /// the reference's forward axis, −Z, while every other heading in the
+        /// project uses Unity's +Z — the start heading, the roadside props,
+        /// the gantry. The renderer turns this straight into a Y rotation, so
+        /// a rival travelling north faced south and one travelling east faced
+        /// east, which is a mirror about the X axis and looks exactly like
+        /// half the field having spun.
+        ///
+        /// Stated as a shape rather than as a number, so it cannot drift back:
+        /// the direction the heading names has to be the direction the car
+        /// actually moved. That is true in any convention and false in the
+        /// wrong one.
+        /// </remarks>
+        [Test]
+        public void FacesTheWayItIsTravelling()
+        {
+            Field field = MakeField();
+
+            /* Long enough to be clear of the grid blend, which holds a rival
+               out towards its box and would otherwise move it sideways. */
+            for (var i = 0; i < 400; i++) field.Update(0.05, i * 0.05, null);
+
+            foreach (Rival rival in field.Rivals)
+            {
+                Vec3 before = rival.Position;
+                var heading = rival.Heading;
+
+                field.Update(0.05, 20.05, null);
+
+                Vec3 travelled = rival.Position - before;
+                var moved = Math.Sqrt(travelled.X * travelled.X + travelled.Z * travelled.Z);
+                Assert.That(moved, Is.GreaterThan(0.1), "the rival did not move");
+
+                /* The unit vector the heading names, in the project's
+                   convention: `atan2(x, z)` means x = sin, z = cos. */
+                var facing = new Vec3(Math.Sin(heading), 0, Math.Cos(heading));
+                var along = (travelled.X * facing.X + travelled.Z * facing.Z) / moved;
+
+                Assert.That(along, Is.GreaterThan(0.99),
+                    $"{rival.Name} is facing {Math.Acos(Math.Max(-1, Math.Min(1, along))) * 180 / Math.PI:F0}"
+                    + " degrees away from the way it is moving");
+            }
+        }
+
+        /// <summary>
         /// The player starts last: the race is then about getting through the
         /// field rather than defending a lead handed over at the lights.
         /// </summary>

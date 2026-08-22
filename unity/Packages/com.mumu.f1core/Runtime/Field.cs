@@ -207,9 +207,19 @@ namespace MumuF1
 
                 /* Heading from a short step along the line, which keeps a
                    rival pointing where it is going through a corner rather
-                   than where the centreline happens to aim. */
+                   than where the centreline happens to aim.
+
+                   `atan2(dx, dz)`, and the sign of the second argument is the
+                   whole of it. This read `-(ahead.Z - p.Z)` — the reference's
+                   convention, where forward is −Z — and every other heading in
+                   this project is Unity's, where forward is +Z: the start
+                   heading, the roadside props, the gantry over the line. The
+                   renderer feeds this straight into a Y rotation, so a rival
+                   travelling along +Z faced backwards down the circuit while
+                   one travelling along +X faced correctly. A mirror about the
+                   X axis, on nine cars out of ten. */
                 Vec3 ahead = _line.PointAt((rival.Distance + 4) % _lapLength);
-                rival.Heading = Math.Atan2(ahead.X - p.X, -(ahead.Z - p.Z));
+                rival.Heading = Math.Atan2(ahead.X - p.X, ahead.Z - p.Z);
 
                 /* And out to the grid box while the field is still held.
                    `Left` at this point on the circuit rather than a world
