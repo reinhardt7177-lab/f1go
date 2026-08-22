@@ -162,8 +162,22 @@ namespace MumuF1.Tests
             Drive(b, P.DeploySeconds * 0.5, throttle: 1.0);
             Assert.That(b.Meter, Is.EqualTo(0.5).Within(0.06), "it does not run down");
 
-            Drive(b, P.DeploySeconds, throttle: 1.0);
-            Assert.That(b.Meter, Is.EqualTo(0).Within(1e-9));
+            /* Off the road for the rest, and that is not padding. Driving on
+               after a boost expires immediately starts earning the next one —
+               which is the rule, and which the first version of this test
+               managed to assert the opposite of: it drove cleanly for four
+               more seconds and then demanded the meter read zero. It read
+               0.286, because four seconds of tidy driving is four sevenths of
+               a boost. The code was right and the test was wrong.
+
+               So the two claims are separated. The deployment runs down, and
+               then the meter shows a charge that has been kept at nothing by
+               going off. */
+            Drive(b, P.DeploySeconds, throttle: 1.0, onTrack: false);
+
+            Assert.That(b.Deploying, Is.False, "the deployment never ran out");
+            Assert.That(b.Meter, Is.EqualTo(0).Within(1e-9),
+                "a spent booster still shows something");
         }
     }
 }
