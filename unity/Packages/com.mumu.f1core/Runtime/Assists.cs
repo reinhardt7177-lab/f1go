@@ -98,6 +98,69 @@ namespace MumuF1
         public double Peak { get; set; } = 11_000;
     }
 
+    public sealed class SteerLimiterParams
+    {
+        /// <summary>Front slip angle the limiter holds (rad).</summary>
+        /// <remarks>
+        /// The tyre peaks at 0.125 rad and the top of the curve is flat — at
+        /// 0.14 it still makes 99.8 per cent of peak. Holding just past the
+        /// peak rather than exactly on it lets the driver feel the limit for
+        /// two tenths of a per cent of grip.
+        /// </remarks>
+        public double TargetSlip { get; set; } = 0.14;
+
+        /// <summary>How fast the ceiling drops past target (per second).</summary>
+        /// <remarks>
+        /// At twice target slip the ceiling falls in about a quarter of a
+        /// second: fast enough to catch a corner-entry overshoot, slow enough
+        /// that it does not snatch the wheel out of your hands.
+        /// </remarks>
+        public double CutRate { get; set; } = 4;
+
+        /// <summary>How fast it is handed back (per second).</summary>
+        /// <remarks>
+        /// Faster than traction control's 1.5, so the steering is not dead on
+        /// the way out of a corner.
+        /// </remarks>
+        public double RestoreRate { get; set; } = 2;
+
+        /// <summary>Never cut below this, or slow corners become impossible.</summary>
+        /// <remarks>
+        /// A safety net rather than a working limit. The worst case in normal
+        /// driving is 300 km/h, where the ceiling lands at 0.211 — twice the
+        /// floor — so the floor can never bind on a straight.
+        /// </remarks>
+        public double Floor { get; set; } = 0.1;
+
+        /* The chassis, mirrored as plain numbers so this file still depends
+           on nothing from the vehicle — the same discipline the yaw limiter
+           keeps. */
+
+        /// <summary>Mechanical grip, as lateral acceleration at rest (m/s²).</summary>
+        public double LatAccel { get; set; } = 16.0;
+
+        /// <summary>How much lateral acceleration downforce adds, per (m/s)².</summary>
+        public double LatAccelPerV2 { get; set; } = 0.00345;
+
+        /// <summary>Axle to axle (m).</summary>
+        public double Wheelbase { get; set; } = 3.6;
+
+        /// <summary>Steering lock at a standstill (rad).</summary>
+        public double MaxSteerAngle { get; set; } = 0.349;
+
+        /// <summary>Fraction of lock still available at 300 km/h.</summary>
+        public double SteerSpeedFactor { get; set; } = 0.45;
+
+        /// <summary>How much more lock than the corner needs to allow.</summary>
+        /// <remarks>
+        /// Sixty per cent more than a grip-limited corner can use. Enough
+        /// that the car can still be provoked and corrected and never feels
+        /// numb; little enough that full travel stops being a request the
+        /// front axle answers with drag.
+        /// </remarks>
+        public double SpeedHeadroom { get; set; } = 1.6;
+    }
+
     /// <summary>
     /// Driver aids.
     /// </summary>
@@ -239,6 +302,136 @@ namespace MumuF1
                therefore to a test. */
             if (yawExcess == 0) return 0;
             return -MathUtil.Clamp(yawExcess / p.Span, -1, 1) * p.Peak;
+        }
+
+        /// <summary>
+        /// The most lock worth having at this speed.
+        /// </summary>
+        /// <param name="speed">forward speed (m/s); the sign does not matter.</param>
+        /// <param name="p">the chassis and how much headroom to leave.</param>
+        /// <returns>a ceiling on the steering command, zero to one.</returns>
+        /// <remarks>
+        /// The integrator below is a closed loop, so it can only cut
+        /// <em>after</em> the front axle has gone past its peak and the half
+        /// metre of relaxation lag has already put the transient into the
+        /// car. This stops the request being made at all.
+        ///
+        /// At 130 km/h the front axle can use 3.2 degrees and full travel
+        /// asks for 15.2 — nearly five times over — and past the peak the
+        /// lateral curve slopes down, so the extra lock buys drag and nothing
+        /// else. That is what turned a corner into a 130-to-25 km/h scrub.
+        ///
+        /// Below about 63 km/h this returns exactly 1 and the driver keeps
+        /// every degree. That is not a special case: under that speed the car
+        /// is limited by the steering rack rather than by grip — at 50 km/h
+        /// it needs 17.3 of the 18.2 degrees it has — so the ceiling falls
+        /// out of the arithmetic above 1 and clamps. Slow corners are
+        /// untouched.
+        /// </remarks>
+        public static double SpeedLockCeiling(double speed, SteerLimiterParams p = null)
+        {
+            p = p ?? new SteerLimiterParams();
+
+            var v = Math.Abs(speed);
+
+            /* Below walking pace the arithmetic divides by roughly nothing
+               and the answer is meaningless as well as unnecessary. */
+            if (v < 1) return 1;
+
+            var needed = Math.Atan((p.LatAccel + p.LatAccelPerV2 * v * v) * p.Wheelbase / (v * v));
+            var available = p.MaxSteerAngle *
+                (1 - (1 - p.SteerSpeedFactor) * MathUtil.Clamp(v * 3.6 / 300, 0, 1));
+
+            return MathUtil.Clamp(p.SpeedHeadroom * needed / available, p.Floor, 1);
+        }
+
+        /// <summary>
+        /// Stop the driver asking the front axle for more slip than it can use.
+        /// </summary>
+        /// <param name="desired">steer the driver asked for, minus one to one.</param>
+        /// <param name="frontSlip">mean slip angle across the front axle (rad, signed).</param>
+        /// <param name="state">what the controller is holding.</param>
+        /// <param name="dt">the step (s).</param>
+        /// <param name="p">how hard it cuts and how fast it gives back.</param>
+        /// <param name="sliding">whether the car is already out of shape.</param>
+        /// <param name="speed">forward speed (m/s), for the speed ceiling.</param>
+        /// <returns>the steer to actually apply.</returns>
+        /// <remarks>
+        /// This is the single biggest reason the car is hard. At 100 km/h the
+        /// grip-limited corner radius is 39 m, which needs 5.3 degrees of
+        /// steer; the lock available at that speed is 14. At 200 km/h it is
+        /// 2.1 against 11.2. Full travel is therefore always a request the
+        /// front axle cannot fill — and past the peak the lateral curve
+        /// slopes <em>downwards</em>, so pushing harder gives less grip, the
+        /// car stops answering the wheel, and when the rear joins in the yaw
+        /// runs away.
+        ///
+        /// The loop settles with the front axle at peak slip, which is to say
+        /// at maximum lateral force. The car does not turn less. It turns as
+        /// hard as it physically can, and stops being asked for more.
+        /// </remarks>
+        public static double SteerLimiter(
+            double desired,
+            double frontSlip,
+            AssistState state,
+            double dt,
+            SteerLimiterParams p = null,
+            bool sliding = false,
+            double speed = 0)
+        {
+            p = p ?? new SteerLimiterParams();
+
+            /* The sign test is what makes this safe, and it is not obvious.
+             *
+             * Steering right makes the contact patch travel to the left of
+             * where the wheel points, so understeer shows up as a front slip
+             * angle opposite in sign to the steer command. Catching a slide
+             * is the other way round: the car is already yawing, the body is
+             * travelling across its own nose, and the countersteer applied
+             * has the same sign as the slip.
+             *
+             * So cutting only on opposite signs separates "you asked for more
+             * lock than the front can use" from "you are saving it", and the
+             * limiter can never take away a correction. Delete this test and
+             * the assist fights the driver at exactly the moment they need
+             * the wheel most. */
+            var beyondPeak =
+                desired != 0 &&
+                Math.Abs(frontSlip) > p.TargetSlip &&
+                Math.Sign(frontSlip) != Math.Sign(desired);
+
+            if (sliding)
+            {
+                /* Stand down — but stand down *frozen*.
+                 *
+                 * A yawing car carries a large front slip angle whatever the
+                 * steering is doing, so the loop cannot read it. What it must
+                 * not do is conclude from that silence that the lock is safe
+                 * to hand back. This branch used to fall through to the
+                 * restore below, and the ceiling climbed from 0.93 to 1.00
+                 * during a twenty-seven degree slide — giving the player's
+                 * full wrong-way lock back at the one moment it was actively
+                 * wrong. Hold whatever the corner had earned and let the yaw
+                 * assist do its work. */
+            }
+            else if (beyondPeak)
+            {
+                state.SteerLimit -=
+                    dt * p.CutRate * MathUtil.Clamp(Math.Abs(frontSlip) / p.TargetSlip - 1, 0, 3);
+            }
+            else
+            {
+                state.SteerLimit += dt * p.RestoreRate;
+            }
+
+            state.SteerLimit = MathUtil.Clamp(state.SteerLimit, p.Floor, 1);
+
+            /* Whichever is tighter: what the corner has earned, or what the
+               speed can use. The ceiling is applied to the command and never
+               written back into the state, so the integrator keeps its own
+               memory. */
+            var ceiling = Math.Min(state.SteerLimit, SpeedLockCeiling(speed, p));
+            return MathUtil.Clamp(desired, -ceiling, ceiling);
         }
     }
 }

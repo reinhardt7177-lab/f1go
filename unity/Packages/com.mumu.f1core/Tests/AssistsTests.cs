@@ -329,5 +329,188 @@ namespace MumuF1.Tests
                 }
             }
         }
+
+        // ---- The steering limiter -------------------------------------
+        //
+        // Numbers below were measured against the TypeScript before they
+        // were written here, which is the only way to tell a claim about
+        // the model from a claim about the port.
+
+        private static readonly SteerLimiterParams S = new SteerLimiterParams();
+
+        /// <summary>
+        /// Slow corners keep every degree, and that falls out of the
+        /// arithmetic rather than being a special case: under about 63 km/h
+        /// the car is limited by the steering rack rather than by grip, so
+        /// the ceiling computes above one and clamps.
+        /// </summary>
+        [Test]
+        public void LeavesSlowCornersAlone()
+        {
+            foreach (var kmh in new[] { 0.0, 3.5, 20, 50, 62, 63 })
+            {
+                Assert.That(Assists.SpeedLockCeiling(kmh / 3.6, S), Is.EqualTo(1).Within(0),
+                    $"cut the lock at {kmh:F1} km/h, where grip is not the limit");
+            }
+
+            /* And the very next km/h is where it starts, which pins the knee
+               rather than merely the flat part either side of it. */
+            Assert.That(Assists.SpeedLockCeiling(64 / 3.6, S), Is.EqualTo(0.998616745).Within(1e-9));
+        }
+
+        /// <summary>
+        /// What the ceiling actually is at speed. These are the numbers that
+        /// decide whether a corner is a corner or a scrub, so they are pinned
+        /// exactly rather than by inequality.
+        /// </summary>
+        [TestCase(80.0, 0.689562224)]
+        [TestCase(100.0, 0.487553620)]
+        [TestCase(130.0, 0.340264597)]
+        [TestCase(200.0, 0.224924598)]
+        [TestCase(300.0, 0.211004781)]
+        public void HoldsTheLockAGripLimitedCornerCanUse(double kmh, double expected)
+        {
+            Assert.That(Assists.SpeedLockCeiling(kmh / 3.6, S), Is.EqualTo(expected).Within(1e-9));
+        }
+
+        /// <summary>
+        /// The floor is a safety net, not a working limit. At the fastest the
+        /// car ever goes the ceiling is still twice it, so it can never bind
+        /// on a straight — which is the whole reason it is safe to have.
+        /// </summary>
+        [Test]
+        public void NeverReachesItsFloorAtAnySpeedTheCarCanDo()
+        {
+            for (var kmh = 0.0; kmh <= 400; kmh += 1)
+            {
+                Assert.That(Assists.SpeedLockCeiling(kmh / 3.6, S), Is.GreaterThan(S.Floor * 2),
+                    $"the floor bound at {kmh:F0} km/h");
+            }
+        }
+
+        /// <summary>
+        /// Understeer walks the ceiling down at the stated rate. At twice
+        /// target slip that is one cut rate per second — a third of a
+        /// hundredth per tick at 120 Hz.
+        /// </summary>
+        [Test]
+        public void WindsTheLockOffWhenTheFrontAxleIsPastItsPeak()
+        {
+            var state = new AssistState();
+            for (var i = 1; i <= 8; i++)
+            {
+                var applied = Assists.SteerLimiter(1, -0.28, state, Dt, S, false, 0);
+                var expected = 1 - i * Dt * S.CutRate;
+                Assert.That(state.SteerLimit, Is.EqualTo(expected).Within(1e-9));
+                Assert.That(applied, Is.EqualTo(expected).Within(1e-9));
+            }
+        }
+
+        /// <summary>
+        /// How far past peak the axle is stops mattering at three times over.
+        /// Without the clamp a big slip angle would take the whole ceiling in
+        /// one tick.
+        /// </summary>
+        [Test]
+        public void CutsNoFasterThanThreeTimesOverNoMatterHowFarPast()
+        {
+            var state = new AssistState();
+            Assists.SteerLimiter(1, -10, state, Dt, S, false, 0);
+            Assert.That(state.SteerLimit, Is.EqualTo(0.9).Within(1e-9));
+        }
+
+        /// <summary>
+        /// The sign test, which is the one that makes this safe to ship.
+        /// </summary>
+        /// <remarks>
+        /// Understeer shows up as a front slip angle opposite in sign to the
+        /// steer command; a save has the same sign, because the car is
+        /// already yawing and the countersteer goes with the slip. Cutting
+        /// only on opposite signs is what stops the limiter taking away a
+        /// correction — with this test deleted the assist fights the driver
+        /// at exactly the moment they need the wheel most.
+        /// </remarks>
+        [Test]
+        public void NeverTakesAwayACountersteer()
+        {
+            var state = new AssistState { SteerLimit = 0.5 };
+            var applied = Assists.SteerLimiter(1, 0.28, state, Dt, S, false, 0);
+
+            Assert.That(state.SteerLimit, Is.EqualTo(0.5 + Dt * S.RestoreRate).Within(1e-9));
+            Assert.That(applied, Is.EqualTo(0.516666667).Within(1e-9));
+        }
+
+        /// <summary>
+        /// While sliding the ceiling is frozen, not restored.
+        /// </summary>
+        /// <remarks>
+        /// A yawing car carries a large front slip angle whatever the
+        /// steering is doing, so the loop cannot read it — and must not
+        /// conclude from that silence that the lock is safe to hand back.
+        /// This branch used to fall through to the restore, and the ceiling
+        /// climbed from 0.93 to 1.00 during a twenty-seven degree slide,
+        /// giving the player's full wrong-way lock back at the one moment it
+        /// was actively wrong.
+        /// </remarks>
+        [Test]
+        public void HoldsItsGroundWhileTheCarIsSliding()
+        {
+            var state = new AssistState { SteerLimit = 0.6 };
+            var applied = Assists.SteerLimiter(1, -0.9, state, Dt, S, true, 20);
+
+            Assert.That(state.SteerLimit, Is.EqualTo(0.6).Within(0), "restored mid-slide");
+            Assert.That(applied, Is.EqualTo(0.6).Within(1e-9));
+        }
+
+        /// <summary>
+        /// It gives back faster than traction control does, so the steering
+        /// is not dead on the way out of a corner.
+        /// </summary>
+        [Test]
+        public void HandsTheLockBackOnceTheAxleIsBehaving()
+        {
+            var state = new AssistState { SteerLimit = 0.2 };
+            for (var i = 1; i <= 4; i++)
+            {
+                Assists.SteerLimiter(1, 0, state, Dt, S, false, 0);
+                Assert.That(state.SteerLimit, Is.EqualTo(0.2 + i * Dt * S.RestoreRate).Within(1e-9));
+            }
+
+            Assert.That(S.RestoreRate, Is.GreaterThan(new TractionControlParams().RestoreRate));
+        }
+
+        /// <summary>
+        /// The two ceilings compose, and the speed one is not written back
+        /// into the state — the integrator keeps its own memory, so a car
+        /// that slows down gets its earned lock back rather than the lock the
+        /// fastest part of the corner allowed.
+        /// </summary>
+        [Test]
+        public void TakesWhicheverCeilingIsTighterWithoutForgettingTheOther()
+        {
+            var state = new AssistState { SteerLimit = 0.9 };
+            var applied = Assists.SteerLimiter(1, 0, state, 0, S, false, 130 / 3.6);
+
+            Assert.That(applied, Is.EqualTo(0.340264597).Within(1e-9));
+            Assert.That(state.SteerLimit, Is.EqualTo(0.9).Within(0),
+                "the speed ceiling leaked into the integrator");
+        }
+
+        /// <summary>
+        /// It is a ceiling on magnitude, so it clamps both ways and leaves
+        /// anything already inside it untouched.
+        /// </summary>
+        [Test]
+        public void ClampsBothWaysAndPassesSmallInputsThrough()
+        {
+            var state = new AssistState { SteerLimit = 0.4 };
+            Assert.That(Assists.SteerLimiter(-1, 0, state, 0, S, false, 0),
+                Is.EqualTo(-0.4).Within(1e-12));
+
+            state.SteerLimit = 0.4;
+            Assert.That(Assists.SteerLimiter(0.25, 0, state, 0, S, false, 0),
+                Is.EqualTo(0.25).Within(1e-12));
+        }
+
     }
 }
