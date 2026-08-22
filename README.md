@@ -125,10 +125,10 @@ guessing at things that line answers in one reading.
 | Throttle      | `↑` / `W`         | right thumb, drag up    |
 | Brake         | `↓` / `S`         | right thumb, drag down  |
 | Steer         | `←` `→` / `A` `D` | left thumb, drag across |
-| Gears         | `Q` `E`           | automatic               |
+| Gears         | `Q` `E`           | automatic, both ways    |
 | Driver aids   | `T`               | always on               |
 | Straight-line | `F`               | —                       |
-| Overtake mode | `Shift`           | —                       |
+| Overtake mode | `Shift`           | earned, then automatic  |
 | Reset         | `R`               | —                       |
 | Drive itself  | `P`               | —                       |
 | Instrument    | `F3`              | —                       |
@@ -154,6 +154,20 @@ Steering is a relative drag: put your thumb down wherever is
 comfortable and that becomes centre. The pedals are analogue by travel,
 because on-off pedals make an eight-hundred-kilo car with a thousand
 horsepower undriveable on a touchscreen.
+
+A phone gets two thumbs and nothing else, and everything else follows
+from that. There is no gear lever, so the box shifts both ways on road
+speed — it used to only shift up, which made it an automatic along the
+straight and a manual with no lever out of the hairpin. And there is no
+boost button, so the boost is earned instead: seven seconds inside the
+white lines without sliding arms it, pinning the throttle spends it, and
+running wide loses it. `MumuF1.Booster` is the whole rule, and the meter
+in the corner of the cluster is the only explanation a player gets or
+needs.
+
+The minimap is north-up rather than car-up. A rotating map is easier to
+read for one corner and impossible to learn a circuit from, and learning
+the circuit is the reason to have one.
 
 ## Assets
 

@@ -106,6 +106,18 @@ namespace MumuF1.Game
         private int _arrivals;
 
         private CarController _car;
+
+        /// <summary>
+        /// The session, for the boost it hands out.
+        /// </summary>
+        /// <remarks>
+        /// Fetched every frame until it appears rather than once in
+        /// <c>Awake</c>: the bootstrap adds the director after the drivers,
+        /// so it is not there yet when this wakes up. Null is survivable and
+        /// simply means no boost, which is the right answer during the moment
+        /// before a session exists.
+        /// </remarks>
+        private RaceDirector _race;
         private float _steer;
         private bool _shiftArmed = true;
         private Texture2D _ring;
@@ -172,22 +184,45 @@ namespace MumuF1.Game
             /* Shift on road speed, as the keyboard does. The same reasoning:
                during wheelspin the engine sits on the limiter while the car is
                barely moving, and an rpm-triggered shift would run through the
-               whole gearbox in half a second. */
+               whole gearbox in half a second.
+
+               Both ways, now. This upshifted and nothing else, so a gearbox
+               that was automatic going up the straight was a manual with no
+               lever coming out of the corner: brake from top gear for a
+               hairpin and the car pulls away from it in eighth, at nine
+               hundred rpm, with no way to ask for anything better. On a phone
+               there is no lever to reach for — that is the entire premise of
+               the layout — so a gearbox that only goes one way is not an
+               automatic, it is half of one.
+
+               The band below the upshift point is deliberately not the
+               upshift point itself. Downshifting the moment you drop under
+               the speed you shifted up at leaves the box hunting between two
+               gears for the whole of a long corner; fifteen per cent of
+               margin is enough that it picks one and stays there. */
+            if (_race == null) _race = GetComponent<RaceDirector>();
+
             double kmh = System.Math.Abs(_car.SpeedMs) * MathUtil.Kmh;
-            bool wantShift = kmh > _car.Gear * 42;
+            bool wantUp = kmh > _car.Gear * 42;
+            bool wantDown = _car.Gear > 1 && kmh < (_car.Gear - 1) * 42 * 0.85;
 
             _car.Controls = new Controls
             {
                 Throttle = throttle,
                 Brake = brake,
                 Steer = _steer,
-                ShiftUp = wantShift && _shiftArmed,
-                ShiftDown = false,
+                ShiftUp = wantUp && _shiftArmed,
+                ShiftDown = wantDown && _shiftArmed,
                 StraightMode = false,
-                Overtake = false
+
+                /* No button, and there is not going to be one. The layout is
+                   a thumb each side and the moment a third thing needs
+                   pressing none of it works, so the boost is something the
+                   driving earns and the throttle spends. See MumuF1.Booster. */
+                Overtake = _race != null && _race.Booster.Deploying
             };
 
-            _shiftArmed = !wantShift;
+            _shiftArmed = !(wantUp || wantDown);
         }
 
         /// <summary>Take this frame's touches, claiming and releasing roles.</summary>

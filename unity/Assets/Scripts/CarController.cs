@@ -164,6 +164,31 @@ namespace MumuF1.Game
         public int Gear => _drivetrain.Gear;
         public double Downforce { get; private set; }
 
+        /// <summary>
+        /// The angle between where the car points and where it is going (rad).
+        /// </summary>
+        /// <remarks>
+        /// Positive when the velocity lies to the right of the nose. Computed
+        /// here rather than by each caller because the aids already need it
+        /// every tick and there should be one answer: a booster that rewards
+        /// tidy driving and a stability program that catches a slide must
+        /// agree about what a slide is.
+        /// </remarks>
+        public double Sideslip
+        {
+            get
+            {
+                if (_body == null) return 0;
+
+                /* Character for character what the aids compute, and that is
+                   the point: two definitions of "sliding" that differ by a
+                   degree is a car the stability program is catching and the
+                   booster is punishing at the same time. */
+                Vector3 heading = transform.InverseTransformDirection(_body.linearVelocity);
+                return System.Math.Atan2(heading.x, heading.z);
+            }
+        }
+
         /// <summary>Where the limiter is, so a rev counter has a top.</summary>
         /// <remarks>
         /// Reverse has its own, much lower one — a rev bar drawn against the

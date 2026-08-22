@@ -154,6 +154,7 @@ namespace MumuF1.Game
 
             DrawCluster(unit, pad);
             DrawTiming(unit, pad);
+            DrawMap(unit, pad);
             DrawLights(unit);
             DrawBanner(unit);
             DrawDiagnostics(unit, pad);
@@ -220,7 +221,7 @@ namespace MumuF1.Game
             Text(gearBox, _car.Gear == 0 ? "R" : _car.Gear.ToString(), _gear, Amber);
 
             DrawPedals(new Rect(box.x + unit * 8.9f, row + unit * 0.25f, unit * 2.9f, unit * 1.5f), unit);
-            DrawEnergy(new Rect(box.xMax - pad - unit * 2.4f, row + unit * 0.25f, unit * 2.4f, unit * 1.5f), unit);
+            DrawBoost(new Rect(box.xMax - pad - unit * 2.4f, row + unit * 0.25f, unit * 2.4f, unit * 1.5f), unit);
         }
 
         /// <summary>
@@ -280,18 +281,164 @@ namespace MumuF1.Game
             Bar(new Rect(box.x, box.y + h + unit * 0.2f, box.width, h), (float)_car.Controls.Brake, Down);
         }
 
-        /// <summary>The energy store, and whether it is being spent.</summary>
-        private void DrawEnergy(Rect box, float unit)
+        /// <summary>
+        /// The boost the driving has earned.
+        /// </summary>
+        /// <remarks>
+        /// The energy store used to be here and it was the wrong thing to
+        /// show: the player cannot spend it, cannot save it and cannot affect
+        /// it, so a bar tracking it is a number about the car rather than
+        /// about them. What they can affect is whether they are driving
+        /// tidily, and this is that — filling while they are, draining while
+        /// they are not, gone the moment they leave the road.
+        ///
+        /// It has to be legible at a glance and without a word of
+        /// instruction, because on a phone there is no key to press and no
+        /// manual to read: it fills, it flashes when it is ready, and it
+        /// spends itself when the throttle is pinned.
+        /// </remarks>
+        private void DrawBoost(Rect box, float unit)
         {
             float h = box.height * 0.46f;
+            Booster boost = _race.Booster;
 
-            Bar(new Rect(box.x, box.y, box.width, h), (float)_car.Energy,
-                _car.Deploying ? Purple : new Color(0.25f, 0.62f, 0.95f));
+            bool armed = boost.Armed;
+            bool firing = boost.Deploying;
+
+            /* Armed pulses rather than sitting there, because a full bar and
+               a nearly-full bar look the same in the corner of an eye that is
+               busy with a corner. */
+            bool pulse = armed && Mathf.Repeat(Time.unscaledTime * 3f, 1f) < 0.5f;
+
+            Color colour = firing ? Purple
+                : armed ? (pulse ? new Color(0.85f, 0.55f, 1f) : Purple)
+                : new Color(0.25f, 0.62f, 0.95f);
+
+            Bar(new Rect(box.x, box.y, box.width, h), (float)boost.Meter, colour);
 
             Text(new Rect(box.x, box.y + h + unit * 0.1f, box.width, unit * 0.7f),
-                _car.Deploying ? "OVERTAKE" : "ERS", _tiny,
-                _car.Deploying ? Purple : Dim);
+                firing ? "BOOST" : armed ? "READY" : "BOOST", _tiny,
+                firing || armed ? colour : Dim);
         }
+
+        // ---- The circuit, small, in the corner --------------------------
+
+        private Texture2D _minimap;
+        private MapOutline _drawn;
+
+        /// <summary>
+        /// The outline, baked once into a texture.
+        /// </summary>
+        /// <remarks>
+        /// Two hundred and fifty-six filled rectangles a frame would be the
+        /// most expensive thing on screen, to draw a picture two centimetres
+        /// across that never changes. So it is drawn once into pixels and
+        /// blitted, and only the dots on top move.
+        /// </remarks>
+        private Texture2D Minimap(MapOutline map, int size)
+        {
+            if (_minimap != null && _drawn == map && _minimap.width == size) return _minimap;
+
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
+            {
+                hideFlags = HideFlags.HideAndDontSave,
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp
+            };
+
+            var clear = new Color(0f, 0f, 0f, 0f);
+            var pixels = new Color[size * size];
+            for (int i = 0; i < pixels.Length; i++) pixels[i] = clear;
+
+            /* Sampled far more densely than the outline has points, so the
+               dots overlap into a line rather than beading. Plotting rather
+               than drawing segments keeps this to arithmetic — there is no
+               line routine in here to get wrong. */
+            var road = new Color(0.80f, 0.84f, 0.88f, 0.95f);
+            int steps = Mathf.Max(map.Count * 6, 512);
+
+            for (int i = 0; i < steps; i++)
+            {
+                float t = (float)i / steps * map.Count;
+                int a = Mathf.FloorToInt(t) % map.Count;
+                int b = (a + 1) % map.Count;
+                float f = t - Mathf.Floor(t);
+
+                float x = Mathf.Lerp(map.Points[a * 2], map.Points[b * 2], f);
+                float y = Mathf.Lerp(map.Points[a * 2 + 1], map.Points[b * 2 + 1], f);
+
+                int px = Mathf.Clamp(Mathf.RoundToInt(x * (size - 1)), 0, size - 1);
+                int py = Mathf.Clamp(Mathf.RoundToInt(y * (size - 1)), 0, size - 1);
+
+                for (int dy = -1; dy <= 1; dy++)
+                {
+                    for (int dx = -1; dx <= 1; dx++)
+                    {
+                        int qx = px + dx, qy = py + dy;
+                        if (qx < 0 || qy < 0 || qx >= size || qy >= size) continue;
+                        pixels[qy * size + qx] = road;
+                    }
+                }
+            }
+
+            tex.SetPixels(pixels);
+            tex.Apply();
+
+            _minimap = tex;
+            _drawn = map;
+            return tex;
+        }
+
+        private void DrawMap(float unit, float pad)
+        {
+            if (_race.Map == null || _race.Track == null) return;
+
+            float size = unit * 4.6f;
+            var box = new Rect(Screen.width - size - pad, pad, size, size);
+
+            Fill(box, Panel);
+            Fill(new Rect(box.x, box.y, box.width, Mathf.Max(2f, unit * 0.05f)), House);
+
+            float inset = unit * 0.35f;
+            var plot = new Rect(box.x + inset, box.y + inset,
+                box.width - inset * 2, box.height - inset * 2);
+
+            Texture2D outline = Minimap(_race.Map, 128);
+            Color was = GUI.color;
+            GUI.color = Color.white;
+            GUI.DrawTexture(plot, outline, ScaleMode.StretchToFill, true);
+            GUI.color = was;
+
+            Circuit circuit = _race.Track.Circuit;
+            float dot = Mathf.Max(3f, unit * 0.2f);
+
+            /* Rivals first, so the player's own car is never hidden under
+               one. */
+            if (_race.Field != null)
+            {
+                foreach (Rival rival in _race.Field.Rivals)
+                {
+                    MiniMap.PlaceAt(_race.Map, circuit, rival.Distance, out float rx, out float ry);
+                    Fill(Spot(plot, rx, ry, dot * 0.8f), new Color(0.55f, 0.60f, 0.68f));
+                }
+            }
+
+            MiniMap.PlaceAt(_race.Map, circuit, _race.Distance, out float cx, out float cy);
+            Fill(Spot(plot, cx, cy, dot + 2f), new Color(0f, 0f, 0f, 0.6f));
+            Fill(Spot(plot, cx, cy, dot), House);
+        }
+
+        /// <summary>A dot at a normalised point on the map.</summary>
+        /// <remarks>
+        /// The map's y runs the way world z does, and the screen's runs the
+        /// other way, so it is flipped exactly here — once, where the two
+        /// meet, rather than inside the geometry where it would be a fact
+        /// about the circuit rather than about the screen.
+        /// </remarks>
+        private static Rect Spot(Rect plot, float x, float y, float d) => new Rect(
+            plot.x + x * plot.width - d * 0.5f,
+            plot.y + (1f - y) * plot.height - d * 0.5f,
+            d, d);
 
         private void Bar(Rect box, float fill, Color colour)
         {
@@ -533,7 +680,8 @@ namespace MumuF1.Game
                 "thr {0:F2}  brk {1:F2}  str {2:+0.00;-0.00; 0.00}  |  " +
                 "rpm {3:F0}  gear {4}  |  grounded {5}/4  load {6:F0} N  slip {7:F2}  " +
                 "tc {15}  grip {16:F2} {17:F0}\u00b0C  |  tq {18:F0}  f {19:F0} N  |  " +
-                "ray {9:F2}  down {11:F2} {13}  |  {8:F1} m/s",
+                "ray {9:F2}  down {11:F2} {13}  |  {8:F1} m/s  |  " +
+                "yaw {20:F2}  lat {21:+0.00;-0.00; 0.00}  slip {22:+0.000;-0.000; 0.000}",
                 _car.Controls.Throttle, _car.Controls.Brake, _car.Controls.Steer,
                 _car.EngineRpm, _car.Gear,
                 _car.GroundedWheels, _car.TotalLoad, _car.DrivenSlip, _car.SpeedMs,
@@ -542,7 +690,17 @@ namespace MumuF1.Game
                 _car.transform.position.y,
                 _car.Aids ? _car.ThrottleLimit.ToString("F2") : "off",
                 _car.DrivenGrip, _car.DrivenTemp,
-                _car.DrivenTorque, _car.DrivenForce);
+                _car.DrivenTorque, _car.DrivenForce,
+                /* Which way it is pointing, how far it is from the centreline,
+                   and how far sideways it is travelling.
+                   
+                   Added because "it wobbles on the grid" cannot be settled by
+                   looking: a stationary car photographed twice looks the same
+                   either way, and two attempts to measure it off screenshots
+                   both foundered on the kerbs being the same red as the car.
+                   A heading that changes on a car that is not moving is the
+                   whole question, in one number. */
+                _car.transform.eulerAngles.y, _race.Lateral, _car.Sideslip);
 
             var box = new Rect(pad, Screen.height - unit * 6.1f, Screen.width - pad * 2, unit * 1.1f);
             Fill(box, Panel);

@@ -164,7 +164,7 @@ namespace MumuF1.Game
                a finger actually lands. */
             Text(new Rect(0, y, Screen.width, unit),
                 Application.isMobilePlatform
-                    ? "왼쪽 엄지 조향 · 오른쪽 엄지 위 스로틀 / 아래 브레이크"
+                    ? "왼쪽 조향 · 오른쪽 위 스로틀 / 아래 브레이크 · 기어 자동 · 잘 달리면 부스터"
                     : "A D 또는 ← → 조향 · W 스로틀 · S 브레이크 · T 트랙션 · P 자동주행 · R 리셋",
                 _hint, Dim);
         }

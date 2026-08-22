@@ -44,6 +44,19 @@ namespace MumuF1.Game
 
         public bool OnTrack { get; private set; } = true;
 
+        /// <summary>
+        /// The boost the driving earns, and the map the driving is drawn on.
+        /// </summary>
+        /// <remarks>
+        /// Both live here because both need what only this class has: the
+        /// booster is paid for staying inside the white lines, and the map is
+        /// drawn from the circuit. Neither belongs to the car, which does not
+        /// know a session exists.
+        /// </remarks>
+        public Booster Booster { get; } = new Booster();
+
+        public MapOutline Map { get; private set; }
+
         /// <summary>Where the player sits in the field, one-based.</summary>
         public int Position { get; private set; } = 1;
 
@@ -106,6 +119,12 @@ namespace MumuF1.Game
             Timer = new LapTimer(track.Circuit);
             Session = new Session(MumuF1.Session.Preset(Kind));
 
+            /* Once, here. The outline never changes and walking the spline
+               two hundred and fifty-six times a frame to draw a picture two
+               centimetres across would be the most expensive thing on
+               screen. */
+            Map = MiniMap.Build(track.Circuit);
+
             /* A time trial races a ghost and nothing else; the other kinds put
                a field on the road. Building one in a time trial would be nine
                cars driving a lap nobody is scored against. */
@@ -167,6 +186,14 @@ namespace MumuF1.Game
 
             JustFinished = held ? null : Timer.Update(where.S, OnTrack, dt);
             Session.Update(dt, OnTrack, JustFinished, Timer);
+
+            /* What the driving has earned. Held on the grid along with
+               everything else — a car waiting for the lights is not driving
+               well, it is waiting. */
+            if (!held && _car != null)
+            {
+                Booster.Update(dt, OnTrack, _car.Sideslip, _car.SpeedMs, _car.Controls.Throttle);
+            }
 
             // --- the ghost -------------------------------------------------
             TickGhost(dt);

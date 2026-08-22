@@ -22,6 +22,13 @@ namespace MumuF1.Game
         public float ReturnTime = 0.14f;
 
         private CarController _car;
+
+        /// <summary>The session, for the boost the driving earns.</summary>
+        /// <remarks>
+        /// Lazily, because the bootstrap adds the director after the drivers
+        /// and it is not there when this wakes up.
+        /// </remarks>
+        private RaceDirector _race;
         private TouchDriver _touch;
         private float _steer;
         private bool _shiftArmed = true;
@@ -50,6 +57,8 @@ namespace MumuF1.Game
             float rate = Mathf.Abs(want) > 0.01f ? dt / SteerTime : dt / ReturnTime;
             _steer = Mathf.MoveTowards(_steer, want, rate);
 
+            if (_race == null) _race = GetComponent<RaceDirector>();
+
             bool throttle = Key(KeyCode.W) || Key(KeyCode.UpArrow);
             bool brake = Key(KeyCode.S) || Key(KeyCode.DownArrow);
 
@@ -68,7 +77,12 @@ namespace MumuF1.Game
                 ShiftUp = (wantShift && _shiftArmed) || KeyDown(KeyCode.E),
                 ShiftDown = KeyDown(KeyCode.Q),
                 StraightMode = Key(KeyCode.F),
+                /* Shift still forces it, because a keyboard has room for a
+                   key and somebody testing wants it on demand. The earned
+                   boost is added rather than replacing it, so the same drive
+                   behaves the same way whichever thing you are holding. */
                 Overtake = Key(KeyCode.LeftShift) || Key(KeyCode.RightShift)
+                    || (_race != null && _race.Booster.Deploying)
             };
             _shiftArmed = !wantShift;
 
