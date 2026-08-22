@@ -40,8 +40,10 @@ editor needs a licence, so it is checked by `unity.yml` rather than by
 
 There is no scene to speak of. `Bootstrap` builds the entire world in
 `RuntimeInitializeOnLoadMethod` — the circuit is swept from a spline,
-the scenery placed from a hash, the car lofted from a table of
-cross-sections — so the one scene file is deliberately empty. A scene
+the land under it blended from the circuit's own elevation, the scenery
+placed from a hash and then dropped onto whatever is beneath it, the car
+lofted from a table of cross-sections — so the one scene file is
+deliberately empty. A scene
 would be a list of objects that code creates anyway, plus a hundred GUID
 references that can silently rot, and the machine this was written on
 has no editor to click in.
@@ -89,16 +91,29 @@ npm run site
 | Brake         | `↓` / `S`         | right thumb, drag down  |
 | Steer         | `←` `→` / `A` `D` | left thumb, drag across |
 | Gears         | `Q` `E`           | automatic               |
-| Traction control | `T`            | always on               |
+| Driver aids   | `T`               | always on               |
 | Straight-line | `F`               | —                       |
 | Overtake mode | `Shift`           | —                       |
 | Reset         | `R`               | —                       |
+| Drive itself  | `P`               | —                       |
+| Instrument    | `F3`              | —                       |
 
-Traction control is on to begin with, and it is not a concession. First
-gear asks the road for 29,281 N and the rear tyres can take 7,708 — the
-engine can out-torque the grip nearly four times over, so full throttle
-from a standstill lights the rears and holds them lit, and a keyboard
-pedal has no quarter-throttle to hold instead. `T` turns it off.
+The aids are on to begin with, and it is not a concession. First gear
+asks the road for 29,281 N and the rear tyres can take 7,708 — the engine
+can out-torque the grip nearly four times over, so full throttle from a
+standstill lights the rears and holds them lit, and a keyboard pedal has
+no quarter-throttle to hold instead. `T` turns all of them off together:
+traction control, the steering limiter, the yaw assist and the stability
+moment.
+
+`P` hands the car to a pure-pursuit driver that follows the racing line.
+It is an attract mode, and it is also the only way anything here has ever
+completed a lap under test — a harness can hold the throttle down but
+cannot steer, because it cannot see where the car is. `F3` puts the
+numbers behind the car on screen: input, revs, gear, how many wheels are
+touching the road, what they are carrying, and what a probe straight down
+finds. Three builds went out guessing at things that instrument answers
+in one reading.
 
 Steering is a relative drag: put your thumb down wherever is
 comfortable and that becomes centre. The pedals are analogue by travel,
