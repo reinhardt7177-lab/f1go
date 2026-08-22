@@ -18,6 +18,15 @@ namespace MumuF1.Game
     /// It also means the project can be authored, reviewed and diffed as
     /// text, which is the only way it could be written at all — the
     /// machine this came from has no editor to click in.
+    ///
+    /// There is still a scene *file*, at <c>Assets/Scenes/Main.unity</c>,
+    /// and it is empty on purpose. A player build has to be given at
+    /// least one scene — without it the editor stops at <c>Cannot build
+    /// untitled scene</c>, having compiled everything perfectly well
+    /// first, which is a confusing way to be told the build list is
+    /// blank. So the scene is a placeholder with nothing in it: no
+    /// camera, no light, no objects, because this method makes all
+    /// three before that scene ever loads.
     /// </remarks>
     public static class Bootstrap
     {

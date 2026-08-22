@@ -65,25 +65,38 @@ env:
 jobs:
   # Are the secrets the shape they should be?
   #
-  # Three runs failed identically at Unity's login with HTTP 401, and the
-  # same credentials sign in fine at id.unity.com with no second factor.
-  # That leaves the values themselves — and the usual culprit is a
-  # trailing newline picked up by a copy and paste, which is invisible
-  # everywhere and fatal here.
+  # Four runs failed identically at Unity's login with HTTP 401 while the
+  # same credentials signed in fine on the website, and re-entering them
+  # in repository settings fixed it. Which means the stored value had
+  # been wrong in some way nobody could see by looking at it — exactly
+  # what a copy and paste does when it picks up a trailing newline or
+  # loses the last character.
   #
-  # So this measures rather than guesses. It prints lengths and yes/no
-  # answers and never the values; GitHub masks those anyway, but the
-  # point is that nothing here would be worth unmasking. It runs in
-  # seconds, ahead of a ten-minute editor job, so a mangled secret is
-  # answered before anything expensive starts.
+  # So this measures rather than guesses, and it runs in seconds ahead of
+  # a ten-minute editor job: a mangled secret is answered before anything
+  # expensive starts, rather than after five licence retries at
+  # four-minute intervals.
+  #
+  # It prints lengths and yes/no answers and never the values. GitHub
+  # masks those anyway; the point is that nothing here would be worth
+  # unmasking.
+  #
+  # It does not check for shell-sensitive characters. It did, on the
+  # theory that a `$` or a `!` might not survive the journey into docker
+  # — and then the password turned out to contain a `!` and activate
+  # perfectly. GameCI passes the variable by name rather than by value,
+  # so no shell ever sees it. The check was wrong and is gone.
   secrets:
     name: Check the shape of the secrets
     runs-on: ubuntu-latest
-    outputs:
-      ok: ${{ steps.shape.outputs.ok }}
     steps:
       - id: shape
         run: |
+          if [ -z "$UNITY_LICENSE" ] && [ -z "$UNITY_EMAIL" ] && [ -z "$UNITY_PASSWORD" ]; then
+            echo "No Unity secrets set. Everything downstream skips."
+            exit 0
+          fi
+
           ok=true
           report () {
             local name="$1" value="$2"
@@ -114,27 +127,6 @@ jobs:
 
           report UNITY_PASSWORD "$UNITY_PASSWORD"
 
-          # Characters a value has to survive being carried through a
-          # shell and into docker. A password can be perfectly correct,
-          # contain no whitespace at all, and still arrive at Unity as a
-          # different string — which looks exactly like a wrong password
-          # and is the one remaining way these secrets could be at fault.
-          hostile=""
-          case "$UNITY_PASSWORD" in *'$'*) hostile="$hostile \$" ;; esac
-          case "$UNITY_PASSWORD" in *'`'*) hostile="$hostile backtick" ;; esac
-          case "$UNITY_PASSWORD" in *'\'*) hostile="$hostile backslash" ;; esac
-          case "$UNITY_PASSWORD" in *'"'*) hostile="$hostile doublequote" ;; esac
-          case "$UNITY_PASSWORD" in *"'"*) hostile="$hostile singlequote" ;; esac
-          case "$UNITY_PASSWORD" in *'!'*) hostile="$hostile !" ;; esac
-          if [ -n "$hostile" ]; then
-            echo "  ! contains shell-sensitive characters:$hostile"
-            echo "    These can be mangled on the way to the editor. A password"
-            echo "    of only letters and digits would rule it out."
-            ok=false
-          else
-            echo "  no shell-sensitive characters"
-          fi
-
           if [ -z "$UNITY_LICENSE" ]; then
             echo "UNITY_LICENSE: NOT SET"
             ok=false
@@ -153,14 +145,14 @@ jobs:
             esac
           fi
 
-          echo "ok=$ok" >> "$GITHUB_OUTPUT"
           echo
           if [ "$ok" = true ]; then
-            echo "Nothing wrong with the shape of them. If Unity still answers 401,"
-            echo "the account is refusing password login to its API even though the"
-            echo "website accepts it — which is what a CI-only account solves."
+            echo "Nothing wrong with the shape of them."
           else
-            echo "Fix the ones marked ! above and run this again."
+            echo "Fix the ones marked ! above. Nothing downstream can activate"
+            echo "the editor until they are right, so this stops here rather"
+            echo "than spending ten minutes finding out again."
+            exit 1
           fi
 
   # Compile Assets/Scripts against a real UnityEngine.
@@ -176,11 +168,11 @@ jobs:
   # least of the machine — no WebAssembly, no graphics — so whatever is
   # wrong surfaces soonest.
   #
-  # The step after it prints the editor's log whatever happens, and that
-  # is the part that earned its place. Several runs were spent guessing
-  # at a silence that was not silence: licence activation was failing and
-  # retrying five times at four-minute intervals, and nothing said so
-  # until this step existed to print it.
+  # There is no separate step to print the editor log, and there was one
+  # here for a while looking for a file that does not exist. GameCI runs
+  # the editor with `-logFile /dev/stdout`, so the log — every compile
+  # line, every licensing message — is this step's own output. It was
+  # always there to read.
   editor:
     name: Compile Assets against UnityEngine
     needs: secrets
@@ -234,20 +226,6 @@ jobs:
           targetPlatform: StandaloneLinux64
           buildName: compilecheck
           customParameters: -accept-apiupdate -nographics
-
-      # Whatever the editor said, in the place it says it. GameCI prints
-      # a summary and swallows the rest; the compile errors are in the
-      # log file, and a hang leaves one too.
-      - if: always() && steps.licence.outputs.have == 'true'
-        name: What the editor said
-        run: |
-          for log in build/*.log unity/*.log /github/workspace/*.log ~/.config/unity3d/Editor.log; do
-            [ -f "$log" ] || continue
-            echo "===== $log ====="
-            grep -nE "error CS|Compilation failed|Shader error|error:|Aborting|Fatal" "$log" | head -60 \
-              || tail -80 "$log"
-          done
-          echo "===== end ====="
 
   # The playable build.
   #
