@@ -679,7 +679,7 @@ namespace MumuF1.Game
             var line = string.Format(
                 "thr {0:F2}  brk {1:F2}  str {2:+0.00;-0.00; 0.00}  |  " +
                 "rpm {3:F0}  gear {4}  |  grounded {5}/4  load {6:F0} N  slip {7:F2}  " +
-                "tc {15}  grip {16:F2} {17:F0}\u00b0C  |  tq {18:F0}  f {19:F0} N  |  " +
+                "tc {15}  grip {16:F2} {17:F0}\u00b0C  |  tq {18:F0}  f {19:F0} N  held {23}/4  |  " +
                 "ray {9:F2}  down {11:F2} {13}  |  {8:F1} m/s  |  " +
                 "yaw {20:F2}  lat {21:+0.00;-0.00; 0.00}  slip {22:+0.000;-0.000; 0.000}",
                 _car.Controls.Throttle, _car.Controls.Brake, _car.Controls.Steer,
@@ -700,7 +700,8 @@ namespace MumuF1.Game
                    both foundered on the kerbs being the same red as the car.
                    A heading that changes on a car that is not moving is the
                    whole question, in one number. */
-                _car.transform.eulerAngles.y, _race.Lateral, _car.Sideslip);
+                _car.transform.eulerAngles.y, _race.Lateral, _car.Sideslip,
+                _car.StuckWheels);
 
             var box = new Rect(pad, Screen.height - unit * 6.1f, Screen.width - pad * 2, unit * 1.1f);
             Fill(box, Panel);
