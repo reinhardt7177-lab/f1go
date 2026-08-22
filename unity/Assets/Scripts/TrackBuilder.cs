@@ -140,9 +140,11 @@ namespace MumuF1.Game
             var collider = gameObject.AddComponent<MeshCollider>();
             collider.sharedMesh = mesh;
 
-            StartPosition = vertices.Length > 0
-                ? Centre(circuit, 0) + Vector3.up * 0.5f
-                : Vector3.up * 0.5f;
+            /* Height left to the car, because only the car knows how long
+               its own suspension is. Half a metre was picked here by eye and
+               put the wheels beyond the reach of the rays that look for the
+               ground — see CarController.SpawnHeight. */
+            StartPosition = vertices.Length > 0 ? Centre(circuit, 0) : Vector3.zero;
 
             Vector3 ahead = Centre(circuit, 2) - Centre(circuit, 0);
             StartHeadingDeg = Mathf.Atan2(ahead.x, ahead.z) * Mathf.Rad2Deg;

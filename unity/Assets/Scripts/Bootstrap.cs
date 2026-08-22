@@ -166,7 +166,9 @@ namespace MumuF1.Game
 
             var builder = track.GetComponent<TrackBuilder>();
             controller.Track = builder;
-            controller.Reset(builder.StartPosition, builder.StartHeadingDeg);
+            controller.Reset(
+                builder.StartPosition + Vector3.up * controller.SpawnHeight,
+                builder.StartHeadingDeg);
 
             var rig = new GameObject("Camera");
             rig.transform.SetParent(parent);

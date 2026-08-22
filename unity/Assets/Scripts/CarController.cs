@@ -151,6 +151,12 @@ namespace MumuF1.Game
             }
         }
 
+        /// <summary>How far the front-left ray reached, or −1 for nothing (m).</summary>
+        public double RayDistance { get; private set; } = -1;
+
+        /// <summary>How square that hit was to the suspension axis, −1 for nothing.</summary>
+        public double RayFacing { get; private set; } = -1;
+
         /// <summary>Total vertical load through all four contact patches (N).</summary>
         public double TotalLoad
         {
@@ -165,6 +171,26 @@ namespace MumuF1.Game
                 return sum;
             }
         }
+
+        /// <summary>
+        /// How far above the road this car's origin belongs (m).
+        /// </summary>
+        /// <remarks>
+        /// Derived, because guessing it put the car outside its own
+        /// suspension. The spawn used a round half metre; the ray that looks
+        /// for the ground is only <c>RestLength + WheelRadius + MaxTravel</c>
+        /// = 0.56 m long and starts at the hardpoint, 0.16 m up — so it
+        /// reached 0.40 m below the origin and the road was 0.50 m below it.
+        /// Four wheels reported no ground, on every tick, for ever. And an
+        /// ungrounded wheel is skipped entirely, so the drive torque never
+        /// reached the tyres either: full throttle, engine on its idle stop,
+        /// nought km/h, nothing in any log.
+        ///
+        /// This puts the wheels exactly on the road with the springs fully
+        /// extended, which is the state a car dropped from rest settles out
+        /// of — well inside the ray, with the whole of the travel to spare.
+        /// </remarks>
+        public float SpawnHeight => (float)(_suspension.RestLength + WheelRadius) - HardpointY;
 
         /// <summary>Largest driven-wheel slip ratio, for the diagnostic line.</summary>
         public double DrivenSlip =>
@@ -377,7 +403,15 @@ namespace MumuF1.Game
                 Vector3 origin = transform.TransformPoint(w.Hardpoint);
                 w.LastCompression = w.Compression;
 
-                if (CastToGround(origin, -up, (float)maxRay, out RaycastHit hit))
+                bool found = CastToGround(origin, -up, (float)maxRay, out RaycastHit hit);
+
+                if (w == _wheels[FL])
+                {
+                    RayDistance = found ? hit.distance : -1;
+                    RayFacing = found ? Vector3.Dot(hit.normal, up) : -1;
+                }
+
+                if (found)
                 {
                     /* Ground the wheel could stand on, or a wall it has
                        been pushed against? A car turned onto its side
@@ -429,6 +463,22 @@ namespace MumuF1.Game
                 if (!w.Grounded)
                 {
                     w.Load = 0;
+
+                    /* Still driven, and still braked. A wheel in the air has
+                       nothing to push against but it does have a shaft
+                       turning it, and a real one spins up — which is what
+                       keeps the engine off its idle stop over a kerb, and
+                       what makes landing on a spinning tyre behave the way it
+                       should. Skipping this left the drivetrain reading zero
+                       wheel speed whenever a wheel was light, and reading it
+                       for ever when the ray never found the road at all. */
+                    double freeTorque = w.Driven ? (i == RL ? drive.Left : drive.Right) : 0.0;
+                    double freeBrake = w.Front ? brakeFront : brakeRear;
+                    w.Omega += (freeTorque - System.Math.Sign(w.Omega) * freeBrake)
+                        / WheelInertia * dt;
+                    w.Spin += w.Omega * dt;
+                    w.SlipRatio = 0;
+
                     // An airborne tyre still cools in the airstream.
                     TireThermal.Step(_thermal, w.Condition, 0, speedMag, dt, false);
                     continue;

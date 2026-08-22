@@ -227,10 +227,12 @@ namespace MumuF1.Game
 
             var line = string.Format(
                 "thr {0:F2}  brk {1:F2}  str {2:+0.00;-0.00; 0.00}  |  " +
-                "rpm {3:F0}  gear {4}  |  grounded {5}/4  load {6:F0} N  slip {7:F2}  |  {8:F1} m/s",
+                "rpm {3:F0}  gear {4}  |  grounded {5}/4  load {6:F0} N  slip {7:F2}  |  " +
+                "ray {9:F2} m  face {10:F2}  |  {8:F1} m/s",
                 _car.Controls.Throttle, _car.Controls.Brake, _car.Controls.Steer,
                 _car.EngineRpm, _car.Gear,
-                _car.GroundedWheels, _car.TotalLoad, _car.DrivenSlip, _car.SpeedMs);
+                _car.GroundedWheels, _car.TotalLoad, _car.DrivenSlip, _car.SpeedMs,
+                _car.RayDistance, _car.RayFacing);
 
             var box = new Rect(pad, Screen.height - unit * 5.4f, Screen.width - pad * 2, unit * 1.1f);
             Fill(box, Panel);
