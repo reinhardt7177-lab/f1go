@@ -16,33 +16,40 @@ namespace MumuF1
     public sealed class TireThermalParams
     {
         /// <summary>Temperature of peak grip (deg C).</summary>
-        /*
-         * Where the tyre works best (°C).
-         *
-         * A hundred is the number a real one wants, and this car's tyres do
-         * not get there. Driven flat out with the cooling this model needs
-         * to stay stable, they settle at about 63 — so the window sat
-         * thirty-seven degrees above anything the game could reach, and the
-         * car ran permanently at 0.87 of its thermal grip. Not degrading,
-         * not a runaway, just quietly short, everywhere, for ever.
-         *
-         * The honest fix is one of two, and only one of them is safe.
-         * Retaining more heat means less cooling, and less cooling is what
-         * the runaway was made of — five was measured climbing past 190 °C
-         * and never stopping. Moving the window to where the tyre actually
-         * lives cannot destabilise anything: it puts the working point
-         * nearer the peak of the grip curve, where the curve is flatter, so
-         * it lowers the feedback gain that caused the runaway rather than
-         * raising it.
-         *
-         * Set from the measurement, then: eighty puts a flat-out lap at 0.95
-         * of grip instead of 0.87, leaves an out-lap cold and slow at 0.71,
-         * and still has wheelspin at a standstill cooking them to the floor.
-         */
-        public double OptimalTemp = 80.0;
+        public double OptimalTemp = 100.0;
 
         /// <summary>Half-width of the usable window (deg C).</summary>
-        public double TempWindow = 25.0;
+        /*
+         * How far either side of the optimum still counts as working (°C).
+         *
+         * Twenty-five, and driving it says forty. With the cooling this
+         * model needs to stay stable the tyre settles around 63 °C, which a
+         * twenty-five degree window puts outside — so the car ran at 0.87 of
+         * its thermal grip everywhere, for ever. Quietly short, never
+         * degrading, and impossible to report as anything but "it feels
+         * slippery".
+         *
+         * Moving the optimum down to meet the tyre was the obvious answer
+         * and it was measured making things worse. It closes the gap on the
+         * cool side by dragging the overheat cliff twenty degrees closer, so
+         * a tyre that warms into a stint falls off it: 73 °C climbing to 120
+         * across three minutes with grip going 0.97 to 0.81. Trading a car
+         * that is always slightly short for one that gets worse the longer
+         * you drive is the wrong trade, and "gets worse the longer you
+         * drive" is the complaint this whole thread of work started from.
+         *
+         * Widening does both ends at once. 0.93 where the tyre actually sits
+         * against 0.87, and — the part that matters — 0.97 rather than 0.94
+         * if it drifts to 120, because the cliff has moved away rather than
+         * closer. Less grip lost to heat is less slip is less heat: the
+         * feedback that caused the runaway gets weaker, not stronger.
+         *
+         * It also says something defensible about the car. A forty degree
+         * window is a tyre whose grip is not sharply peaked in temperature,
+         * which is the right tyre for a game a ten-year-old picks up, and
+         * the wrong one for a simulator nobody here is writing.
+         */
+        public double TempWindow = 40.0;
 
         /// <summary>Grip multiplier at the edge of the window.</summary>
         public double GripAtWindowEdge = 0.93;
