@@ -453,7 +453,7 @@ namespace MumuF1.Tests
         /// was actively wrong.
         /// </remarks>
         [Test]
-        public void HoldsItsGroundWhileTheCarIsSliding()
+        public void FreezesTheSteeringCeilingWhileTheCarIsSliding()
         {
             var state = new AssistState { SteerLimit = 0.6 };
             var applied = Assists.SteerLimiter(1, -0.9, state, Dt, S, true, 20);
