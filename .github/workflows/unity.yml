@@ -312,15 +312,10 @@ jobs:
       # somebody: Vercel builds a preview for every pull request, and that
       # preview fetches this release like any other build — so a preview of
       # a branch that changes the game shows `main`'s game. The preview is
-      # honest about the site and stale about the player. Fixing that
-      # properly means a second tag and a rule in `tools/build-site.js` for
-      # choosing between them, which is more machinery than a repository
-      # with one game in it needs. The artifact at the end of this job is
-      # the answer instead: download it, serve the directory, drive it.
-      - if: steps.licence.outputs.have == 'true' && github.ref == 'refs/heads/main'
-        name: Publish it where the site build can reach it
-        env:
-          GH_TOKEN: ${{ github.token }}
+      # honest about the site and stale about the player. The branch tag two
+      # steps down is where an unmerged player actually lives.
+      - if: steps.licence.outputs.have == 'true'
+        name: Pack the player
         run: |
           # Packed from wherever index.html actually is, rather than from
           # the build directory. GameCI nests its output one level down,
@@ -341,6 +336,50 @@ jobs:
           tar tzf mumuF1-webgl.tar.gz | head -5
           ls -l mumuF1-webgl.tar.gz
 
+      # Somewhere an unmerged player can be *played*, which turns out to
+      # matter more than it sounds.
+      #
+      # The artifact at the end of this job is the obvious answer and it is
+      # not always a usable one: artifact downloads are served from Azure
+      # blob storage, and an environment whose egress policy does not
+      # include that host cannot fetch them at all — the one this was
+      # written in gets a 403 on the CONNECT. A release asset on a public
+      # repository comes straight from github.com, which anything able to
+      # clone the repository can already reach.
+      #
+      # So: a second rolling tag, marked a prerelease so it never reads as
+      # the current build, holding whichever branch built last. Nothing
+      # fetches it automatically — `tools/build-site.js` has never heard of
+      # it and should not. It is for whoever wants to drive a change before
+      # it is anybody else's:
+      #
+      #   curl -L -o w.tar.gz https://github.com/OWNER/REPO/releases/download/webgl-branch/mumuF1-webgl.tar.gz
+      #   mkdir play && tar xzf w.tar.gz -C play && npx serve play -l 8899
+      #
+      # Clobbered by every branch that builds, so two branches in flight
+      # will overwrite each other. The release body says which commit and
+      # which branch put the current one there, so at least you can tell.
+      - if: steps.licence.outputs.have == 'true' && github.ref != 'refs/heads/main'
+        name: Publish it where an unmerged change can be driven
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          gh release create webgl-branch \
+            --prerelease \
+            --title 'WebGL build (branch)' \
+            --notes 'Whichever branch built last. Not what the site serves — that is the `webgl` tag, published only from main.' \
+            2>/dev/null || true
+
+          gh release upload webgl-branch mumuF1-webgl.tar.gz --clobber
+          gh release edit webgl-branch \
+            --notes "Built from \`$BRANCH\` at \`$GITHUB_SHA\`. Clobbered by the next branch to build. Not what the site serves — that is the \`webgl\` tag, published only from main."
+
+      - if: steps.licence.outputs.have == 'true' && github.ref == 'refs/heads/main'
+        name: Publish it where the site build can reach it
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
           # `create` fails once the tag exists, which is every run after the
           # first, so the failure is expected and the upload is what matters.
           gh release create webgl \
