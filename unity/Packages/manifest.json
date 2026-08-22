@@ -1,6 +1,7 @@
 {
   "dependencies": {
     "com.mumu.f1core": "file:com.mumu.f1core",
+    "com.unity.test-framework": "1.4.5",
     "com.unity.ugui": "2.0.0",
     "com.unity.modules.audio": "1.0.0",
     "com.unity.modules.imgui": "1.0.0",
