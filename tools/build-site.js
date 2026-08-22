@@ -25,6 +25,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const zlib = require('node:zlib');
+const shell = require('./shell.js');
 
 const root = path.resolve(__dirname, '..');
 const out = path.join(root, 'dist-site');
@@ -204,7 +205,22 @@ const build = async () => {
     console.log(`lifted out of ${only}/ — the archive was nested`);
   }
 
-  console.log(`dist-site ready — ${files} files, ${(size(out) / 1024 / 1024).toFixed(1)} MB`);
+  /* And the page around it. Unity's own is a demo shell — a 960 by 600
+     canvas in a white document under somebody else's logo — and the
+     right place to replace it is a WebGL template inside the project,
+     which needs a ProjectSettings.asset this project does not have
+     because there is no editor here to write one. So it is replaced
+     here, from the four build URLs read back out of it. */
+  const index = path.join(out, 'index.html');
+  fs.writeFileSync(index, shell.page(shell.urls(fs.readFileSync(index, 'utf8'))));
+
+  /* Unity's template art goes with its template. Leaving it would ship
+     a Unity logo, two progress bars and a favicon nothing points at. */
+  fs.rmSync(path.join(out, 'TemplateData'), { recursive: true, force: true });
+
+  const kept = fs.readdirSync(out, { recursive: true }).length;
+  console.log(`dist-site ready — ${kept} files, ${(size(out) / 1024 / 1024).toFixed(1)} MB` +
+    ` (${files - kept} of Unity's template files dropped)`);
   console.log('  /  the game');
 };
 

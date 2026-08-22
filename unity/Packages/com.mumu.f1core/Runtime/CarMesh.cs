@@ -86,15 +86,17 @@ namespace MumuF1
             }
 
             /// <summary>
-            /// The section's outline, anticlockwise seen from behind.
+            /// The section's outline, anticlockwise seen from in front.
             /// </summary>
             /// <remarks>
-            /// Anticlockwise from the front of the car means the skin between
-            /// two sections comes out facing outward without any per-face
-            /// thought, and the cap on the last section comes out facing
-            /// backward. Getting this the wrong way round produces a car that
-            /// is invisible from outside and solid from within, which is the
-            /// one modelling mistake that cannot be seen in the code.
+            /// Which is to say the ring's own normal points along +Z, at the
+            /// nose. Both the skin and the caps are wound from that fact, and
+            /// getting it backwards turns the whole car inside out at once —
+            /// invisible from outside, solid from within. It is the one
+            /// modelling mistake that cannot be seen by reading the code, and
+            /// it is why <c>CarMeshTests</c> measures the signed volume: the
+            /// first version of this file had all three windings reversed and
+            /// the test is the only reason that is not what shipped.
             /// </remarks>
             public Vec3[] Ring() => new[]
             {
@@ -241,11 +243,12 @@ namespace MumuF1
                 for (var k = 0; k < previous.Length; k++)
                 {
                     var k2 = (k + 1) % previous.Length;
-                    /* Front ring first and in order, back ring reversed:
-                       that is the anticlockwise-from-outside winding for a
-                       quad spanning two rings that both run anticlockwise
-                       seen from behind. */
-                    b.Quad(previous[k], previous[k2], next[k2], next[k], colour);
+                    /* Walked backwards around the front ring and forwards
+                       around the back one. The rings run anticlockwise seen
+                       from the nose, so following them in step would face
+                       every panel inward — the bottom of the car would look
+                       up. */
+                    b.Quad(previous[k2], previous[k], next[k], next[k2], colour);
                 }
                 previous = next;
             }
@@ -263,8 +266,8 @@ namespace MumuF1
             for (var k = 0; k < ring.Length; k++)
             {
                 var k2 = (k + 1) % ring.Length;
-                if (front) b.Tri(centre, ring[k2], ring[k], colour);
-                else b.Tri(centre, ring[k], ring[k2], colour);
+                if (front) b.Tri(centre, ring[k], ring[k2], colour);
+                else b.Tri(centre, ring[k2], ring[k], colour);
             }
         }
 
