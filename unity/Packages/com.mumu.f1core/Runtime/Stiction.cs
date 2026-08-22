@@ -12,20 +12,33 @@ namespace MumuF1
     /// both are zero over zero. Worse than undefined, the relaxation length
     /// makes the answer *exactly zero* — the carcass builds its cornering
     /// force over half a metre of rolling, so a car that is not rolling never
-    /// builds any. A car parked on a cambered road therefore had no friction
-    /// at all and slid down the crossfall, turning as it went, with the
-    /// instrumentation reporting <c>f 0 N</c> the whole way. It was measured
-    /// at 1.96 m of drift and 2.8 degrees of rotation over 9.2 seconds on
-    /// the grid, with nothing pressed.
+    /// builds any. A parked car therefore had no lateral friction at all, and
+    /// whatever pushed it sideways met nothing. Measured on the grid with
+    /// nothing pressed: 1.96 m of drift and 2.8 degrees of rotation in 9.2
+    /// seconds.
+    ///
+    /// It is a gate rather than a gradient, which is what makes it worth
+    /// fixing here instead of by widening the relaxation. Driving the shipped
+    /// model at a fixed sideways push and varying only the rolling speed: at
+    /// zero it produces no force and the car accelerates away freely, and by
+    /// five centimetres a second the slip angle builds fast enough to stop it
+    /// inside eight millimetres. Everything the car does wrong happens in the
+    /// sliver between those two.
+    ///
+    /// What was pushing it is not established and does not need to be — the
+    /// circuit is banked, the road mesh is faceted so four wheels read four
+    /// slightly different normals, and a resting body in any solver drifts a
+    /// little. Under a tyre with no friction all three look the same, and
+    /// under one with friction none of them matters.
     ///
     /// This is the missing regime. Below a crawl a tyre is not sliding, it is
     /// *stuck*: the rubber grips the road and the carcass deflects, so the
     /// force comes from how far the contact patch has been dragged from where
     /// it took hold rather than from a slip. That is a spring, not a curve —
     /// which is exactly why a damper alone will not do. A damper has a
-    /// terminal creep velocity under a constant side force and would let the
-    /// car walk down the camber, slowly instead of quickly. A spring has a
-    /// terminal *displacement*, so the car stops and stays stopped.
+    /// terminal creep velocity under a constant side force and would have
+    /// turned a car that walks away into a car that creeps away. A spring has
+    /// a terminal *displacement*, so the car stops and stays stopped.
     ///
     /// The anchor is where the patch took hold. It stretches with whatever
     /// the patch is actually sliding, pulls back, and when the pull exceeds

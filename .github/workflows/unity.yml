@@ -306,9 +306,17 @@ jobs:
       # first deploy after a push is legitimately one build behind. So
       # nothing downstream would have stopped it. That was harmless while
       # `main` had no game on it and stopped being harmless the moment it
-      # did. A branch build still produces the artifact at the end of this
-      # job, which is how an unmerged change gets played before it is
-      # anybody else's.
+      # did.
+      #
+      # It costs one thing, and it is worth knowing before it confuses
+      # somebody: Vercel builds a preview for every pull request, and that
+      # preview fetches this release like any other build — so a preview of
+      # a branch that changes the game shows `main`'s game. The preview is
+      # honest about the site and stale about the player. Fixing that
+      # properly means a second tag and a rule in `tools/build-site.js` for
+      # choosing between them, which is more machinery than a repository
+      # with one game in it needs. The artifact at the end of this job is
+      # the answer instead: download it, serve the directory, drive it.
       - if: steps.licence.outputs.have == 'true' && github.ref == 'refs/heads/main'
         name: Publish it where the site build can reach it
         env:

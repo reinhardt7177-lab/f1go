@@ -206,6 +206,19 @@ namespace MumuF1.Game
                    degree is a car the stability program is catching and the
                    booster is punishing at the same time. */
                 Vector3 heading = transform.InverseTransformDirection(_body.linearVelocity);
+
+                /* A velocity with no length has no direction, and asking
+                   `Atan2` for one anyway gets an answer built out of two
+                   numbers that are both noise. Nothing acts on it — every
+                   consumer has its own speed floor, six metres a second for
+                   the aids and fifteen for the booster — so this is about the
+                   read-out, which is not nothing: a parked car reporting a
+                   ninety-five degree slip angle is exactly the sort of number
+                   that sends somebody looking in the wrong place, and it did.
+                   Half a metre a second is well below where any of this
+                   starts mattering and comfortably above the noise. */
+                if (heading.sqrMagnitude < 0.25f) return 0;
+
                 return System.Math.Atan2(heading.x, heading.z);
             }
         }
@@ -875,10 +888,9 @@ namespace MumuF1.Game
                    a slip ratio and a slip angle are both a velocity over a
                    velocity, and the relaxation length makes a car that is not
                    rolling build no cornering force at all — so a stationary
-                   car had literally no friction and slid down the camber,
-                   turning as it went. Measured on the grid at 1.96 m and 2.8
-                   degrees in 9.2 seconds with nothing pressed and the
-                   instrument reading `f 0 N` throughout.
+                   car had no lateral friction whatever, and whatever pushed
+                   it sideways met nothing. Measured on the grid at 1.96 m and
+                   2.8 degrees in 9.2 seconds with nothing pressed.
 
                    Its ceiling closes as the patch speeds up and is shut by
                    the crawl, so above walking pace this contributes exactly

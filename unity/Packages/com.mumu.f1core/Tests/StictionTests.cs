@@ -41,14 +41,17 @@ namespace MumuF1.Tests
         }
 
         /// <summary>
-        /// The one that matters: a car on a cambered road stays where it is.
+        /// The one that matters: a car with something pushing it sideways
+        /// stays where it is.
         /// </summary>
         /// <remarks>
-        /// One and a half per cent of crossfall is a real road. Before this
-        /// existed the measured answer on the grid was 1.96 m of drift in
-        /// 9.2 s, because four patches were returning exactly zero; the bar
-        /// here is a centimetre over ten seconds, which is a hundred and
-        /// fifty times better and below what anybody can see.
+        /// A sideways push of one and a half per cent of the car's weight —
+        /// the sort of thing a banked circuit, a faceted road mesh or a
+        /// resting solver produces, and which one of them it was has never
+        /// been pinned down. It did not need to be: before this existed the
+        /// measured answer on the grid was 1.96 m of drift in 9.2 s, because
+        /// four patches were returning exactly zero whatever the push. The
+        /// bar here is a centimetre over ten seconds.
         /// </remarks>
         [Test]
         public void HoldsTheCarOnACamberedRoad()
@@ -56,7 +59,7 @@ namespace MumuF1.Tests
             var p = new StictionParams();
             var s = new[] { new StictionState(), new StictionState(), new StictionState(), new StictionState() };
 
-            double side = Mass * 9.81 * 0.015;   // N, down the crossfall
+            double side = Mass * 9.81 * 0.015;   // N, sideways, and never stopping
             double v = 0, x = 0;
 
             for (int i = 0; i < 500; i++)       // ten seconds
