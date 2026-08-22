@@ -1,0 +1,470 @@
+# Build the Unity project, and run the half CI cannot otherwise reach.
+#
+# `ci.yml` already compiles and tests the simulation, because that half
+# has no `UnityEngine` in it and a plain .NET SDK will take it. What it
+# cannot touch is everything that does: `Assets/Scripts`, the shader,
+# the bootstrap, the scene-less startup. Those need the editor, and the
+# editor needs a licence.
+#
+# So this workflow is deliberately dormant until one is provided. Every
+# job checks for the licence first and skips quietly without it, which
+# means the repository stays green for anyone who clones it and does not
+# have a Unity account — rather than showing a permanently red X for a
+# thing that is not broken.
+#
+# To turn it on, add these three repository secrets under
+# Settings → Secrets and variables → Actions:
+#
+#   UNITY_LICENSE    the full contents of your Unity_lic.ulf
+#   UNITY_EMAIL      the address on the Unity account
+#   UNITY_PASSWORD   its password
+#
+# All three, even for a personal licence. This was got wrong once here,
+# on the reasoning that a licence file ought to be self-contained — it is
+# not. GameCI signs in with the account and then presents the file, and
+# with only the file it stops before it starts:
+#
+#     No valid license activation strategy could be determined.
+#     Make sure to provide UNITY_EMAIL, UNITY_PASSWORD, and either a
+#     UNITY_SERIAL or UNITY_LICENSE.
+#
+# A personal licence is free. On Windows the file is usually already at
+#
+#     C:\ProgramData\Unity\Unity_lic.ulf
+#
+# and on macOS at `/Library/Application Support/Unity/Unity_lic.ulf`.
+# Open it in a text editor, copy the whole thing, paste. If it is not
+# there, the editor will make one: Help → Manage License → Manual
+# activation → Save License Request, then upload that `.alf` at
+# https://license.unity3d.com/manual and paste the `.ulf` it returns.
+#
+# The jobs below wait for all three rather than for the licence alone, so
+# a half-finished setup skips quietly instead of failing. A red X for a
+# missing password reads as a broken build, and it is not one.
+
+name: Unity
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'unity/**'
+      - '.github/workflows/unity.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: unity-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+  UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+  UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+  # Optional. See the note on the redeploy step at the bottom of this file.
+  VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
+
+jobs:
+  # Are the secrets the shape they should be?
+  #
+  # Four runs failed identically at Unity's login with HTTP 401 while the
+  # same credentials signed in fine on the website, and re-entering them
+  # in repository settings fixed it. Which means the stored value had
+  # been wrong in some way nobody could see by looking at it — exactly
+  # what a copy and paste does when it picks up a trailing newline or
+  # loses the last character.
+  #
+  # So this measures rather than guesses, and it runs in seconds ahead of
+  # a ten-minute editor job: a mangled secret is answered before anything
+  # expensive starts, rather than after five licence retries at
+  # four-minute intervals.
+  #
+  # It prints lengths and yes/no answers and never the values. GitHub
+  # masks those anyway; the point is that nothing here would be worth
+  # unmasking.
+  #
+  # It does not check for shell-sensitive characters. It did, on the
+  # theory that a `$` or a `!` might not survive the journey into docker
+  # — and then the password turned out to contain a `!` and activate
+  # perfectly. GameCI passes the variable by name rather than by value,
+  # so no shell ever sees it. The check was wrong and is gone.
+  secrets:
+    name: Check the shape of the secrets
+    runs-on: ubuntu-latest
+    steps:
+      - id: shape
+        run: |
+          if [ -z "$UNITY_LICENSE" ] && [ -z "$UNITY_EMAIL" ] && [ -z "$UNITY_PASSWORD" ]; then
+            echo "No Unity secrets set. Everything downstream skips."
+            exit 0
+          fi
+
+          ok=true
+          report () {
+            local name="$1" value="$2"
+            if [ -z "$value" ]; then
+              echo "$name: NOT SET"
+              ok=false
+              return
+            fi
+            local len=${#value}
+            local trimmed
+            trimmed="$(printf '%s' "$value" | tr -d '[:space:]')"
+            local lines
+            lines=$(printf '%s' "$value" | wc -l)
+            echo "$name: ${len} characters, $((len - ${#trimmed})) of them whitespace, $((lines + 1)) line(s)"
+            case "$value" in
+              " "*|$'\t'*) echo "  ! starts with whitespace"; ok=false ;;
+            esac
+            case "$value" in
+              *" "|*$'\t') echo "  ! ends with whitespace"; ok=false ;;
+            esac
+          }
+
+          report UNITY_EMAIL "$UNITY_EMAIL"
+          case "$UNITY_EMAIL" in
+            *@*.*) echo "  looks like an address" ;;
+            *) echo "  ! does not look like an address"; ok=false ;;
+          esac
+
+          report UNITY_PASSWORD "$UNITY_PASSWORD"
+
+          if [ -z "$UNITY_LICENSE" ]; then
+            echo "UNITY_LICENSE: NOT SET"
+            ok=false
+          else
+            echo "UNITY_LICENSE: ${#UNITY_LICENSE} characters, $(printf '%s' "$UNITY_LICENSE" | wc -l) newline(s)"
+            case "$UNITY_LICENSE" in
+              "<?xml"*) echo "  starts with the XML declaration" ;;
+              *) echo "  ! does not start with <?xml — the first line is missing"; ok=false ;;
+            esac
+            case "$UNITY_LICENSE" in
+              *"</root>"*) echo "  contains the closing root tag" ;;
+              *) echo "  ! no </root> — the file is truncated"; ok=false ;;
+            esac
+            case "$UNITY_LICENSE" in
+              *"<StopDate Value=\""*) echo "  carries a StopDate" ;;
+            esac
+          fi
+
+          echo
+          if [ "$ok" = true ]; then
+            echo "Nothing wrong with the shape of them."
+          else
+            echo "Fix the ones marked ! above. Nothing downstream can activate"
+            echo "the editor until they are right, so this stops here rather"
+            echo "than spending ten minutes finding out again."
+            exit 1
+          fi
+
+  # Compile Assets/Scripts against a real UnityEngine.
+  #
+  # This is the more valuable of the two jobs, and not by a little. The
+  # simulation is already proven by `ci.yml`; what is unproven is whether
+  # `Assets/Scripts` even compiles — `TrackBuilder`, `CarView`,
+  # `TracksideBuilder`, `CarController` and the toon shader have never
+  # been through a compiler that knows what `UnityEngine` is.
+  #
+  # It was the test runner and is now a plain build, which is still the
+  # right shape: a build for the platform the runner already is asks the
+  # least of the machine — no WebAssembly, no graphics — so whatever is
+  # wrong surfaces soonest.
+  #
+  # There is no separate step to print the editor log, and there was one
+  # here for a while looking for a file that does not exist. GameCI runs
+  # the editor with `-logFile /dev/stdout`, so the log — every compile
+  # line, every licensing message — is this step's own output. It was
+  # always there to read.
+  editor:
+    name: Compile Assets against UnityEngine
+    needs: secrets
+    runs-on: ubuntu-latest
+    # A hung editor does not fail, it waits — and the default is six hours
+    # of a runner held by a process nobody can see. Forty-five minutes is
+    # comfortably past a cold import and nowhere near a working day.
+    timeout-minutes: 30
+    steps:
+      - name: Is the licence set up?
+        id: licence
+        run: |
+          echo "have=${{ env.UNITY_LICENSE != '' && env.UNITY_EMAIL != '' && env.UNITY_PASSWORD != '' }}" >> "$GITHUB_OUTPUT"
+
+      - if: steps.licence.outputs.have == 'false'
+        run: |
+          echo "Unity activation needs all three of UNITY_LICENSE, UNITY_EMAIL"
+          echo "and UNITY_PASSWORD. Set:"
+          echo "  UNITY_LICENSE  ${{ env.UNITY_LICENSE != '' && 'yes' || 'NO' }}"
+          echo "  UNITY_EMAIL    ${{ env.UNITY_EMAIL != '' && 'yes' || 'NO' }}"
+          echo "  UNITY_PASSWORD ${{ env.UNITY_PASSWORD != '' && 'yes' || 'NO' }}"
+          echo "See the header of .github/workflows/unity.yml."
+
+      - if: steps.licence.outputs.have == 'true'
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      # The import is the slow part — twenty minutes cold, under two warm
+      # — so the imported Library is cached on the hash of everything that
+      # can change what it contains.
+      - if: steps.licence.outputs.have == 'true'
+        uses: actions/cache@v4
+        with:
+          path: unity/Library
+          key: Library-WebGL-${{ hashFiles('unity/Assets/**', 'unity/Packages/**', 'unity/ProjectSettings/**') }}
+          restore-keys: |
+            Library-WebGL-
+            Library-
+
+      - if: steps.licence.outputs.have == 'true'
+        uses: game-ci/unity-builder@v4
+        with:
+          projectPath: unity
+          unityVersion: auto
+          # Linux rather than WebGL, and that is the whole point of this
+          # job: a Linux player build compiles every script without
+          # spending twenty minutes translating the engine to
+          # WebAssembly. If the C# is wrong it is wrong here, sooner and
+          # more legibly.
+          targetPlatform: StandaloneLinux64
+          buildName: compilecheck
+          customParameters: -accept-apiupdate -nographics
+
+  # The playable build.
+  #
+  # WebGL because that is what the web version already is: the point of
+  # the port was never to leave the browser, it was to get a real
+  # renderer and a real physics engine underneath it.
+  webgl:
+    name: Build for WebGL
+    needs: editor
+    runs-on: ubuntu-latest
+    # To publish the build as a release asset. Everything else here reads.
+    permissions:
+      contents: write
+    # Longer than the editor job: this one imports and then builds, and a
+    # first WebGL build compiles the whole engine to WebAssembly.
+    timeout-minutes: 75
+    steps:
+      - name: Is the licence set up?
+        id: licence
+        run: |
+          echo "have=${{ env.UNITY_LICENSE != '' && env.UNITY_EMAIL != '' && env.UNITY_PASSWORD != '' }}" >> "$GITHUB_OUTPUT"
+
+      - if: steps.licence.outputs.have == 'false'
+        run: echo "Unity activation is not fully set up, so there is nothing to build here."
+
+      - if: steps.licence.outputs.have == 'true'
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - if: steps.licence.outputs.have == 'true'
+        uses: actions/cache@v4
+        with:
+          path: unity/Library
+          key: Library-WebGL-${{ hashFiles('unity/Assets/**', 'unity/Packages/**', 'unity/ProjectSettings/**') }}
+          restore-keys: |
+            Library-WebGL-
+            Library-
+
+      - if: steps.licence.outputs.have == 'true'
+        uses: game-ci/unity-builder@v4
+        with:
+          projectPath: unity
+          unityVersion: auto
+          targetPlatform: WebGL
+          buildName: mumuF1
+          customParameters: -accept-apiupdate
+
+      - if: steps.licence.outputs.have == 'true'
+        name: Say how big it came out
+        run: |
+          du -sh build/WebGL || true
+          # Four deep, not three. GameCI nests under the build name and the
+          # payload is another level below that, so at three this printed one
+          # line — index.html — and called it the biggest file in the build.
+          find build -maxdepth 4 -type f -printf '%10s  %p\n' | sort -rn | head -12 || true
+
+      # Somewhere the site build can fetch it from.
+      #
+      # Vercel builds the web version on every push and has no Unity in it,
+      # so the player has to arrive from somewhere else. An Actions artifact
+      # needs a token to download; a release asset on a public repository does
+      # not, which is the whole reason this is a release rather than the
+      # artifact directly above.
+      #
+      # One rolling tag rather than one per commit. The URL is then a constant
+      # that `tools/build-site.js` can hold, and the repository does not
+      # accumulate a release per push — and because it is a release asset
+      # rather than a commit, eleven megabytes of player never enters the git
+      # history.
+      - if: steps.licence.outputs.have == 'true'
+        name: Publish it where the site build can reach it
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Packed from wherever index.html actually is, rather than from
+          # the build directory. GameCI nests its output one level down,
+          # under the build name, so `-C build/WebGL .` produces an archive
+          # whose every path starts `./mumuF1/` — and the site then serves
+          # the player at /unity/mumuF1/ while /unity/ is a 404. Finding the
+          # page and packing its directory is also immune to the build name
+          # changing, which a hard-coded path is not.
+          page=$(find build/WebGL -name index.html | head -1)
+          if [ -z "$page" ]; then
+            echo "No index.html under build/WebGL — there is no player to publish."
+            exit 1
+          fi
+
+          root=$(dirname "$page")
+          echo "Packing $root"
+          tar czf mumuF1-webgl.tar.gz -C "$root" .
+          tar tzf mumuF1-webgl.tar.gz | head -5
+          ls -l mumuF1-webgl.tar.gz
+
+          # `create` fails once the tag exists, which is every run after the
+          # first, so the failure is expected and the upload is what matters.
+          gh release create webgl \
+            --title 'WebGL build' \
+            --notes 'The current Unity build, republished by CI. Fetched by the site build and served at /unity/.' \
+            2>/dev/null || true
+
+          gh release upload webgl mumuF1-webgl.tar.gz --clobber
+
+      # Record which player this build published.
+      #
+      # `tools/player.sha256` is the digest of the archive above, and the
+      # site build compares what it fetched against it. That comparison is
+      # the first thing anywhere in this pipeline that can tell you *which*
+      # player is being served — Unity's output has fixed filenames, so two
+      # different builds are identical from the outside, and "did my change
+      # reach the site" has cost more time on this project than any bug in
+      # the game.
+      #
+      # Committing it is also the fix rather than merely the diagnosis. The
+      # host builds the site on a push and this job finishes about eighteen
+      # minutes after that push, so a deploy always fetched the *previous*
+      # player — every single time, with both halves reporting success. This
+      # commit is a push that happens once the asset exists, so the host
+      # comes back and fetches it. No secret, no account, nothing to set up.
+      #
+      # It cannot loop: a push made with GITHUB_TOKEN does not start
+      # workflows, which is a rule GitHub has precisely so that this pattern
+      # is safe. The host's own integration is not a workflow and does see
+      # it, which is the whole point.
+      #
+      # Into a fresh clone rather than the working tree, which at this point
+      # is a Unity project with a WebGL build in it. And never fatal — this
+      # is a convenience, and a branch that refuses the push (protected, or
+      # something newer landed three times running) should not turn a good
+      # player into a red build.
+      - if: steps.licence.outputs.have == 'true'
+        name: Record the player, which is also what brings the host back
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          sum=$(sha256sum mumuF1-webgl.tar.gz | cut -d' ' -f1)
+          echo "Published player $sum"
+
+          work=$(mktemp -d)
+          if ! git clone --quiet --depth 1 --branch "$BRANCH" \
+              "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+              "$work"; then
+            echo "Could not clone $BRANCH to record it. The site will pick"
+            echo "this player up on the next push instead."
+            exit 0
+          fi
+
+          cd "$work"
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          for attempt in 1 2 3; do
+            printf '%s\n' "$sum" > tools/player.sha256
+            git add tools/player.sha256
+
+            if git diff --cached --quiet; then
+              echo "Already recorded — this is the same player as last time."
+              exit 0
+            fi
+
+            git commit --quiet -m "Record the player this build published
+
+          The digest of the WebGL archive on the rolling \`webgl\` release.
+          The site build checks what it fetched against this, and this commit
+          is the push that brings the host back to fetch it now the asset
+          exists. Written by CI; see the step that writes it in unity.yml."
+
+            if git push --quiet origin "HEAD:$BRANCH"; then
+              echo "Recorded. The host will rebuild with this player."
+              exit 0
+            fi
+
+            # Back to whatever the branch is now and try again on top of
+            # it. Fetch-and-reset rather than reset-and-pull, because this
+            # is a depth-one clone: `HEAD~1` need not exist, and a rebase
+            # onto a history that is not there fails in a less obvious way.
+            echo "Push rejected — something newer landed. Trying again."
+            git fetch --quiet --depth 1 origin "$BRANCH" || exit 0
+            git reset --hard --quiet FETCH_HEAD
+          done
+
+          echo "Could not record it after three attempts; carrying on."
+
+      # Tell the host the player has changed.
+      #
+      # This closes a gap that has wasted more of everyone's time than any
+      # bug in the game. The site is assembled by fetching the release asset
+      # above, and the host rebuilds on a push — but the push happens the
+      # moment the code lands and the asset does not arrive until this job
+      # finishes, eighteen minutes later. So every deploy served the player
+      # from the *previous* commit, every single time, and the only symptom
+      # was refreshing the page and finding nothing had changed. Both halves
+      # reported success throughout.
+      #
+      # A deploy hook is a URL that asks the host to build again, now, with
+      # nothing else in it — no token, no account, and nothing it can do but
+      # start a build of this project. Vercel makes one under
+      # Settings → Git → Deploy Hooks; the branch it names is the branch it
+      # builds. Paste the URL into a repository secret called
+      # VERCEL_DEPLOY_HOOK and the step below stops skipping.
+      #
+      # Without it everything still works and the site is simply one build
+      # behind, which is what it has been all along — so this skips quietly
+      # rather than failing, the same way the licence check does.
+      - if: steps.licence.outputs.have == 'true'
+        name: Ask the host to rebuild now the player exists
+        run: |
+          if [ -z "$VERCEL_DEPLOY_HOOK" ]; then
+            echo "No VERCEL_DEPLOY_HOOK secret, so nothing to notify."
+            echo "The site will pick this player up on the next push instead."
+            echo "See the note above this step to wire it up."
+            exit 0
+          fi
+
+          # --fail so a hook that has been deleted or revoked is an error
+          # rather than a silent success, and -sS so the body is quiet but
+          # a real failure still says why. The URL is a secret and is never
+          # echoed; only the status code is.
+          code=$(curl -sS --fail-with-body -o /tmp/hook.out -w '%{http_code}' \
+            -X POST "$VERCEL_DEPLOY_HOOK") || {
+              echo "The deploy hook was rejected with HTTP $code."
+              echo "If it has been deleted, make a new one and update the secret."
+              cat /tmp/hook.out
+              exit 1
+            }
+
+          echo "Deploy hook accepted (HTTP $code). The site will rebuild with this player."
+
+      # Uploaded rather than published. Publishing needs a decision about
+      # where it goes — the Pages site is the web version's, and putting a
+      # second game on it is a change to `ci.yml` rather than a step here.
+      # An artifact is downloadable and playable now, and does not risk the
+      # deploy that already works.
+      - if: steps.licence.outputs.have == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mumuF1-webgl
+          path: build/WebGL
+          retention-days: 14

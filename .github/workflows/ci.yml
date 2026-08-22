@@ -1,12 +1,21 @@
 # Check every change, and publish the ones that pass.
 #
-# The repository had no automation at all: `main` was whatever was last
-# pushed to it, and the deployed site was whatever `main` happened to
-# be. Nothing stood between a commit that did not compile and the URL
-# people play on.
+# There are two halves to this repository and they are checked in two
+# different ways, for one reason: half of the game has no `UnityEngine`
+# in it and half of it is nothing but.
 #
-# So `deploy` needs `check`. A red build is a build that does not go
-# out, which is the only reason this file is worth having.
+# The half without — tyres, aerodynamics, suspension, the drivetrain,
+# circuit geometry, the racing line, the speed profile, timing, sessions,
+# the AI driver, ghosts, the field — is `unity/Packages/com.mumu.f1core`,
+# and a plain .NET SDK compiles and tests it in twenty seconds with no
+# editor and no licence. That is this file.
+#
+# The half with — `Assets/Scripts`, the shader, the HUD — needs the
+# editor, and so does anything that produces a player. That is
+# `unity.yml`.
+#
+# `deploy` needs `core`. A red build is a build that does not go out,
+# which is the only reason this file is worth having.
 
 name: CI
 
@@ -24,62 +33,59 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  check:
+  core:
+    name: core
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Test the simulation
+        run: dotnet test dotnet/MumuF1.Core.Tests --nologo --verbosity normal
+
+      # Two small Node scripts assemble the site and install model kits.
+      # They run on hosts nobody is watching, which is where a typo costs
+      # the most.
       - uses: actions/setup-node@v4
         with:
-          # Vite 8 wants 22.12 or newer; this is what the project is
-          # developed against.
           node-version: '22'
-          cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            f1sim/package-lock.json
 
-      - name: Install the game
-        working-directory: f1sim
-        run: npm ci
-
-      # The linter lives at the root with its own TypeScript — see the
-      # header of `eslint.config.js` for why it cannot share the game's.
       - name: Install the tooling
         run: npm ci
 
       - name: Lint
         run: npm run lint
 
-      - name: Types
-        working-directory: f1sim
-        run: npm run typecheck
+      # Can the font still draw the game?
+      #
+      # The project ships a subset of Noto Sans KR — the full face is
+      # 4.6 MB and this is 26 KB — cut to exactly the characters the
+      # scripts contain. Which means every new label is a chance to write
+      # one it cannot draw, and a glyph that is not in a font is not an
+      # error. It is nothing: no console line, no missing asset, just a
+      # gap on screen where the words were.
+      #
+      # That is not hypothetical. The start card read "T 트랙션 · P
+      # 자동주행 · R 리셋" and a player saw "T 트 · P · R 리셋" — the
+      # traction-control key with no noun and the autopilot with nothing
+      # at all — through several builds, because nothing anywhere was
+      # checking. Now something is, and it costs a second.
+      - name: Can the font draw the game?
+        run: python3 tools/subset-font.py --check
 
-      - name: Tests
-        working-directory: f1sim
-        run: npm run test
-
-      # The same two commands the host runs, in the same order, so a
-      # build that only breaks when the site is assembled breaks here
-      # rather than on the way to production.
-      - name: Build the site
-        run: npm --prefix f1sim run build && node tools/build-site.js
-
-      - name: Check the build produced something to serve
-        run: |
-          test -f dist-site/index.html
-          test -f dist-site/manifest.webmanifest
-          test -d dist-site/assets
-          echo "dist-site: $(du -sh dist-site | cut -f1), $(find dist-site -type f | wc -l) files"
-
-      - uses: actions/upload-pages-artifact@v3
-        # Only what is going to be published needs uploading.
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-        with:
-          path: dist-site
-
-  deploy:
-    needs: check
+  # The site, which is the Unity player and nothing else.
+  #
+  # It cannot be built here — the editor is several gigabytes and needs a
+  # licence — so `unity.yml` builds it on a runner that has one and
+  # publishes it as a release asset. This fetches that.
+  #
+  # Which means this job depends on a build having been published at all,
+  # and says so plainly rather than deploying an empty directory.
+  site:
+    needs: core
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
@@ -89,5 +95,18 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Fetch the player and lay out the site
+        run: node tools/build-site.js
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist-site
+
       - id: deployment
         uses: actions/deploy-pages@v4

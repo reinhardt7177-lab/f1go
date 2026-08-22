@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The simulation, compiled without Unity.
+
+    This project does not own a single source file. It compiles exactly
+    the files the Unity package compiles, from where the Unity package
+    keeps them, so there is one copy of the code and no chance of the
+    two drifting. What it buys is a way to compile and test the whole
+    simulation with no editor and no licence — which is what lets CI
+    check the port on every push.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>MumuF1.Core</AssemblyName>
+    <RootNamespace>MumuF1</RootNamespace>
+
+    <!--
+      Unity 6 compiles C# 9. Pinning the same version here is the point
+      of the exercise: it means "the CI build is green" implies "the
+      editor will accept this", instead of discovering a C# 11 pattern
+      the hard way after a twenty-minute import.
+    -->
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../../unity/Packages/com.mumu.f1core/Runtime/**/*.cs" />
+  </ItemGroup>
+
+</Project>

@@ -2,10 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "f1sim",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "f1sim", "run", "dev"],
-      "port": 5173
+      "name": "site (the built Unity player)",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["tools/build-site.js"],
+      "port": 8080
     }
   ]
 }

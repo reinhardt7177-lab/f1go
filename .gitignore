@@ -3,3 +3,7 @@ node_modules/
 
 # Local Claude Code permissions, not shared.
 .claude/settings.local.json
+
+# Python bytecode, from the preview tool.
+__pycache__/
+*.pyc
