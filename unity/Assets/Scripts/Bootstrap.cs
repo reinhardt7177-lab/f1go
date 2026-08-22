@@ -71,7 +71,26 @@ namespace MumuF1.Game
         /// </remarks>
         public static void Rebuild()
         {
-            if (_root != null) Object.Destroy(_root);
+            /* Switched off before it is destroyed, and the order matters.
+               `Destroy` is deferred to the end of the frame, so the old world
+               is still standing — and still answering raycasts — while the
+               new one is built inside it. That is not cosmetic: the trackside
+               props are dropped onto whatever is under them, so changing
+               circuit would land the new circuit's scenery on the old
+               circuit's road, which is somewhere else entirely. Deactivating
+               takes its colliders out of the scene at once.
+
+               `DestroyImmediate` would be the obvious answer and is the wrong
+               one: this is called from a button, the button is drawn in the
+               title card's own `OnGUI`, and destroying the object that is
+               mid-way through running its own event is how a frame ends in
+               an exception rather than a race. */
+            if (_root != null)
+            {
+                _root.SetActive(false);
+                Object.Destroy(_root);
+            }
+
             Build();
         }
 
