@@ -450,34 +450,39 @@ namespace MumuF1
         /// </remarks>
         private static void FrontWing(MeshBuilder b, Rgb livery)
         {
-            b.Box(new Vec3(0, -0.09, 3.02), new Vec3(1.74, 0.04, 0.44), Carbon);
-            b.Box(new Vec3(0, -0.02, 3.20), new Vec3(1.60, 0.04, 0.26), livery);
+            b.Box(new Vec3(0, -0.27, 3.02), new Vec3(1.88, 0.035, 0.46), Carbon);
+            b.Box(new Vec3(0, -0.20, 3.18), new Vec3(1.74, 0.035, 0.28), livery);
 
             for (var side = -1; side <= 1; side += 2)
             {
-                b.Box(new Vec3(side * 0.87, 0.00, 3.06), new Vec3(0.05, 0.26, 0.56), Trim);
+                /* Endplates almost down to the road — a centimetre clear of
+                   it. They are what says open-wheel as much as the wheels
+                   do; a bare plank across the nose reads as a bumper. */
+                b.Box(new Vec3(side * 0.94, -0.18, 3.04), new Vec3(0.04, 0.26, 0.58), Trim);
                 // The pylon back to the nose, so the wing is attached to something.
-                b.Box(new Vec3(side * 0.10, -0.03, 2.86), new Vec3(0.04, 0.14, 0.30), Carbon);
+                b.Box(new Vec3(side * 0.09, -0.19, 2.88), new Vec3(0.035, 0.16, 0.28), Carbon);
             }
         }
 
         /// <summary>The rear wing, its endplates and the beam under it.</summary>
         private static void RearWing(MeshBuilder b, Rgb livery)
         {
-            b.Box(new Vec3(0, 0.80, -2.18), new Vec3(1.34, 0.05, 0.42), Carbon);
-            b.Box(new Vec3(0, 0.70, -2.28), new Vec3(1.30, 0.04, 0.22), livery);
-            b.Box(new Vec3(0, 0.36, -2.20), new Vec3(0.90, 0.04, 0.26), Carbon);
+            /* 0.61 puts the top of it 0.93 above the road, and the
+               regulations put the whole car under 0.95. */
+            b.Box(new Vec3(0, 0.61, -2.14), new Vec3(1.05, 0.045, 0.40), Carbon);
+            b.Box(new Vec3(0, 0.52, -2.25), new Vec3(1.02, 0.035, 0.22), livery);
+            b.Box(new Vec3(0, -0.02, -2.18), new Vec3(0.76, 0.035, 0.24), Carbon);
 
             for (var side = -1; side <= 1; side += 2)
             {
-                b.Box(new Vec3(side * 0.68, 0.60, -2.16), new Vec3(0.04, 0.50, 0.60), Trim);
+                b.Box(new Vec3(side * 0.53, 0.42, -2.14), new Vec3(0.035, 0.44, 0.56), Trim);
             }
 
             // The light in the middle of the crash structure.
-            b.Box(new Vec3(0, 0.06, -2.36), new Vec3(0.10, 0.10, 0.05), Gold);
+            b.Box(new Vec3(0, -0.14, -2.34), new Vec3(0.09, 0.09, 0.05), Gold);
 
             // Pylons from the gearbox up to the wing.
-            b.Box(new Vec3(0, 0.58, -2.10), new Vec3(0.07, 0.40, 0.20), Carbon);
+            b.Box(new Vec3(0, 0.40, -2.08), new Vec3(0.06, 0.38, 0.18), Carbon);
         }
 
         /// <summary>The floor and diffuser, seen from behind and from a kerb.</summary>

@@ -121,6 +121,105 @@ def cap(r, front, col):
             tri(c, r[k2], r[k], col)
 
 
+COLOURS = {
+    'livery': None,          # filled in per call
+    'Livery': None,
+    'Dark': DARK, 'Carbon': CARBON, 'Trim': TRIM, 'Gold': GOLD,
+    'Visor': VISOR, 'Rubber': RUBBER, 'Rim': RIM,
+}
+
+
+def parts():
+    """Every b.Box and b.Ball in CarMesh.cs, with its loops unrolled.
+
+    Read rather than copied, and that is not tidiness. This file mirrored
+    those calls by hand once; a later edit to the C# matched on a name the
+    C# no longer used, silently changed nothing, and this preview happily
+    reported that a car it had drawn from the *old* numbers fitted its
+    bounds — while CI, looking at the real thing, said the rear wing hung
+    40 mm past them. A mirror that can disagree with the thing it mirrors
+    is worse than no mirror.
+
+    The loft comes from the section table the same way. What is still
+    written out by hand below is the fin and the halo, which are swept
+    rather than assembled from primitives; `MIRRORED` names them so the
+    next person knows exactly how far this can be trusted.
+    """
+    text = open(SOURCE, encoding='utf-8').read()
+    out = []
+    loops = []           # (variable, values, depth)
+    depth = 0
+
+    for line in text.splitlines():
+        stripped = line.strip()
+
+        m = re.match(r'for \(var (\w+) = (-?\d+); \1 <[=]? (-?\d+); \1 \+= (\d+)\)', stripped)
+        if m:
+            name, lo, hi, step = m.group(1), int(m.group(2)), int(m.group(3)), int(m.group(4))
+            inclusive = '<=' in stripped
+            values = list(range(lo, hi + (1 if inclusive else 0), step))
+            loops.append([name, values, depth])
+        m = re.match(r'for \(var (\w+) = (-?\d+); \1 < (-?\d+); \1\+\+\)', stripped)
+        if m:
+            loops.append([m.group(1), list(range(int(m.group(2)), int(m.group(3)))), depth])
+
+        depth += line.count('{') - line.count('}')
+        loops = [l for l in loops if l[2] <= depth]
+
+        call = re.match(r'b\.(Box|Ball)\((.*)$', stripped)
+        if not call:
+            continue
+        args = call.group(2)
+        if not args.rstrip().endswith(';'):
+            continue                            # wrapped across lines; handled below
+        out.append((call.group(1), args, [(l[0], l[1]) for l in loops]))
+
+    # calls wrapped over two lines (the diffuser)
+    for m in re.finditer(r'b\.(Box|Ball)\(\s*([^;]*?)\);', text, re.S):
+        if '\n' not in m.group(2):
+            continue
+        before = text[:m.start()]
+        vars_ = []
+        for lm in re.finditer(r'for \(var (\w+) = (-?\d+); \1 < (-?\d+); \1\+\+\)', before):
+            vars_ = [(lm.group(1), list(range(int(lm.group(2)), int(lm.group(3)))))]
+        out.append((m.group(1), m.group(2).replace('\n', ' ') + ');', vars_))
+
+    return out
+
+
+def build_parts(livery):
+    for kind, args, loops in parts():
+        vecs = re.findall(r'new Vec3\(([^)]*)\)', args)
+        colour = args.rstrip().rstrip(');').split(',')[-1].strip()
+        col = livery if colour in ('livery', 'Livery') else COLOURS.get(colour)
+        if col is None:
+            continue
+
+        combos = [{}]
+        for name, values in loops:
+            combos = [dict(c, **{name: v}) for c in combos for v in values]
+
+        for env in combos:
+            try:
+                nums = [[float(eval(t, {}, env)) for t in v.split(',')] for v in vecs]
+            except Exception:
+                continue
+            if kind == 'Box' and len(nums) == 2:
+                box(tuple(nums[0]), tuple(nums[1]), col)
+            elif kind == 'Ball' and len(nums) == 1:
+                rest = [t.strip() for t in args.split(')')[1].split(',') if t.strip()]
+                try:
+                    r, sides, rings = float(rest[0]), int(rest[1]), int(rest[2])
+                except (IndexError, ValueError):
+                    continue
+                ball(tuple(nums[0]), r, sides, rings, col)
+
+
+#: Still written out by hand here, because they are swept rather than
+#: assembled from primitives. If CarMesh.cs changes these, change them here.
+MIRRORED = ('Fin', 'Halo')
+
+
 def build_body(livery):
     prev = ring(HULL[0])
     cap(prev, True, livery)
@@ -132,16 +231,9 @@ def build_body(livery):
         prev = nxt
     cap(prev, False, livery)
 
-    # Cockpit
-    box((0, 0.37, 0.30), (0.40, 0.06, 1.00), DARK)
-    box((-0.25, 0.39, 0.05), (0.12, 0.09, 0.52), livery)
-    box((0.25, 0.39, 0.05), (0.12, 0.09, 0.52), livery)
-    ball((0, 0.45, 0.26), 0.14, 8, 5, TRIM)
-    box((0, 0.46, 0.38), (0.19, 0.07, 0.06), VISOR)
-    box((0, 0.52, -0.02), (0.26, 0.28, 0.16), CARBON)
-    box((0, 0.49, -0.30), (0.23, 0.20, 0.44), livery)
+    build_parts(livery)
 
-    # Fin
+    # Fin  (MIRRORED)
     prof = [(0, 0.56, -0.30), (0, 0.60, -1.55), (0, 0.40, -1.95), (0, 0.40, -1.10)]
     t = 0.012
     for i in range(4):
@@ -152,7 +244,7 @@ def build_body(livery):
     quad((-t, prof[3][1], prof[3][2]), (-t, prof[2][1], prof[2][2]),
          (-t, prof[1][1], prof[1][2]), (-t, prof[0][1], prof[0][2]), livery)
 
-    # Halo
+    # Halo  (MIRRORED)
     segs, ht = 9, 0.035
 
     def on(u):
@@ -179,35 +271,6 @@ def build_body(livery):
         for k in range(4):
             quad(prev[(k + 1) % 4], prev[k], nxt[k], nxt[(k + 1) % 4], CARBON)
         prev = nxt
-    box((0, 0.45, 0.62), (0.05, 0.18, 0.08), CARBON)
-
-    # Sidepods
-    for side in (-1, 1):
-        box((side * 0.40, -0.06, 0.50), (0.14, 0.22, 0.12), DARK)
-        box((side * 0.38, -0.15, 1.05), (0.04, 0.18, 0.56), CARBON)
-        box((side * 0.34, 0.30, -0.35), (0.26, 0.03, 0.36), CARBON)
-
-    # Front wing
-    box((0, -0.27, 3.02), (1.88, 0.035, 0.46), CARBON)
-    box((0, -0.20, 3.18), (1.74, 0.035, 0.28), livery)
-    for side in (-1, 1):
-        box((side * 0.94, -0.18, 3.04), (0.04, 0.26, 0.58), TRIM)
-        box((side * 0.09, -0.19, 2.88), (0.035, 0.16, 0.28), CARBON)
-
-    # Rear wing
-    box((0, 0.61, -2.14), (1.05, 0.045, 0.40), CARBON)
-    box((0, 0.52, -2.25), (1.02, 0.035, 0.22), livery)
-    box((0, -0.02, -2.18), (0.76, 0.035, 0.24), CARBON)
-    for side in (-1, 1):
-        box((side * 0.53, 0.42, -2.14), (0.035, 0.44, 0.56), TRIM)
-    box((0, -0.14, -2.34), (0.09, 0.09, 0.05), GOLD)
-    box((0, 0.40, -2.08), (0.06, 0.38, 0.18), CARBON)
-
-    # Floor
-    box((0, -0.25, -0.30), (0.92, 0.03, 2.60), CARBON)
-    for i in range(3):
-        box((0, -0.24 + i * 0.04, -1.70 - i * 0.22),
-            (0.82 - i * 0.06, 0.03, 0.26), DARK)
 
 
 def tube(at, radius, height, sides, col):
