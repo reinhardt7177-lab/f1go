@@ -192,6 +192,34 @@ namespace MumuF1.Game
         /// </remarks>
         public float SpawnHeight => (float)(_suspension.RestLength + WheelRadius) - HardpointY;
 
+        /// <summary>
+        /// Where wheel <paramref name="index"/>'s hub sits when the spring is
+        /// neither compressed nor extended, in body space.
+        /// </summary>
+        /// <remarks>
+        /// Exists so that the view cannot disagree with the simulation about
+        /// where a wheel is, which it did: the hubs were drawn at a hand
+        /// written −0.16 while the physics hung them from a hardpoint at
+        /// +0.16 by a 0.12 spring, putting every wheel a fifth of a metre
+        /// into the road. Two places holding the same number is how that
+        /// happens, so now there is one, and it is this one — the number the
+        /// raycast actually uses.
+        /// </remarks>
+        public Vector3 HubRest(int index)
+        {
+            int i = Mathf.Clamp(index, 0, 3);
+            float x = (i == FL || i == RL) ? -1f : 1f;
+            float half = (i == FL || i == FR) ? TrackFront : TrackRear;
+            float z = (i == FL || i == FR)
+                ? Wheelbase * (1f - FrontWeightBias)
+                : -Wheelbase * FrontWeightBias;
+
+            return new Vector3(
+                x * half / 2f,
+                HardpointY - (float)_suspension.RestLength,
+                z);
+        }
+
         /// <summary>Largest driven-wheel slip ratio, for the diagnostic line.</summary>
         public double DrivenSlip =>
             _wheels[RL] == null ? 0 : System.Math.Max(
@@ -331,6 +359,47 @@ namespace MumuF1.Game
         /// this project keeps no generated settings files. Sorting the hits
         /// costs nothing at four wheels and needs no project-wide state.
         /// </remarks>
+        /// <summary>
+        /// How far the ground actually is, and what it is.
+        /// </summary>
+        /// <remarks>
+        /// The suspension ray is deliberately short — it only wants ground
+        /// the spring can reach — so when it comes back empty it cannot say
+        /// whether the road is a centimetre out of reach or two hundred
+        /// metres above. That distinction is the whole diagnosis, and
+        /// guessing at it from a screenshot has now cost two build cycles.
+        /// So this casts the same ray two hundred metres, both ways, and
+        /// records what it found. It runs once a tick for one wheel and only
+        /// exists to be read on the F3 line.
+        /// </remarks>
+        private void Probe(Vector3 origin)
+        {
+            ProbeDown = -1;
+            ProbeUp = -1;
+            ProbeHit = "-";
+
+            if (CastToGround(origin, Vector3.down, 200f, out RaycastHit below))
+            {
+                ProbeDown = below.distance;
+                ProbeHit = below.collider.name;
+            }
+
+            if (CastToGround(origin, Vector3.up, 200f, out RaycastHit above))
+            {
+                ProbeUp = above.distance;
+                if (ProbeDown < 0) ProbeHit = above.collider.name;
+            }
+        }
+
+        /// <summary>Metres to the nearest surface straight down, or −1.</summary>
+        public double ProbeDown { get; private set; } = -1;
+
+        /// <summary>Metres to the nearest surface straight up, or −1.</summary>
+        public double ProbeUp { get; private set; } = -1;
+
+        /// <summary>What the probe found.</summary>
+        public string ProbeHit { get; private set; } = "-";
+
         private bool CastToGround(Vector3 origin, Vector3 direction, float distance, out RaycastHit hit)
         {
             hit = default;
@@ -409,6 +478,7 @@ namespace MumuF1.Game
                 {
                     RayDistance = found ? hit.distance : -1;
                     RayFacing = found ? Vector3.Dot(hit.normal, up) : -1;
+                    Probe(origin);
                 }
 
                 if (found)

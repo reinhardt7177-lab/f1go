@@ -284,28 +284,7 @@ namespace MumuF1.Game
             var shapes = new Dictionary<PropKind, Mesh>();
             foreach (KeyValuePair<PropKind, Mesh3> entry in PropMesh.All())
             {
-                Mesh3 source = entry.Value;
-                var vertices = new Vector3[source.VertexCount];
-                var normals = new Vector3[source.VertexCount];
-                var colours = new Color[source.VertexCount];
-
-                for (int v = 0; v < source.VertexCount; v++)
-                {
-                    vertices[v] = new Vector3(
-                        source.Positions[v * 3], source.Positions[v * 3 + 1], source.Positions[v * 3 + 2]);
-                    normals[v] = new Vector3(
-                        source.Normals[v * 3], source.Normals[v * 3 + 1], source.Normals[v * 3 + 2]);
-                    colours[v] = new Color(
-                        source.Colors[v * 3], source.Colors[v * 3 + 1], source.Colors[v * 3 + 2]);
-                }
-
-                var mesh = new Mesh { name = entry.Key.ToString() };
-                mesh.SetVertices(vertices);
-                mesh.SetTriangles(source.Indices, 0);
-                mesh.SetNormals(normals);
-                mesh.SetColors(colours);
-                mesh.RecalculateBounds();
-                shapes[entry.Key] = mesh;
+                shapes[entry.Key] = Meshes.From(entry.Value, entry.Key.ToString());
             }
             return shapes;
         }

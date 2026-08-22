@@ -32,6 +32,15 @@ namespace MumuF1.Game
     {
         public static CarController Car { get; private set; }
 
+        /// <summary>The player's colours.</summary>
+        /// <remarks>
+        /// Here rather than in <see cref="CarView"/> because the livery is
+        /// now an argument to the mesh: the whole car is one vertex-coloured
+        /// object, so there is no material left to repaint and the colour has
+        /// to be known before the car is built.
+        /// </remarks>
+        public static readonly Color LiveryColour = new Color(0.80f, 0.07f, 0.10f);
+
         /// <summary>Everything this made, so it can be unmade.</summary>
         private static GameObject _root;
 
@@ -159,7 +168,7 @@ namespace MumuF1.Game
             car.AddComponent<CarAudio>();
             Car = controller;
 
-            CarView.Build(car.transform);
+            CarView.Build(car.transform, controller, LiveryColour);
 
             /* After the wheels exist, because it finds them by name. */
             car.AddComponent<WheelView>();

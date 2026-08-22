@@ -3,91 +3,109 @@ using UnityEngine;
 namespace MumuF1.Game
 {
     /// <summary>
-    /// Something to look at while the physics is what matters.
+    /// The car, as an object.
     /// </summary>
     /// <remarks>
-    /// Two sources, the same arrangement the roadside uses. If a car model
-    /// has been installed under <c>Assets/Resources/Kit/Car</c> it is used,
-    /// measured and fitted to the space the primitives occupied; if not, the
-    /// primitives are the car. Wheels are separate and looked up separately,
-    /// so a pack that has a body and no wheel still works.
+    /// Two sources, the same arrangement the roadside uses. If a model has
+    /// been installed under <c>Assets/Resources/Kit/Car</c> it is used,
+    /// measured and fitted to the space the generated one occupies; if not,
+    /// the generated one is the car. Wheels are separate and looked up
+    /// separately, so a pack with a body and no wheel still works.
     ///
-    /// The primitives are not a placeholder to be embarrassed about. A
-    /// modelled car is an asset to import, and an asset is the one kind of
-    /// change that cannot be authored as text — which is what this whole
-    /// project is. It is also the right order of work: the shape of the car
-    /// changes nothing about how it drives, so it can be the last thing done
-    /// properly rather than the first.
+    /// The generated car is not a placeholder. It was five boxes for a long
+    /// time, on the argument that a car is an asset and an asset cannot be
+    /// authored as text — which is true of a *modelled* car and not of a
+    /// generated one. <see cref="MumuF1.CarMesh"/> is a table of
+    /// cross-sections and a handful of wings, written down and diffable, and
+    /// it makes a shape a box never could: a single-seater is recognisable by
+    /// its taper, and axis-aligned boxes cannot taper.
     ///
-    /// Nothing here moves. The wheels do not steer or spin yet, in either
-    /// version — the simulation knows every wheel's angle and speed, so
-    /// wiring that up is a small job, and it is a different one.
+    /// Where the wheels go is asked of the car rather than written here. It
+    /// used to be written here, and it was wrong by a fifth of a metre —
+    /// every wheel was drawn buried in the road while the physics hung them
+    /// from a hardpoint the view had never heard of.
     /// </remarks>
     public static class CarView
     {
         private const string Kit = "Kit/";
 
-        private static readonly Color Livery = new Color(0.85f, 0.09f, 0.11f);
         private static readonly Color Rubber = new Color(0.09f, 0.09f, 0.10f);
 
-        /// <summary>
-        /// The space the primitive car fills, as the reference an imported
-        /// model is fitted to.
-        /// </summary>
-        /// <remarks>
-        /// The union of the boxes below: 1.8 m across the front wing, from
-        /// 110 mm below the hub to the top of the rear wing, and from the
-        /// back of that wing to the tip of the nose. Written down rather than
-        /// measured at runtime because it is the *intended* size of the car,
-        /// and a model should be fitted to that rather than to whatever the
-        /// primitives happen to add up to.
-        /// </remarks>
-        private static readonly Bounds3 BodySpace =
-            new Bounds3(new Vec3(-0.9, -0.11, -2.35), new Vec3(0.9, 0.88, 3.25));
-
         /// <summary>A wheel 0.72 across and 0.36 wide, about its hub.</summary>
+        /// <remarks>
+        /// The space an installed wheel model is fitted into. The body has
+        /// one too, and it lives with the shape it describes — see
+        /// <see cref="MumuF1.CarMesh.Space"/>. This one stays here because
+        /// the wheel's size is the chassis's, not the mesh's.
+        /// </remarks>
         private static readonly Bounds3 WheelSpace =
             new Bounds3(new Vec3(-0.18, -0.36, -0.36), new Vec3(0.18, 0.36, 0.36));
 
-        private const float Front = 1.98f;
-        private const float Rear = -1.62f;
+        private static Mesh _wheelMesh;
 
-        public static void Build(Transform car)
+        /// <summary>Build the car onto <paramref name="car"/>.</summary>
+        /// <remarks>
+        /// The chassis is asked where its wheels are rather than told. It
+        /// knows: the hardpoints, the spring's rest length and the wheel's
+        /// radius are all its own numbers, and they are the numbers the
+        /// suspension raycast uses. Reading them here means the drawn wheel
+        /// and the simulated one cannot drift apart.
+        /// </remarks>
+        public static void Build(Transform car, CarController chassis, Color livery)
         {
-            if (!Fitted(car, "Car", BodySpace, Vector3.zero, Livery, centred: false))
+            if (!Fitted(car, "Car", CarMesh.Space, Vector3.zero, livery, centred: false))
             {
-                Primitives(car);
+                Generated(car, livery);
             }
 
-            Wheel(car, "FL", new Vector3(-0.80f, -0.16f, Front));
-            Wheel(car, "FR", new Vector3(0.80f, -0.16f, Front));
-            Wheel(car, "RL", new Vector3(-0.78f, -0.16f, Rear));
-            Wheel(car, "RR", new Vector3(0.78f, -0.16f, Rear));
+            for (int i = 0; i < 4; i++)
+            {
+                Wheel(car, Names[i], chassis.HubRest(i));
+            }
         }
 
-        /// <summary>The body, from primitives.</summary>
-        private static void Primitives(Transform car)
+        private static readonly string[] Names = { "FL", "FR", "RL", "RR" };
+
+        /// <summary>The body, generated.</summary>
+        /// <remarks>
+        /// One object, one mesh, one material. Bodywork, wings, floor, halo
+        /// and helmet differ by vertex colour, which is the same trick the
+        /// road and the roadside use — so a whole car is a single draw call
+        /// and there is nothing left to repaint afterwards. The livery is
+        /// baked in for that reason: a field of ten is ten small meshes
+        /// rather than ten cars' worth of separately-coloured parts.
+        /// </remarks>
+        private static void Generated(Transform car, Color livery)
         {
-            Colour(Box(car, "Body", new Vector3(0f, 0.05f, 0f), new Vector3(1.0f, 0.32f, 4.4f)), Livery);
-            Colour(Box(car, "Nose", new Vector3(0f, 0.02f, 2.5f), new Vector3(0.45f, 0.2f, 1.2f)), Livery);
-            Colour(Box(car, "RearWing", new Vector3(0f, 0.72f, -2.2f), new Vector3(1.7f, 0.32f, 0.3f)), Livery);
-            Colour(Box(car, "FrontWing", new Vector3(0f, -0.05f, 3.0f), new Vector3(1.8f, 0.1f, 0.5f)), Livery);
-            Colour(Box(car, "Halo", new Vector3(0f, 0.42f, 0.6f), new Vector3(0.7f, 0.08f, 0.8f)),
-                new Color(0.1f, 0.1f, 0.12f));
+            var go = new GameObject("Body");
+            go.transform.SetParent(car, false);
+            go.AddComponent<MeshFilter>().sharedMesh =
+                Meshes.From(CarMesh.Build(Meshes.Tint(livery)), "Car");
+            go.AddComponent<MeshRenderer>().sharedMaterial = Paint.FromVertices(outline: 2.4f);
         }
 
+        /// <summary>One wheel, at its hub.</summary>
+        /// <remarks>
+        /// The generated wheel carries five bright spokes on each face, and
+        /// they are the point of it: a plain black cylinder is rotationally
+        /// symmetric, so a wheel at three thousand rpm looks exactly like a
+        /// locked one. Braking into a corner is unreadable without them.
+        ///
+        /// The mesh is built once and shared by every wheel on every car —
+        /// forty of them in a full field — because unlike the body it carries
+        /// no livery.
+        /// </remarks>
         private static void Wheel(Transform car, string name, Vector3 at)
         {
             if (Fitted(car, "Wheel", WheelSpace, at, Rubber, centred: true, name: name)) return;
 
-            GameObject go = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            go.name = name;
-            Object.Destroy(go.GetComponent<Collider>());
+            if (_wheelMesh == null) _wheelMesh = Meshes.From(CarMesh.Wheel(), "Wheel");
+
+            var go = new GameObject(name);
             go.transform.SetParent(car, false);
             go.transform.localPosition = at;
-            go.transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
-            go.transform.localScale = new Vector3(0.72f, 0.18f, 0.72f);
-            Colour(go, Rubber);
+            go.AddComponent<MeshFilter>().sharedMesh = _wheelMesh;
+            go.AddComponent<MeshRenderer>().sharedMaterial = Paint.FromVertices(outline: 2.0f);
         }
 
         /// <summary>
@@ -186,20 +204,5 @@ namespace MumuF1.Game
             return any;
         }
 
-        private static GameObject Box(Transform car, string name, Vector3 at, Vector3 size)
-        {
-            GameObject go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            go.name = name;
-            Object.Destroy(go.GetComponent<Collider>());
-            go.transform.SetParent(car, false);
-            go.transform.localPosition = at;
-            go.transform.localScale = size;
-            return go;
-        }
-
-        private static void Colour(GameObject go, Color colour)
-        {
-            go.GetComponent<MeshRenderer>().sharedMaterial = Paint.Flat(colour);
-        }
     }
 }

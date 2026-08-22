@@ -66,33 +66,12 @@ namespace MumuF1.Game
             car.transform.SetParent(transform);
 
             /* The same body the player's car gets, so a rival is recognisably
-               the same machine rather than a differently-shaped one. */
-            CarView.Build(car.transform);
-            Repaint(car.transform, paint);
+               the same machine rather than a differently-shaped one, and the
+               same chassis numbers, because there is only one car in this
+               game and it is that one. */
+            CarView.Build(car.transform, Bootstrap.Car, paint);
 
             return car.transform;
-        }
-
-        /// <summary>
-        /// Recolour everything that was painted the livery red.
-        /// </summary>
-        /// <remarks>
-        /// <see cref="CarView"/> builds one car and knows one colour, and
-        /// teaching it to take a livery would mean threading a colour through
-        /// the kit loader, the primitives and the wheels for the sake of nine
-        /// cars. Repainting afterwards touches only the renderers that came
-        /// back with a deliberate colour on them, which leaves the tyres and
-        /// the halo black.
-        /// </remarks>
-        private static void Repaint(Transform car, Color paint)
-        {
-            foreach (Renderer r in car.GetComponentsInChildren<Renderer>())
-            {
-                if (r.sharedMaterial == null) continue;
-                if (!Paint.Deliberate(r.sharedMaterial.color)) continue;
-
-                r.sharedMaterial = Paint.Shared(paint);
-            }
         }
 
         /// <summary>A `#rrggbb` from the core, as a colour.</summary>
