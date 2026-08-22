@@ -83,6 +83,41 @@ To see the site as it will be served:
 npm run site
 ```
 
+Which player that fetched is recorded in `tools/player.sha256`, written
+by the Unity workflow when it publishes one. The site build compares what
+it downloaded against it and says `(as recorded)` when they match. That
+file is also what closes the gap between the two halves: the host builds
+on a push and the player arrives eighteen minutes later, so a deploy used
+to fetch the player from the *previous* commit — every time, with both
+halves reporting success and nothing anywhere able to say which player was
+being served. Committing the digest is a push that happens once the asset
+exists, so the host comes back for it.
+
+## Driving it
+
+`tools/drive.mjs` loads the built player, presses the keys and photographs
+what the game says about itself. Every fault this has had since it became
+a Unity build was found there rather than by reading the code — a circuit
+whose scenery ended in mid-air, tyres at 226 °C, a lap clock that had been
+running since the world loaded — and all of them compiled and passed every
+test first.
+
+```
+npm run site
+npx serve dist-site -l 8899
+node tools/drive.mjs
+```
+
+Playwright is deliberately not a dependency here: it would put a browser
+download into every CI run to serve a script CI does not run. Install it
+where you need it.
+
+The harness is only half of it. The other half is `F3`, which puts one
+line on screen carrying everything a guess would otherwise be about —
+input, revs, gear, how many wheels are on the road, what they are
+carrying, and what a probe straight down finds. Three builds went out
+guessing at things that line answers in one reading.
+
 ## Controls
 
 | Action        | Keyboard          | Touch                   |

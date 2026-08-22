@@ -22,6 +22,29 @@ export default [
   { ignores: ['dist-site/**', 'node_modules/**', 'unity/**', 'vendor/**'] },
   js.configs.recommended,
   {
+    /* The driving harness is ESM and everything else here is CommonJS,
+       which is why it is `.mjs` and why it needs its own block: the root
+       package is deliberately not `"type": "module"`, because the host's
+       build command runs `tools/build-site.js` and declaring the root ESM
+       breaks the deploy. */
+    files: ['tools/**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 2023,
+      sourceType: 'module',
+      /* Both, and not by accident. The file runs under Node, and the
+         callbacks it hands to Playwright run inside the page — so a
+         reference to `document` in one of those is correct rather than a
+         typo, and is the only place in this repository where that is
+         true. */
+      globals: { ...globals.node, ...globals.browser }
+    },
+    rules: {
+      eqeqeq: ['error', 'always'],
+      'no-var': 'error',
+      'prefer-const': 'error'
+    }
+  },
+  {
     files: ['tools/**/*.js'],
     languageOptions: {
       ecmaVersion: 2023,
