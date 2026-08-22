@@ -39,7 +39,7 @@ namespace MumuF1.Game
         public static readonly Color Bark = new Color(0.35f, 0.25f, 0.17f);
         public static readonly Color Concrete = new Color(0.72f, 0.73f, 0.75f);
         public static readonly Color Asphalt = new Color(0.24f, 0.25f, 0.27f);
-        public static readonly Color Warning = new Color(0.78f, 0.16f, 0.15f);
+        public static readonly Color Warning = new Color(0.74f, 0.07f, 0.07f);
         public static readonly Color Glass = new Color(0.30f, 0.40f, 0.50f);
         public static readonly Color Chalk = new Color(0.90f, 0.91f, 0.93f);
 

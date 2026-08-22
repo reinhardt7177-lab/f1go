@@ -44,6 +44,7 @@ Shader "mumuF1/Toon"
         _BaseColor ("Colour", Color) = (0.8, 0.1, 0.1, 1)
         _Bands ("Bands of light", Range(2, 8)) = 4
         _Floor ("Darkest band", Range(0, 1)) = 0.42
+        _Knee ("Highlight knee", Range(0.4, 1)) = 0.75
         _OutlineWeight ("Outline weight (px at 1080)", Range(0, 12)) = 2.4
         _OutlineColor ("Outline colour", Color) = (0, 0, 0, 1)
         [Toggle] _UseVertexColor ("Colour from vertices", Float) = 0
@@ -140,6 +141,7 @@ Shader "mumuF1/Toon"
             float4 _BaseColor;
             float _Bands;
             float _Floor;
+            float _Knee;
             float _UseVertexColor;
 
             struct appdata
@@ -194,6 +196,22 @@ Shader "mumuF1/Toon"
                    ambient is trilight — sky above, ground below — and a
                    flat term would throw that away. */
                 lit += albedo * ShadeSH9(float4(normalize(i.normal), 1.0)) * 0.5;
+
+                /* A shoulder in the highlights, and nothing below the knee.
+                   A sun at 1.4 with an ambient on top means any albedo past
+                   about 0.6 leaves the top band above 1.0 and is simply cut
+                   off — which is not a dimmer highlight, it is a *different
+                   colour*. The kerbs showed it plainly: 0.88, 0.18, 0.18 red
+                   clipped its red channel to 1.0 while green and blue kept
+                   climbing, and a saturated red arrived on screen as pale
+                   pink. Everything under 0.75 is left exactly as it was, so
+                   the mid-tones and the four bands are untouched; above it
+                   the curve bends towards 1.0 and never reaches it, which
+                   keeps a bright surface bright and keeps its hue. */
+                float knee = min(_Knee, 0.99);
+                float room = 1.0 - knee;
+                float3 rolled = knee + room * (1.0 - exp(-max(lit - knee, 0.0) / room));
+                lit = lerp(lit, rolled, step(knee, lit));
 
                 fixed4 col = fixed4(lit, _BaseColor.a);
                 UNITY_APPLY_FOG(i.fogCoord, col);

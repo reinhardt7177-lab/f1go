@@ -97,7 +97,7 @@ namespace MumuF1
         /// <summary>Paint, and tarmac that has been rubbered in by a season of cars.</summary>
         private static readonly Rgb Paint = new Rgb(0.93f, 0.94f, 0.95f);
 
-        private static readonly Rgb Groove = new Rgb(0.24f, 0.26f, 0.29f);
+        private static readonly Rgb Groove = new Rgb(0.19f, 0.20f, 0.23f);
 
         /// <summary>The pale half of a kerb. The red half comes from the surface colour.</summary>
         private static readonly Rgb KerbPale = new Rgb(0.93f, 0.93f, 0.94f);
@@ -122,11 +122,11 @@ namespace MumuF1
         {
             switch (kind)
             {
-                case SurfaceKind.Tarmac: return new Rgb(0.30f, 0.32f, 0.35f);
-                case SurfaceKind.Kerb: return new Rgb(0.88f, 0.18f, 0.18f);
-                case SurfaceKind.Runoff: return new Rgb(0.46f, 0.45f, 0.47f);
-                case SurfaceKind.Gravel: return new Rgb(0.68f, 0.59f, 0.42f);
-                case SurfaceKind.Grass: return new Rgb(0.33f, 0.56f, 0.28f);
+                case SurfaceKind.Tarmac: return new Rgb(0.26f, 0.28f, 0.31f);
+                case SurfaceKind.Kerb: return new Rgb(0.78f, 0.05f, 0.05f);
+                case SurfaceKind.Runoff: return new Rgb(0.40f, 0.40f, 0.42f);
+                case SurfaceKind.Gravel: return new Rgb(0.60f, 0.53f, 0.38f);
+                case SurfaceKind.Grass: return new Rgb(0.29f, 0.50f, 0.24f);
                 default: throw new ArgumentOutOfRangeException(nameof(kind));
             }
         }
